@@ -107,10 +107,11 @@ $works = load_data('works.json', []);
 $characters = load_data('characters.json', []);
 $images = load_data('images.json', []);
 $users = load_data('users.json', []);
+$shares = load_data('shares.json', []);
 
 $page = $_GET['page'] ?? 'gallery';
 
-if ($page !== 'login' && $page !== 'logout') {
+if (!in_array($page, ['login', 'logout', 'share'], true)) {
     require_login();
 }
 
@@ -239,16 +240,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $character = find_by_id($characters, $characterId);
             $workId = $character['work_id'] ?? '';
         }
-        $upload = handle_upload('image_file');
-        if (!$upload) {
+        $uploads = handle_multi_upload('image_files');
+        if (!$uploads) {
             $errors[] = '请上传图片文件。';
         } else {
-            $images[] = [
-                'id' => uniqid('i_'),
-                'work_id' => $workId,
-                'character_id' => $characterId,
-                'path' => $upload
-            ];
+            foreach ($uploads as $upload) {
+                $images[] = [
+                    'id' => uniqid('i_'),
+                    'work_id' => $workId,
+                    'character_id' => $characterId,
+                    'path' => $upload
+                ];
+            }
             save_data('images.json', $images);
             header('Location: ?page=character&id=' . urlencode($characterId));
             exit();
@@ -374,6 +377,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ?page=users');
         exit();
     }
+
+    if ($action === 'create_share') {
+        require_admin();
+        $imageIds = $_POST['image_ids'] ?? [];
+        $ttlHours = max(1, (int)($_POST['ttl_hours'] ?? 24));
+        $validIds = array_values(array_filter($imageIds, fn($id) => find_by_id($images, $id)));
+        if (!$validIds) {
+            $errors[] = '请选择需要分享的图片。';
+        } else {
+            $token = bin2hex(random_bytes(12));
+            $shares[] = [
+                'token' => $token,
+                'image_ids' => $validIds,
+                'expires_at' => time() + ($ttlHours * 3600)
+            ];
+            save_data('shares.json', $shares);
+            header('Location: ?page=share&token=' . urlencode($token));
+            exit();
+        }
+    }
 }
 
 if ($page === 'logout') {
@@ -434,7 +457,6 @@ function render_nav(array $user, string $siteName): void {
 
 function render_footer(string $copyright): void {
     echo '<footer class="site-footer">' . htmlspecialchars($copyright) . '</footer>';
-    echo '<button type="button" class="floating-rocket" aria-label="返回上一级">🚀</button>';
     echo '<script src="assets/app.js"></script>';
     echo '</body></html>';
 }
@@ -578,9 +600,9 @@ if ($page === 'character') {
             echo '<input type="hidden" name="character_id" value="' . htmlspecialchars($characterId) . '">';
             echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($character['work_id']) . '">';
             echo '<div class="form-grid">';
-            echo '<label>选择图片<input type="file" name="image_file" accept="image/*" required></label>';
+            echo '<label>选择图片<input type="file" name="image_files[]" accept="image/*" multiple required></label>';
             echo '</div>';
-            echo '<p class="hint">将图片拖拽到此区域即可上传。</p>';
+            echo '<p class="hint">将图片拖拽到此区域即可批量上传。</p>';
             echo '<button type="submit">保存图片</button>';
             echo '</form>';
             echo '</div>';
@@ -722,27 +744,40 @@ if ($page === 'manage_images') {
         echo '<option value="' . htmlspecialchars($character['id']) . '">' . htmlspecialchars($label) . '</option>';
     }
     echo '</select></label>';
-    echo '<label>选择图片<input type="file" name="image_file" accept="image/*" required></label>';
+    echo '<label>选择图片<input type="file" name="image_files[]" accept="image/*" multiple required></label>';
     echo '</div>';
-    echo '<p class="hint">将图片拖拽到此区域即可上传。</p>';
+    echo '<p class="hint">将图片拖拽到此区域即可批量上传。</p>';
     echo '<button type="submit">保存图片</button>';
     echo '</form>';
     echo '</div>';
     echo '<div class="admin-panel">';
     echo '<h3>现有图片</h3>';
-    echo '<div class="gallery-grid">';
+    echo '<form method="post" class="share-panel">';
+    echo '<input type="hidden" name="action" value="create_share">';
+    echo '<div class="share-toolbar">';
+    echo '<label>有效时间<select name="ttl_hours">';
+    echo '<option value="1">1小时</option>';
+    echo '<option value="6">6小时</option>';
+    echo '<option value="24" selected>24小时</option>';
+    echo '<option value="168">7天</option>';
+    echo '</select></label>';
+    echo '<button type="submit" class="btn-primary">生成分享链接</button>';
+    echo '</div>';
+    echo '<div class="gallery-grid selectable-grid">';
     foreach ($images as $img) {
         $work = find_by_id($works, $img['work_id']);
         $character = find_by_id($characters, $img['character_id']);
-        echo '<a class="gallery-card gallery-link" href="?page=image&id=' . urlencode($img['id']) . '">';
+        echo '<label class="gallery-card gallery-select">';
+        echo '<input type="checkbox" name="image_ids[]" value="' . htmlspecialchars($img['id']) . '">';
         echo '<img src="' . htmlspecialchars($img['path']) . '" alt="图片">';
         echo '<div class="gallery-overlay">';
         echo '<span>' . htmlspecialchars($work['name'] ?? '') . '</span>';
         echo '<span>' . htmlspecialchars($character['name'] ?? '') . '</span>';
         echo '</div>';
-        echo '</a>';
+        echo '</label>';
     }
     echo '</div>';
+    echo '</form>';
     echo '</div>';
     echo '</div>';
     echo '</section>';
@@ -758,6 +793,13 @@ if ($page === 'image') {
         echo '<div class="section-header"><h2>原图预览</h2><p>' . htmlspecialchars($work['name'] ?? '') . ' · ' . htmlspecialchars($character['name'] ?? '') . '</p></div>';
         echo '<div class="image-viewer">';
         echo '<img src="' . htmlspecialchars($image['path']) . '" alt="原图">';
+        echo '</div>';
+        echo '<div class="image-actions">';
+        echo '<a class="btn-primary" href="' . htmlspecialchars($image['path']) . '" download>下载图片</a>';
+        echo '<button type="button" class="btn-secondary" data-dialog-target="#share-dialog">分享</button>';
+        echo '</div>';
+        echo '<div class="share-link">';
+        echo '<label>图片地址<input readonly value="' . htmlspecialchars($image['path']) . '"></label>';
         echo '</div>';
         if ($user['role'] === 'admin') {
             if ($errors) {
@@ -784,8 +826,61 @@ if ($page === 'image') {
             echo '</form>';
             echo '</div>';
         }
+        echo '<dialog class="share-dialog" id="share-dialog">';
+        echo '<form method="post">';
+        echo '<input type="hidden" name="action" value="create_share">';
+        echo '<input type="hidden" name="image_ids[]" value="' . htmlspecialchars($image['id']) . '">';
+        echo '<h3>分享图片</h3>';
+        echo '<label>有效时间<select name="ttl_hours">';
+        echo '<option value="1">1小时</option>';
+        echo '<option value="6">6小时</option>';
+        echo '<option value="24" selected>24小时</option>';
+        echo '<option value="168">7天</option>';
+        echo '</select></label>';
+        echo '<div class="dialog-actions">';
+        echo '<button type="submit" class="btn-primary">生成链接</button>';
+        echo '<button type="button" class="btn-secondary" data-dialog-close>取消</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</dialog>';
         echo '</section>';
     }
+}
+
+if ($page === 'share') {
+    $token = $_GET['token'] ?? '';
+    $share = null;
+    foreach ($shares as $entry) {
+        if ($entry['token'] === $token) {
+            $share = $entry;
+            break;
+        }
+    }
+    if ($share && ($share['expires_at'] ?? 0) > time()) {
+        $shareImages = array_values(array_filter($images, fn($img) => in_array($img['id'], $share['image_ids'] ?? [], true)));
+        render_header('分享画廊', $siteName, $favicon);
+        echo '<main class="site-main">';
+        echo '<section class="section">';
+        echo '<div class="section-header"><div><h2>分享画廊</h2></div></div>';
+        echo '<div class="gallery-grid">';
+        foreach ($shareImages as $img) {
+            echo '<div class="gallery-card gallery-share">';
+            echo '<img src="' . htmlspecialchars($img['path']) . '" alt="分享图片">';
+            echo '<div class="gallery-actions">';
+            echo '<a class="btn-primary" href="' . htmlspecialchars($img['path']) . '" download>下载</a>';
+            echo '</div>';
+            echo '</div>';
+        }
+        echo '</div>';
+        echo '</section>';
+        echo '</main>';
+        render_footer($settings['copyright'] ?? '');
+        exit();
+    }
+    render_header('分享已失效', $siteName, $favicon);
+    echo '<main class="site-main"><section class="section"><h2>分享链接已失效或不存在。</h2></section></main>';
+    render_footer($settings['copyright'] ?? '');
+    exit();
 }
 
 if ($page === 'users') {

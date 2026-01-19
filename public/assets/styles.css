@@ -552,26 +552,95 @@ button.danger {
   color: var(--muted);
 }
 
-.floating-rocket {
-  position: fixed;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  background: linear-gradient(135deg, #5d3ff2, #ff8fd1);
-  color: #fff;
-  border: none;
-  padding: 12px 16px;
-  border-radius: 16px 0 0 16px;
-  box-shadow: var(--shadow);
-  cursor: pointer;
-  z-index: 30;
-  font-size: 18px;
+.gallery-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
 }
 
-.floating-rocket.collapsed {
-  padding: 10px 12px;
-  border-radius: 12px 0 0 12px;
-  font-size: 14px;
+.image-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--primary);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.share-link {
+  margin-top: 16px;
+  background: var(--card);
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+}
+
+.share-link input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+}
+
+.share-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.share-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.share-toolbar label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.selectable-grid {
+  gap: 16px;
+}
+
+.gallery-select {
+  position: relative;
+  cursor: pointer;
+}
+
+.gallery-select input[type='checkbox'] {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  z-index: 5;
+}
+
+.share-dialog {
+  border: none;
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.share-dialog::backdrop {
+  background: rgba(20, 16, 40, 0.5);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 @media (max-width: 768px) {

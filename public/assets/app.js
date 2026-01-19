@@ -38,32 +38,21 @@ document.querySelectorAll('.user-chip').forEach((chip) => {
   });
 });
 
-const rocketButton = document.querySelector('.floating-rocket');
-const rocketHiddenKey = 'rocketHidden';
-if (rocketButton) {
-  const applyState = (hidden) => {
-    rocketButton.classList.toggle('collapsed', hidden);
-    rocketButton.setAttribute(
-      'aria-label',
-      hidden ? '展开返回按钮' : '返回上一级'
-    );
-  };
-  const storedHidden = localStorage.getItem(rocketHiddenKey) === 'true';
-  applyState(storedHidden);
-
-  rocketButton.addEventListener('click', () => {
-    if (rocketButton.classList.contains('collapsed')) {
-      localStorage.setItem(rocketHiddenKey, 'false');
-      applyState(false);
-      return;
+document.querySelectorAll('[data-dialog-target]').forEach((trigger) => {
+  trigger.addEventListener('click', () => {
+    const selector = trigger.getAttribute('data-dialog-target');
+    const dialog = selector ? document.querySelector(selector) : null;
+    if (dialog && typeof dialog.showModal === 'function') {
+      dialog.showModal();
     }
-    window.history.back();
   });
+});
 
-  rocketButton.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    const nextHidden = !rocketButton.classList.contains('collapsed');
-    localStorage.setItem(rocketHiddenKey, String(nextHidden));
-    applyState(nextHidden);
+document.querySelectorAll('[data-dialog-close]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const dialog = btn.closest('dialog');
+    if (dialog) {
+      dialog.close();
+    }
   });
-}
+});

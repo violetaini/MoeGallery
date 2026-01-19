@@ -1,0 +1,14 @@
+[
+  {
+    "id": "i_demo1",
+    "work_id": "w_demo",
+    "character_id": "c_demo",
+    "path": "/assets/placeholder.svg"
+  },
+  {
+    "id": "i_demo2",
+    "work_id": "w_demo",
+    "character_id": "c_demo",
+    "path": "/assets/placeholder.svg"
+  }
+]

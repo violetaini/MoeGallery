@@ -798,12 +798,12 @@ if ($page === 'image') {
         echo '<a class="btn-primary" href="' . htmlspecialchars($image['path']) . '" download>下载图片</a>';
         echo '<button type="button" class="btn-secondary" data-modal-target="#share-modal">分享</button>';
         echo '</div>';
-        echo '<div class="share-link">';
+        echo '<div class="share-link" data-share-url="' . htmlspecialchars($image['path']) . '">';
         echo '<div class="share-tabs">';
-        echo '<button type="button" class="share-tab active">URL</button>';
-        echo '<button type="button" class="share-tab">HTML</button>';
-        echo '<button type="button" class="share-tab">BBCode</button>';
-        echo '<button type="button" class="share-tab">Markdown</button>';
+        echo '<button type="button" class="share-tab active" data-format="url">URL</button>';
+        echo '<button type="button" class="share-tab" data-format="html">HTML</button>';
+        echo '<button type="button" class="share-tab" data-format="bbcode">BBCode</button>';
+        echo '<button type="button" class="share-tab" data-format="markdown">Markdown</button>';
         echo '</div>';
         echo '<div class="share-input">';
         echo '<input readonly value="' . htmlspecialchars($image['path']) . '">';

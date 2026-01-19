@@ -64,3 +64,26 @@ document.querySelectorAll('.share-modal').forEach((modal) => {
     }
   });
 });
+
+document.querySelectorAll('.share-link').forEach((container) => {
+  const input = container.querySelector('.share-input input');
+  const url = container.getAttribute('data-share-url') || '';
+  const formats = {
+    url,
+    html: `<img src=\"${url}\" alt=\"image\">`,
+    bbcode: `[img]${url}[/img]`,
+    markdown: `![image](${url})`,
+  };
+  container.querySelectorAll('.share-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      container.querySelectorAll('.share-tab').forEach((btn) => {
+        btn.classList.remove('active');
+      });
+      tab.classList.add('active');
+      const format = tab.getAttribute('data-format') || 'url';
+      if (input) {
+        input.value = formats[format] || url;
+      }
+    });
+  });
+});

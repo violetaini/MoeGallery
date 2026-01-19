@@ -235,6 +235,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         require_admin();
         $characterId = $_POST['character_id'] ?? '';
         $workId = $_POST['work_id'] ?? '';
+        if (!$workId && $characterId) {
+            $character = find_by_id($characters, $characterId);
+            $workId = $character['work_id'] ?? '';
+        }
         $upload = handle_upload('image_file');
         if (!$upload) {
             $errors[] = '请上传图片文件。';
@@ -405,6 +409,7 @@ function render_nav(array $user, string $siteName): void {
     echo '<nav>';
     echo '<a href="?page=gallery">画廊</a>';
     echo '<a href="?page=works">作品</a>';
+    echo '<a href="?page=characters">角色</a>';
     echo '<a href="?page=users">用户</a>';
     echo '</nav>';
     echo '<div class="user-chip">';
@@ -495,6 +500,13 @@ if ($page === 'works') {
     if ($errors) {
         echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
     }
+    if ($user['role'] === 'admin') {
+        echo '<div class="admin-shortcuts">';
+        echo '<a class="shortcut-card" href="?page=manage_works">作品管理</a>';
+        echo '<a class="shortcut-card" href="?page=manage_characters">角色管理</a>';
+        echo '<a class="shortcut-card" href="?page=manage_images">图片管理</a>';
+        echo '</div>';
+    }
     echo '<div class="work-grid">';
     foreach ($works as $work) {
         echo '<a class="work-card" href="?page=work&id=' . urlencode($work['id']) . '">';
@@ -504,38 +516,6 @@ if ($page === 'works') {
         echo '</a>';
     }
     echo '</div>';
-    if ($user['role'] === 'admin') {
-        echo '<div class="admin-panel">';
-        echo '<h3>新增作品</h3>';
-        echo '<form method="post" enctype="multipart/form-data">';
-        echo '<input type="hidden" name="action" value="add_work">';
-        echo '<div class="form-grid">';
-        echo '<label>名称<input name="name" required></label>';
-        echo '<label>海报上传<input type="file" name="poster" accept="image/*" required></label>';
-        echo '<label>别名<input name="alias"></label>';
-        echo '<label class="span">简介<textarea name="description"></textarea></label>';
-        echo '</div>';
-        echo '<button type="submit">保存作品</button>';
-        echo '</form>';
-        echo '<h3>已有作品快速编辑</h3>';
-        foreach ($works as $work) {
-            echo '<form method="post" class="inline-form" enctype="multipart/form-data">';
-            echo '<input type="hidden" name="action" value="update_work">';
-            echo '<input type="hidden" name="id" value="' . htmlspecialchars($work['id']) . '">';
-            echo '<input name="name" value="' . htmlspecialchars($work['name']) . '">';
-            echo '<input type="file" name="poster" accept="image/*">';
-            echo '<input name="alias" value="' . htmlspecialchars($work['alias'] ?? '') . '">';
-            echo '<input name="description" value="' . htmlspecialchars($work['description']) . '">';
-            echo '<button type="submit">更新</button>';
-            echo '</form>';
-            echo '<form method="post" class="inline-form">';
-            echo '<input type="hidden" name="action" value="delete_work">';
-            echo '<input type="hidden" name="id" value="' . htmlspecialchars($work['id']) . '">';
-            echo '<button type="submit" class="danger">删除</button>';
-            echo '</form>';
-        }
-        echo '</div>';
-    }
     echo '</section>';
 }
 
@@ -562,37 +542,6 @@ if ($page === 'work') {
             echo '</a>';
         }
         echo '</div>';
-        if ($user['role'] === 'admin') {
-            echo '<div class="admin-panel">';
-            echo '<h3>新增角色</h3>';
-            echo '<form method="post" enctype="multipart/form-data">';
-            echo '<input type="hidden" name="action" value="add_character">';
-            echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($workId) . '">';
-            echo '<div class="form-grid">';
-            echo '<label>名称<input name="name" required></label>';
-            echo '<label>头像上传<input type="file" name="avatar" accept="image/*" required></label>';
-            echo '</div>';
-            echo '<button type="submit">保存角色</button>';
-            echo '</form>';
-            echo '<h3>角色快速编辑</h3>';
-            foreach ($related as $character) {
-                echo '<form method="post" class="inline-form" enctype="multipart/form-data">';
-                echo '<input type="hidden" name="action" value="update_character">';
-                echo '<input type="hidden" name="id" value="' . htmlspecialchars($character['id']) . '">';
-                echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($workId) . '">';
-                echo '<input name="name" value="' . htmlspecialchars($character['name']) . '">';
-                echo '<input type="file" name="avatar" accept="image/*">';
-                echo '<button type="submit">更新</button>';
-                echo '</form>';
-                echo '<form method="post" class="inline-form">';
-                echo '<input type="hidden" name="action" value="delete_character">';
-                echo '<input type="hidden" name="id" value="' . htmlspecialchars($character['id']) . '">';
-                echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($workId) . '">';
-                echo '<button type="submit" class="danger">删除</button>';
-                echo '</form>';
-            }
-            echo '</div>';
-        }
         echo '</section>';
     }
 }
@@ -614,17 +563,13 @@ if ($page === 'character') {
         echo '<div class="section-header"><h3>角色图片</h3><p>支持拖拽上传或选择文件。</p></div>';
         echo '<div class="gallery-grid">';
         foreach ($related as $img) {
-            echo '<div class="gallery-card">';
+            echo '<a class="gallery-card gallery-link" href="?page=image&id=' . urlencode($img['id']) . '">';
             echo '<img src="' . htmlspecialchars($img['path']) . '" alt="角色图片">';
-            if ($user['role'] === 'admin') {
-                echo '<form method="post">';
-                echo '<input type="hidden" name="action" value="delete_image">';
-                echo '<input type="hidden" name="id" value="' . htmlspecialchars($img['id']) . '">';
-                echo '<input type="hidden" name="character_id" value="' . htmlspecialchars($characterId) . '">';
-                echo '<button type="submit" class="danger">删除</button>';
-                echo '</form>';
-            }
+            echo '<div class="gallery-overlay">';
+            echo '<span>' . htmlspecialchars($work['name'] ?? '') . '</span>';
+            echo '<span>' . htmlspecialchars($character['name'] ?? '') . '</span>';
             echo '</div>';
+            echo '</a>';
         }
         echo '</div>';
         if ($user['role'] === 'admin') {
@@ -644,6 +589,167 @@ if ($page === 'character') {
         }
         echo '</section>';
     }
+}
+
+if ($page === 'characters') {
+    echo '<section class="section">';
+    echo '<div class="section-header"><h2>角色画廊</h2><p>选择角色进入图片画廊。</p></div>';
+    echo '<div class="character-grid">';
+    foreach ($characters as $character) {
+        $work = find_by_id($works, $character['work_id']);
+        echo '<a class="character-card" href="?page=character&id=' . urlencode($character['id']) . '">';
+        echo '<img src="' . htmlspecialchars($character['avatar']) . '" alt="' . htmlspecialchars($character['name']) . '">';
+        echo '<div>' . htmlspecialchars($character['name']) . '</div>';
+        if (!empty($work['name'])) {
+            echo '<div class="muted">' . htmlspecialchars($work['name']) . '</div>';
+        }
+        echo '</a>';
+    }
+    echo '</div>';
+    if ($user['role'] === 'admin') {
+        echo '<div class="admin-shortcuts">';
+        echo '<a class="shortcut-card" href="?page=manage_characters">角色管理</a>';
+        echo '<a class="shortcut-card" href="?page=manage_images">图片管理</a>';
+        echo '</div>';
+    }
+    echo '</section>';
+}
+
+if ($page === 'manage_works') {
+    require_admin();
+    echo '<section class="section">';
+    echo '<div class="section-header"><h2>作品管理中心</h2><p>新增与维护作品。</p></div>';
+    if ($errors) {
+        echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
+    }
+    echo '<div class="admin-split">';
+    echo '<div class="admin-panel">';
+    echo '<h3>新增作品</h3>';
+    echo '<form method="post" enctype="multipart/form-data">';
+    echo '<input type="hidden" name="action" value="add_work">';
+    echo '<div class="form-grid">';
+    echo '<label>名称<input name="name" required></label>';
+    echo '<label>海报上传<input type="file" name="poster" accept="image/*" required></label>';
+    echo '<label>别名<input name="alias"></label>';
+    echo '<label class="span">简介<textarea name="description"></textarea></label>';
+    echo '</div>';
+    echo '<button type="submit">保存作品</button>';
+    echo '</form>';
+    echo '</div>';
+    echo '<div class="admin-panel">';
+    echo '<h3>现有作品</h3>';
+    foreach ($works as $work) {
+        echo '<form method="post" class="inline-form" enctype="multipart/form-data">';
+        echo '<input type="hidden" name="action" value="update_work">';
+        echo '<input type="hidden" name="id" value="' . htmlspecialchars($work['id']) . '">';
+        echo '<input name="name" value="' . htmlspecialchars($work['name']) . '">';
+        echo '<input type="file" name="poster" accept="image/*">';
+        echo '<input name="alias" value="' . htmlspecialchars($work['alias'] ?? '') . '">';
+        echo '<input name="description" value="' . htmlspecialchars($work['description']) . '">';
+        echo '<button type="submit">更新</button>';
+        echo '</form>';
+        echo '<form method="post" class="inline-form">';
+        echo '<input type="hidden" name="action" value="delete_work">';
+        echo '<input type="hidden" name="id" value="' . htmlspecialchars($work['id']) . '">';
+        echo '<button type="submit" class="danger">删除</button>';
+        echo '</form>';
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</section>';
+}
+
+if ($page === 'manage_characters') {
+    require_admin();
+    echo '<section class="section">';
+    echo '<div class="section-header"><h2>角色管理中心</h2><p>新增与维护角色。</p></div>';
+    if ($errors) {
+        echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
+    }
+    echo '<div class="admin-split">';
+    echo '<div class="admin-panel">';
+    echo '<h3>新增角色</h3>';
+    echo '<form method="post" enctype="multipart/form-data">';
+    echo '<input type="hidden" name="action" value="add_character">';
+    echo '<div class="form-grid">';
+    echo '<label>所属作品<select name="work_id" required>';
+    foreach ($works as $work) {
+        echo '<option value="' . htmlspecialchars($work['id']) . '">' . htmlspecialchars($work['name']) . '</option>';
+    }
+    echo '</select></label>';
+    echo '<label>名称<input name="name" required></label>';
+    echo '<label>头像上传<input type="file" name="avatar" accept="image/*" required></label>';
+    echo '</div>';
+    echo '<button type="submit">保存角色</button>';
+    echo '</form>';
+    echo '</div>';
+    echo '<div class="admin-panel">';
+    echo '<h3>现有角色</h3>';
+    foreach ($characters as $character) {
+        echo '<form method="post" class="inline-form" enctype="multipart/form-data">';
+        echo '<input type="hidden" name="action" value="update_character">';
+        echo '<input type="hidden" name="id" value="' . htmlspecialchars($character['id']) . '">';
+        echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($character['work_id']) . '">';
+        echo '<input name="name" value="' . htmlspecialchars($character['name']) . '">';
+        echo '<input type="file" name="avatar" accept="image/*">';
+        echo '<button type="submit">更新</button>';
+        echo '</form>';
+        echo '<form method="post" class="inline-form">';
+        echo '<input type="hidden" name="action" value="delete_character">';
+        echo '<input type="hidden" name="id" value="' . htmlspecialchars($character['id']) . '">';
+        echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($character['work_id']) . '">';
+        echo '<button type="submit" class="danger">删除</button>';
+        echo '</form>';
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</section>';
+}
+
+if ($page === 'manage_images') {
+    require_admin();
+    echo '<section class="section">';
+    echo '<div class="section-header"><h2>图片管理中心</h2><p>新增与维护图片。</p></div>';
+    if ($errors) {
+        echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
+    }
+    echo '<div class="admin-split">';
+    echo '<div class="admin-panel">';
+    echo '<h3>新增图片</h3>';
+    echo '<form method="post" enctype="multipart/form-data" class="dropzone">';
+    echo '<input type="hidden" name="action" value="add_image">';
+    echo '<div class="form-grid">';
+    echo '<label>所属角色<select name="character_id" required>';
+    foreach ($characters as $character) {
+        $work = find_by_id($works, $character['work_id']);
+        $label = ($work['name'] ?? '') . ' · ' . ($character['name'] ?? '');
+        echo '<option value="' . htmlspecialchars($character['id']) . '">' . htmlspecialchars($label) . '</option>';
+    }
+    echo '</select></label>';
+    echo '<label>选择图片<input type="file" name="image_file" accept="image/*" required></label>';
+    echo '</div>';
+    echo '<p class="hint">将图片拖拽到此区域即可上传。</p>';
+    echo '<button type="submit">保存图片</button>';
+    echo '</form>';
+    echo '</div>';
+    echo '<div class="admin-panel">';
+    echo '<h3>现有图片</h3>';
+    echo '<div class="gallery-grid">';
+    foreach ($images as $img) {
+        $work = find_by_id($works, $img['work_id']);
+        $character = find_by_id($characters, $img['character_id']);
+        echo '<a class="gallery-card gallery-link" href="?page=image&id=' . urlencode($img['id']) . '">';
+        echo '<img src="' . htmlspecialchars($img['path']) . '" alt="图片">';
+        echo '<div class="gallery-overlay">';
+        echo '<span>' . htmlspecialchars($work['name'] ?? '') . '</span>';
+        echo '<span>' . htmlspecialchars($character['name'] ?? '') . '</span>';
+        echo '</div>';
+        echo '</a>';
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
+    echo '</section>';
 }
 
 if ($page === 'image') {

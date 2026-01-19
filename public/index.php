@@ -405,7 +405,7 @@ function render_header(string $title, string $siteName, string $favicon): void {
 
 function render_nav(array $user, string $siteName): void {
     echo '<header class="site-header">';
-    echo '<div class="brand">' . htmlspecialchars($siteName) . '</div>';
+    echo '<a class="brand" href="?page=gallery">' . htmlspecialchars($siteName) . '</a>';
     echo '<nav>';
     echo '<a href="?page=gallery">画廊</a>';
     echo '<a href="?page=works">作品</a>';
@@ -477,7 +477,7 @@ if ($page === 'gallery') {
     }
     shuffle($filtered);
     echo '<section class="section">';
-    echo '<div class="section-header"><h2>今日随机画廊</h2><p>基于管理员偏好角色动态随机。</p></div>';
+    echo '<div class="section-header"><div><h2>今日随机画廊</h2><p>基于管理员偏好角色动态随机。</p></div></div>';
     echo '<div class="gallery-grid">';
     foreach (array_slice($filtered, 0, 12) as $img) {
         $character = find_by_id($characters, $img['character_id']);
@@ -496,16 +496,13 @@ if ($page === 'gallery') {
 
 if ($page === 'works') {
     echo '<section class="section">';
-    echo '<div class="section-header"><h2>作品管理</h2><p>参考 Jellyfin 海报墙布局。</p></div>';
+    echo '<div class="section-header"><div><h2>作品管理</h2><p>参考 Jellyfin 海报墙布局。</p></div>';
+    if ($user['role'] === 'admin') {
+        echo '<a class="btn-primary" href="?page=manage_works">管理</a>';
+    }
+    echo '</div>';
     if ($errors) {
         echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
-    }
-    if ($user['role'] === 'admin') {
-        echo '<div class="admin-shortcuts">';
-        echo '<a class="shortcut-card" href="?page=manage_works">作品管理</a>';
-        echo '<a class="shortcut-card" href="?page=manage_characters">角色管理</a>';
-        echo '<a class="shortcut-card" href="?page=manage_images">图片管理</a>';
-        echo '</div>';
     }
     echo '<div class="work-grid">';
     foreach ($works as $work) {
@@ -593,7 +590,11 @@ if ($page === 'character') {
 
 if ($page === 'characters') {
     echo '<section class="section">';
-    echo '<div class="section-header"><h2>角色画廊</h2><p>选择角色进入图片画廊。</p></div>';
+    echo '<div class="section-header"><div><h2>角色画廊</h2><p>选择角色进入图片画廊。</p></div>';
+    if ($user['role'] === 'admin') {
+        echo '<a class="btn-primary" href="?page=manage_characters">管理</a>';
+    }
+    echo '</div>';
     echo '<div class="character-grid">';
     foreach ($characters as $character) {
         $work = find_by_id($works, $character['work_id']);
@@ -606,12 +607,6 @@ if ($page === 'characters') {
         echo '</a>';
     }
     echo '</div>';
-    if ($user['role'] === 'admin') {
-        echo '<div class="admin-shortcuts">';
-        echo '<a class="shortcut-card" href="?page=manage_characters">角色管理</a>';
-        echo '<a class="shortcut-card" href="?page=manage_images">图片管理</a>';
-        echo '</div>';
-    }
     echo '</section>';
 }
 
@@ -797,7 +792,7 @@ if ($page === 'users') {
     echo '<div class="section-header"><h2>用户中心</h2><p>管理员可维护账号与权限。</p></div>';
     echo '<div class="user-grid">';
     foreach ($users as $u) {
-        echo '<div class="user-card">';
+        echo '<a class="user-card" href="?page=user&id=' . urlencode($u['id']) . '">';
         echo '<div class="user-avatar">';
         if (!empty($u['avatar'])) {
             echo '<img src="' . htmlspecialchars($u['avatar']) . '" alt="avatar">';
@@ -806,7 +801,7 @@ if ($page === 'users') {
         }
         echo '</div>';
         echo '<div><strong>' . htmlspecialchars($u['nickname'] ?: $u['username']) . '</strong><p>' . htmlspecialchars($u['role']) . '</p></div>';
-        echo '</div>';
+        echo '</a>';
     }
     echo '</div>';
     echo '<div class="admin-panel">';
@@ -858,6 +853,47 @@ if ($page === 'users') {
     }
     echo '</div>';
     echo '</section>';
+}
+
+if ($page === 'user') {
+    $targetId = $_GET['id'] ?? '';
+    $target = find_by_id($users, $targetId);
+    if ($target) {
+        $isAdmin = $user['role'] === 'admin';
+        if (!$isAdmin && $user['id'] !== $targetId) {
+            require_admin();
+        }
+        echo '<section class="section">';
+        echo '<div class="section-header"><h2>账号详情</h2><p>编辑账号资料与权限。</p></div>';
+        echo '<div class="admin-panel">';
+        echo '<form method="post" enctype="multipart/form-data">';
+        echo '<input type="hidden" name="action" value="save_user">';
+        echo '<input type="hidden" name="id" value="' . htmlspecialchars($target['id']) . '">';
+        echo '<div class="form-grid">';
+        if ($isAdmin) {
+            echo '<label>用户名<input name="username" value="' . htmlspecialchars($target['username']) . '"></label>';
+            echo '<label>权限<select name="role">';
+            echo '<option value="admin"' . ($target['role'] === 'admin' ? ' selected' : '') . '>admin</option>';
+            echo '<option value="guest"' . ($target['role'] === 'guest' ? ' selected' : '') . '>guest</option>';
+            echo '</select></label>';
+        }
+        echo '<label>昵称<input name="nickname" value="' . htmlspecialchars($target['nickname']) . '"></label>';
+        echo '<label>头像上传<input type="file" name="avatar_file" accept="image/*"></label>';
+        echo '<label>新密码<input name="password" type="password"></label>';
+        echo '<label><input type="checkbox" name="avatar_clear" value="1"> 清除头像</label>';
+        echo '</div>';
+        echo '<button type="submit">保存</button>';
+        echo '</form>';
+        if ($isAdmin) {
+            echo '<form method="post" class="inline-form">';
+            echo '<input type="hidden" name="action" value="delete_user">';
+            echo '<input type="hidden" name="id" value="' . htmlspecialchars($target['id']) . '">';
+            echo '<button type="submit" class="danger">删除账号</button>';
+            echo '</form>';
+        }
+        echo '</div>';
+        echo '</section>';
+    }
 }
 
 if ($page === 'settings') {

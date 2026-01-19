@@ -45,6 +45,10 @@ a {
   color: var(--primary);
 }
 
+.brand:hover {
+  color: #5d3ff2;
+}
+
 nav a {
   margin: 0 12px;
   padding-bottom: 4px;
@@ -150,6 +154,21 @@ nav a:hover::after {
   justify-content: space-between;
   align-items: flex-end;
   margin-bottom: 20px;
+}
+
+.section-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  box-shadow: var(--shadow);
 }
 
 .section-header p {
@@ -276,6 +295,10 @@ nav a:hover::after {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.user-card:hover {
+  transform: translateY(-4px);
 }
 
 .user-avatar {

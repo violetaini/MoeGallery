@@ -419,7 +419,7 @@ function render_nav(array $user, string $siteName): void {
     } else {
         echo '<span class="avatar-placeholder">' . htmlspecialchars(mb_substr($user['nickname'] ?: $user['username'], 0, 1)) . '</span>';
     }
-    echo '<div><strong>' . htmlspecialchars($user['nickname'] ?: $user['username']) . '</strong><span>' . htmlspecialchars($user['role']) . '</span></div>';
+    echo '<div><strong>' . htmlspecialchars($user['nickname'] ?: $user['username']) . '</strong></div>';
     echo '</button>';
     echo '<div class="user-menu">';
     echo '<a href="?page=users">用户设置</a>';
@@ -434,7 +434,7 @@ function render_nav(array $user, string $siteName): void {
 
 function render_footer(string $copyright): void {
     echo '<footer class="site-footer">' . htmlspecialchars($copyright) . '</footer>';
-    echo '<button type="button" class="floating-back">返回上一级</button>';
+    echo '<button type="button" class="floating-rocket" aria-label="返回上一级">🚀</button>';
     echo '<script src="assets/app.js"></script>';
     echo '</body></html>';
 }

@@ -552,18 +552,26 @@ button.danger {
   color: var(--muted);
 }
 
-.floating-back {
+.floating-rocket {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   background: linear-gradient(135deg, #5d3ff2, #ff8fd1);
   color: #fff;
   border: none;
-  padding: 12px 18px;
-  border-radius: 999px;
+  padding: 12px 16px;
+  border-radius: 16px 0 0 16px;
   box-shadow: var(--shadow);
   cursor: pointer;
   z-index: 30;
+  font-size: 18px;
+}
+
+.floating-rocket.collapsed {
+  padding: 10px 12px;
+  border-radius: 12px 0 0 12px;
+  font-size: 14px;
 }
 
 @media (max-width: 768px) {

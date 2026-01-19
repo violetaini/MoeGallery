@@ -1,0 +1,18 @@
+[
+  {
+    "id": "u_admin",
+    "username": "admin",
+    "password_hash": "$2y$12$QRTfC2KQQvDb4MP4TCeVuubrXenNWkEa5UyaeyGqY8erJQD8AxZ8C",
+    "role": "admin",
+    "nickname": "画廊管理员",
+    "avatar": ""
+  },
+  {
+    "id": "u_guest",
+    "username": "guest",
+    "password_hash": "$2y$12$QRTfC2KQQvDb4MP4TCeVuubrXenNWkEa5UyaeyGqY8erJQD8AxZ8C",
+    "role": "guest",
+    "nickname": "游客",
+    "avatar": ""
+  }
+]

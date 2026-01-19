@@ -37,3 +37,10 @@ document.querySelectorAll('.user-chip').forEach((chip) => {
     }
   });
 });
+
+const backButton = document.querySelector('.floating-back');
+if (backButton) {
+  backButton.addEventListener('click', () => {
+    window.history.back();
+  });
+}

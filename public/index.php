@@ -434,6 +434,7 @@ function render_nav(array $user, string $siteName): void {
 
 function render_footer(string $copyright): void {
     echo '<footer class="site-footer">' . htmlspecialchars($copyright) . '</footer>';
+    echo '<button type="button" class="floating-back">返回上一级</button>';
     echo '<script src="assets/app.js"></script>';
     echo '</body></html>';
 }
@@ -496,7 +497,7 @@ if ($page === 'gallery') {
 
 if ($page === 'works') {
     echo '<section class="section">';
-    echo '<div class="section-header"><div><h2>作品管理</h2><p>参考 Jellyfin 海报墙布局。</p></div>';
+    echo '<div class="section-header"><div><h2>作品管理</h2></div>';
     if ($user['role'] === 'admin') {
         echo '<a class="btn-primary" href="?page=manage_works">管理</a>';
     }
@@ -590,7 +591,7 @@ if ($page === 'character') {
 
 if ($page === 'characters') {
     echo '<section class="section">';
-    echo '<div class="section-header"><div><h2>角色画廊</h2><p>选择角色进入图片画廊。</p></div>';
+    echo '<div class="section-header"><div><h2>角色画廊</h2></div>';
     if ($user['role'] === 'admin') {
         echo '<a class="btn-primary" href="?page=manage_characters">管理</a>';
     }

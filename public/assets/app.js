@@ -38,21 +38,29 @@ document.querySelectorAll('.user-chip').forEach((chip) => {
   });
 });
 
-document.querySelectorAll('[data-dialog-target]').forEach((trigger) => {
+document.querySelectorAll('[data-modal-target]').forEach((trigger) => {
   trigger.addEventListener('click', () => {
-    const selector = trigger.getAttribute('data-dialog-target');
-    const dialog = selector ? document.querySelector(selector) : null;
-    if (dialog && typeof dialog.showModal === 'function') {
-      dialog.showModal();
+    const selector = trigger.getAttribute('data-modal-target');
+    const modal = selector ? document.querySelector(selector) : null;
+    if (modal) {
+      modal.classList.add('open');
     }
   });
 });
 
-document.querySelectorAll('[data-dialog-close]').forEach((btn) => {
+document.querySelectorAll('[data-modal-close]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const dialog = btn.closest('dialog');
-    if (dialog) {
-      dialog.close();
+    const modal = btn.closest('.share-modal');
+    if (modal) {
+      modal.classList.remove('open');
+    }
+  });
+});
+
+document.querySelectorAll('.share-modal').forEach((modal) => {
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) {
+      modal.classList.remove('open');
     }
   });
 });

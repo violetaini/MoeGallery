@@ -796,10 +796,18 @@ if ($page === 'image') {
         echo '</div>';
         echo '<div class="image-actions">';
         echo '<a class="btn-primary" href="' . htmlspecialchars($image['path']) . '" download>下载图片</a>';
-        echo '<button type="button" class="btn-secondary" data-dialog-target="#share-dialog">分享</button>';
+        echo '<button type="button" class="btn-secondary" data-modal-target="#share-modal">分享</button>';
         echo '</div>';
         echo '<div class="share-link">';
-        echo '<label>图片地址<input readonly value="' . htmlspecialchars($image['path']) . '"></label>';
+        echo '<div class="share-tabs">';
+        echo '<button type="button" class="share-tab active">URL</button>';
+        echo '<button type="button" class="share-tab">HTML</button>';
+        echo '<button type="button" class="share-tab">BBCode</button>';
+        echo '<button type="button" class="share-tab">Markdown</button>';
+        echo '</div>';
+        echo '<div class="share-input">';
+        echo '<input readonly value="' . htmlspecialchars($image['path']) . '">';
+        echo '</div>';
         echo '</div>';
         if ($user['role'] === 'admin') {
             if ($errors) {
@@ -826,11 +834,12 @@ if ($page === 'image') {
             echo '</form>';
             echo '</div>';
         }
-        echo '<dialog class="share-dialog" id="share-dialog">';
+        echo '<div class="share-modal" id="share-modal" role="dialog" aria-modal="true">';
+        echo '<div class="share-modal-card">';
         echo '<form method="post">';
         echo '<input type="hidden" name="action" value="create_share">';
         echo '<input type="hidden" name="image_ids[]" value="' . htmlspecialchars($image['id']) . '">';
-        echo '<h3>分享图片</h3>';
+        echo '<div class="share-modal-header"><h3>分享图片</h3><button type="button" class="modal-close" data-modal-close>×</button></div>';
         echo '<label>有效时间<select name="ttl_hours">';
         echo '<option value="1">1小时</option>';
         echo '<option value="6">6小时</option>';
@@ -839,10 +848,11 @@ if ($page === 'image') {
         echo '</select></label>';
         echo '<div class="dialog-actions">';
         echo '<button type="submit" class="btn-primary">生成链接</button>';
-        echo '<button type="button" class="btn-secondary" data-dialog-close>取消</button>';
+        echo '<button type="button" class="btn-secondary" data-modal-close>取消</button>';
         echo '</div>';
         echo '</form>';
-        echo '</dialog>';
+        echo '</div>';
+        echo '</div>';
         echo '</section>';
     }
 }

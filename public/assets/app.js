@@ -19,3 +19,21 @@ dropzones.forEach((zone) => {
     }
   });
 });
+
+document.querySelectorAll('.user-chip').forEach((chip) => {
+  const trigger = chip.querySelector('.user-menu-trigger');
+  const menu = chip.querySelector('.user-menu');
+  if (!trigger || !menu) {
+    return;
+  }
+  trigger.addEventListener('click', () => {
+    const isOpen = menu.classList.toggle('open');
+    trigger.setAttribute('aria-expanded', String(isOpen));
+  });
+  document.addEventListener('click', (event) => {
+    if (!chip.contains(event.target)) {
+      menu.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+});

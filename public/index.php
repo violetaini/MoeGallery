@@ -5,7 +5,7 @@ define('DATA_PATH', dirname(__DIR__) . '/data');
 
 define('UPLOAD_PATH', __DIR__ . '/uploads');
 
-define('UPLOAD_URL', 'uploads');
+define('UPLOAD_URL', '/uploads');
 
 function load_data(string $file, array $fallback = []): array {
     $path = DATA_PATH . '/' . $file;
@@ -68,6 +68,9 @@ function handle_upload(string $field): string {
     if (!isset($_FILES[$field]) || $_FILES[$field]['error'] !== UPLOAD_ERR_OK) {
         return '';
     }
+    if (!is_dir(UPLOAD_PATH)) {
+        mkdir(UPLOAD_PATH, 0775, true);
+    }
     $ext = pathinfo($_FILES[$field]['name'], PATHINFO_EXTENSION);
     $name = uniqid('img_', true) . ($ext ? '.' . $ext : '');
     $target = UPLOAD_PATH . '/' . $name;
@@ -75,6 +78,28 @@ function handle_upload(string $field): string {
         return '';
     }
     return UPLOAD_URL . '/' . $name;
+}
+
+function handle_multi_upload(string $field): array {
+    if (!isset($_FILES[$field]) || !is_array($_FILES[$field]['name'])) {
+        return [];
+    }
+    $paths = [];
+    foreach ($_FILES[$field]['name'] as $index => $name) {
+        if ($_FILES[$field]['error'][$index] !== UPLOAD_ERR_OK) {
+            continue;
+        }
+        $ext = pathinfo($name, PATHINFO_EXTENSION);
+        if (!is_dir(UPLOAD_PATH)) {
+            mkdir(UPLOAD_PATH, 0775, true);
+        }
+        $filename = uniqid('img_', true) . ($ext ? '.' . $ext : '');
+        $target = UPLOAD_PATH . '/' . $filename;
+        if (move_uploaded_file($_FILES[$field]['tmp_name'][$index], $target)) {
+            $paths[] = UPLOAD_URL . '/' . $filename;
+        }
+    }
+    return $paths;
 }
 
 $settings = load_data('settings.json', []);
@@ -115,25 +140,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'add_work') {
         require_admin();
         $poster = handle_upload('poster');
-        $works[] = [
-            'id' => uniqid('w_'),
-            'name' => trim($_POST['name'] ?? ''),
-            'description' => trim($_POST['description'] ?? ''),
-            'poster' => $poster ?: trim($_POST['poster_url'] ?? '')
-        ];
-        save_data('works.json', $works);
-        header('Location: ?page=works');
-        exit();
+        if (!$poster) {
+            $errors[] = '请上传作品海报。';
+        } else {
+            $works[] = [
+                'id' => uniqid('w_'),
+                'name' => trim($_POST['name'] ?? ''),
+                'alias' => trim($_POST['alias'] ?? ''),
+                'description' => trim($_POST['description'] ?? ''),
+                'poster' => $poster
+            ];
+            save_data('works.json', $works);
+            header('Location: ?page=works');
+            exit();
+        }
     }
 
     if ($action === 'update_work') {
         require_admin();
         $id = $_POST['id'] ?? '';
         $poster = handle_upload('poster');
+        $currentWork = find_by_id($works, $id);
         $works = update_item($works, $id, [
             'name' => trim($_POST['name'] ?? ''),
+            'alias' => trim($_POST['alias'] ?? ''),
             'description' => trim($_POST['description'] ?? ''),
-            'poster' => $poster ?: trim($_POST['poster_url'] ?? '')
+            'poster' => $poster ?: ($currentWork['poster'] ?? '')
         ]);
         save_data('works.json', $works);
         header('Location: ?page=works');
@@ -157,15 +189,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         require_admin();
         $workId = $_POST['work_id'] ?? '';
         $avatar = handle_upload('avatar');
-        $characters[] = [
-            'id' => uniqid('c_'),
-            'work_id' => $workId,
-            'name' => trim($_POST['name'] ?? ''),
-            'avatar' => $avatar ?: trim($_POST['avatar_url'] ?? '')
-        ];
-        save_data('characters.json', $characters);
-        header('Location: ?page=work&id=' . urlencode($workId));
-        exit();
+        if (!$avatar) {
+            $errors[] = '请上传角色头像。';
+        } else {
+            $characters[] = [
+                'id' => uniqid('c_'),
+                'work_id' => $workId,
+                'name' => trim($_POST['name'] ?? ''),
+                'avatar' => $avatar
+            ];
+            save_data('characters.json', $characters);
+            header('Location: ?page=work&id=' . urlencode($workId));
+            exit();
+        }
     }
 
     if ($action === 'update_character') {
@@ -173,9 +209,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = $_POST['id'] ?? '';
         $workId = $_POST['work_id'] ?? '';
         $avatar = handle_upload('avatar');
+        $currentCharacter = find_by_id($characters, $id);
         $characters = update_item($characters, $id, [
             'name' => trim($_POST['name'] ?? ''),
-            'avatar' => $avatar ?: trim($_POST['avatar_url'] ?? '')
+            'avatar' => $avatar ?: ($currentCharacter['avatar'] ?? '')
         ]);
         save_data('characters.json', $characters);
         header('Location: ?page=work&id=' . urlencode($workId));
@@ -199,16 +236,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $characterId = $_POST['character_id'] ?? '';
         $workId = $_POST['work_id'] ?? '';
         $upload = handle_upload('image_file');
-        $images[] = [
-            'id' => uniqid('i_'),
-            'work_id' => $workId,
-            'character_id' => $characterId,
-            'title' => trim($_POST['title'] ?? ''),
-            'path' => $upload ?: trim($_POST['image_url'] ?? '')
-        ];
-        save_data('images.json', $images);
-        header('Location: ?page=character&id=' . urlencode($characterId));
-        exit();
+        if (!$upload) {
+            $errors[] = '请上传图片文件。';
+        } else {
+            $images[] = [
+                'id' => uniqid('i_'),
+                'work_id' => $workId,
+                'character_id' => $characterId,
+                'path' => $upload
+            ];
+            save_data('images.json', $images);
+            header('Location: ?page=character&id=' . urlencode($characterId));
+            exit();
+        }
     }
 
     if ($action === 'delete_image') {
@@ -224,10 +264,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'update_settings') {
         require_admin();
         $settings['site_name'] = trim($_POST['site_name'] ?? '');
-        $settings['favicon'] = trim($_POST['favicon'] ?? '');
         $settings['copyright'] = trim($_POST['copyright'] ?? '');
         $settings['login_backgrounds']['mode'] = $_POST['bg_mode'] ?? 'random';
-        $settings['login_backgrounds']['images'] = array_values(array_filter(array_map('trim', explode("\n", $_POST['bg_images'] ?? ''))));
+        if (!empty($_POST['favicon_clear'])) {
+            $settings['favicon'] = '';
+        }
+        $faviconUpload = handle_upload('favicon_file');
+        if ($faviconUpload) {
+            $settings['favicon'] = $faviconUpload;
+        }
+        if (!empty($_POST['reset_bg'])) {
+            $settings['login_backgrounds']['images'] = [];
+        }
+        $newBackgrounds = handle_multi_upload('bg_images');
+        if ($newBackgrounds) {
+            $settings['login_backgrounds']['images'] = array_values(array_merge($settings['login_backgrounds']['images'] ?? [], $newBackgrounds));
+        }
         $settings['gallery_preferences']['character_ids'] = $_POST['preference_ids'] ?? [];
         save_data('settings.json', $settings);
         header('Location: ?page=settings');
@@ -242,12 +294,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require_admin();
         }
         $payload = [
-            'nickname' => trim($_POST['nickname'] ?? ''),
-            'avatar' => trim($_POST['avatar'] ?? '')
+            'nickname' => trim($_POST['nickname'] ?? '')
         ];
         if ($isAdmin) {
             $payload['username'] = trim($_POST['username'] ?? '');
             $payload['role'] = $_POST['role'] ?? 'guest';
+        }
+        if (!empty($_POST['avatar_clear'])) {
+            $payload['avatar'] = '';
+        }
+        $avatarUpload = handle_upload('avatar_file');
+        if ($avatarUpload) {
+            $payload['avatar'] = $avatarUpload;
         }
         $password = $_POST['password'] ?? '';
         if ($password) {
@@ -264,13 +322,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'add_user') {
         require_admin();
+        $avatarUpload = handle_upload('avatar_file');
         $users[] = [
             'id' => uniqid('u_'),
             'username' => trim($_POST['username'] ?? ''),
             'password_hash' => password_hash($_POST['password'] ?? '123456', PASSWORD_DEFAULT),
             'role' => $_POST['role'] ?? 'guest',
             'nickname' => trim($_POST['nickname'] ?? ''),
-            'avatar' => trim($_POST['avatar'] ?? '')
+            'avatar' => $avatarUpload
         ];
         save_data('users.json', $users);
         header('Location: ?page=users');
@@ -321,18 +380,23 @@ function render_nav(array $user, string $siteName): void {
     echo '<a href="?page=gallery">画廊</a>';
     echo '<a href="?page=works">作品</a>';
     echo '<a href="?page=users">用户</a>';
-    if ($user['role'] === 'admin') {
-        echo '<a href="?page=settings">设置</a>';
-    }
     echo '</nav>';
     echo '<div class="user-chip">';
+    echo '<button class="user-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">';
     if (!empty($user['avatar'])) {
         echo '<img src="' . htmlspecialchars($user['avatar']) . '" alt="avatar">';
     } else {
         echo '<span class="avatar-placeholder">' . htmlspecialchars(mb_substr($user['nickname'] ?: $user['username'], 0, 1)) . '</span>';
     }
     echo '<div><strong>' . htmlspecialchars($user['nickname'] ?: $user['username']) . '</strong><span>' . htmlspecialchars($user['role']) . '</span></div>';
-    echo '<a class="logout" href="?page=logout">退出</a>';
+    echo '</button>';
+    echo '<div class="user-menu">';
+    echo '<a href="?page=users">用户设置</a>';
+    if ($user['role'] === 'admin') {
+        echo '<a href="?page=settings">管理员设置</a>';
+    }
+    echo '<a href="?page=logout" class="danger-link">退出</a>';
+    echo '</div>';
     echo '</div>';
     echo '</header>';
 }
@@ -353,7 +417,7 @@ if ($page === 'login') {
     if ($errors) {
         echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
     }
-    echo '<form method="post">';
+    echo '<form method="post" enctype="multipart/form-data">';
     echo '<input type="hidden" name="action" value="login">';
     echo '<label>用户名<input name="username" required></label>';
     echo '<label>密码<input name="password" type="password" required></label>';
@@ -388,10 +452,10 @@ if ($page === 'gallery') {
         $character = find_by_id($characters, $img['character_id']);
         $work = find_by_id($works, $img['work_id']);
         echo '<div class="gallery-card">';
-        echo '<img src="' . htmlspecialchars($img['path']) . '" alt="' . htmlspecialchars($img['title']) . '">';
+        echo '<img src="' . htmlspecialchars($img['path']) . '" alt="画廊图片">';
         echo '<div class="gallery-info">';
-        echo '<h3>' . htmlspecialchars($img['title'] ?: '未命名') . '</h3>';
-        echo '<p>' . htmlspecialchars($work['name'] ?? '') . ' · ' . htmlspecialchars($character['name'] ?? '') . '</p>';
+        echo '<h3>' . htmlspecialchars($work['name'] ?? '') . '</h3>';
+        echo '<p>' . htmlspecialchars($character['name'] ?? '') . '</p>';
         echo '</div>';
         echo '</div>';
     }
@@ -402,11 +466,15 @@ if ($page === 'gallery') {
 if ($page === 'works') {
     echo '<section class="section">';
     echo '<div class="section-header"><h2>作品管理</h2><p>参考 Jellyfin 海报墙布局。</p></div>';
+    if ($errors) {
+        echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
+    }
     echo '<div class="work-grid">';
     foreach ($works as $work) {
         echo '<a class="work-card" href="?page=work&id=' . urlencode($work['id']) . '">';
         echo '<img src="' . htmlspecialchars($work['poster']) . '" alt="' . htmlspecialchars($work['name']) . '">';
-        echo '<div class="work-meta"><h3>' . htmlspecialchars($work['name']) . '</h3><p>' . htmlspecialchars($work['description']) . '</p></div>';
+        $aliasText = !empty($work['alias']) ? '<span class="alias">' . htmlspecialchars($work['alias']) . '</span>' : '';
+        echo '<div class="work-meta"><h3>' . htmlspecialchars($work['name']) . $aliasText . '</h3><p>' . htmlspecialchars($work['description']) . '</p></div>';
         echo '</a>';
     }
     echo '</div>';
@@ -417,8 +485,8 @@ if ($page === 'works') {
         echo '<input type="hidden" name="action" value="add_work">';
         echo '<div class="form-grid">';
         echo '<label>名称<input name="name" required></label>';
-        echo '<label>海报URL<input name="poster_url"></label>';
-        echo '<label>海报上传<input type="file" name="poster" accept="image/*"></label>';
+        echo '<label>海报上传<input type="file" name="poster" accept="image/*" required></label>';
+        echo '<label>别名<input name="alias"></label>';
         echo '<label class="span">简介<textarea name="description"></textarea></label>';
         echo '</div>';
         echo '<button type="submit">保存作品</button>';
@@ -429,8 +497,8 @@ if ($page === 'works') {
             echo '<input type="hidden" name="action" value="update_work">';
             echo '<input type="hidden" name="id" value="' . htmlspecialchars($work['id']) . '">';
             echo '<input name="name" value="' . htmlspecialchars($work['name']) . '">';
-            echo '<input name="poster_url" value="' . htmlspecialchars($work['poster']) . '">';
             echo '<input type="file" name="poster" accept="image/*">';
+            echo '<input name="alias" value="' . htmlspecialchars($work['alias'] ?? '') . '">';
             echo '<input name="description" value="' . htmlspecialchars($work['description']) . '">';
             echo '<button type="submit">更新</button>';
             echo '</form>';
@@ -452,9 +520,13 @@ if ($page === 'work') {
         echo '<section class="section">';
         echo '<div class="work-hero">';
         echo '<img src="' . htmlspecialchars($work['poster']) . '" alt="' . htmlspecialchars($work['name']) . '">';
-        echo '<div><h2>' . htmlspecialchars($work['name']) . '</h2><p>' . htmlspecialchars($work['description']) . '</p></div>';
+        $aliasLine = !empty($work['alias']) ? '<span class="alias">' . htmlspecialchars($work['alias']) . '</span>' : '';
+        echo '<div><h2>' . htmlspecialchars($work['name']) . $aliasLine . '</h2><p>' . htmlspecialchars($work['description']) . '</p></div>';
         echo '</div>';
         $related = array_values(array_filter($characters, fn($c) => $c['work_id'] === $workId));
+        if ($errors) {
+            echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
+        }
         echo '<div class="section-header"><h3>角色列表</h3><p>进入角色管理或浏览图片。</p></div>';
         echo '<div class="character-grid">';
         foreach ($related as $character) {
@@ -472,8 +544,7 @@ if ($page === 'work') {
             echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($workId) . '">';
             echo '<div class="form-grid">';
             echo '<label>名称<input name="name" required></label>';
-            echo '<label>头像URL<input name="avatar_url"></label>';
-            echo '<label>头像上传<input type="file" name="avatar" accept="image/*"></label>';
+            echo '<label>头像上传<input type="file" name="avatar" accept="image/*" required></label>';
             echo '</div>';
             echo '<button type="submit">保存角色</button>';
             echo '</form>';
@@ -484,7 +555,6 @@ if ($page === 'work') {
                 echo '<input type="hidden" name="id" value="' . htmlspecialchars($character['id']) . '">';
                 echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($workId) . '">';
                 echo '<input name="name" value="' . htmlspecialchars($character['name']) . '">';
-                echo '<input name="avatar_url" value="' . htmlspecialchars($character['avatar']) . '">';
                 echo '<input type="file" name="avatar" accept="image/*">';
                 echo '<button type="submit">更新</button>';
                 echo '</form>';
@@ -512,14 +582,14 @@ if ($page === 'character') {
         echo '<div><h2>' . htmlspecialchars($character['name']) . '</h2><p>' . htmlspecialchars($work['name'] ?? '') . '</p></div>';
         echo '</div>';
         $related = array_values(array_filter($images, fn($img) => $img['character_id'] === $characterId));
+        if ($errors) {
+            echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
+        }
         echo '<div class="section-header"><h3>角色图片</h3><p>支持拖拽上传或选择文件。</p></div>';
         echo '<div class="gallery-grid">';
         foreach ($related as $img) {
             echo '<div class="gallery-card">';
-            echo '<img src="' . htmlspecialchars($img['path']) . '" alt="' . htmlspecialchars($img['title']) . '">';
-            echo '<div class="gallery-info">';
-            echo '<h3>' . htmlspecialchars($img['title'] ?: '未命名') . '</h3>';
-            echo '</div>';
+            echo '<img src="' . htmlspecialchars($img['path']) . '" alt="角色图片">';
             if ($user['role'] === 'admin') {
                 echo '<form method="post">';
                 echo '<input type="hidden" name="action" value="delete_image">';
@@ -539,9 +609,7 @@ if ($page === 'character') {
             echo '<input type="hidden" name="character_id" value="' . htmlspecialchars($characterId) . '">';
             echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($character['work_id']) . '">';
             echo '<div class="form-grid">';
-            echo '<label>标题<input name="title"></label>';
-            echo '<label>图片URL<input name="image_url"></label>';
-            echo '<label>选择图片<input type="file" name="image_file" accept="image/*"></label>';
+            echo '<label>选择图片<input type="file" name="image_file" accept="image/*" required></label>';
             echo '</div>';
             echo '<p class="hint">将图片拖拽到此区域即可上传。</p>';
             echo '<button type="submit">保存图片</button>';
@@ -576,25 +644,27 @@ if ($page === 'users') {
     echo '<input type="hidden" name="id" value="' . htmlspecialchars($user['id']) . '">';
     echo '<div class="form-grid">';
     echo '<label>昵称<input name="nickname" value="' . htmlspecialchars($user['nickname']) . '"></label>';
-    echo '<label>头像URL<input name="avatar" value="' . htmlspecialchars($user['avatar']) . '"></label>';
+    echo '<label>头像上传<input type="file" name="avatar_file" accept="image/*"></label>';
     echo '<label>新密码<input name="password" type="password"></label>';
+    echo '<label><input type="checkbox" name="avatar_clear" value="1"> 清除头像</label>';
     echo '</div>';
     echo '<button type="submit">保存</button>';
     echo '</form>';
     if ($user['role'] === 'admin') {
         echo '<h3>管理员用户管理</h3>';
         foreach ($users as $u) {
-            echo '<form method="post" class="inline-form">';
+            echo '<form method="post" class="inline-form" enctype="multipart/form-data">';
             echo '<input type="hidden" name="action" value="save_user">';
             echo '<input type="hidden" name="id" value="' . htmlspecialchars($u['id']) . '">';
             echo '<input name="username" value="' . htmlspecialchars($u['username']) . '">';
             echo '<input name="nickname" value="' . htmlspecialchars($u['nickname']) . '">';
-            echo '<input name="avatar" value="' . htmlspecialchars($u['avatar']) . '">';
+            echo '<input type="file" name="avatar_file" accept="image/*">';
             echo '<select name="role">';
             echo '<option value="admin"' . ($u['role'] === 'admin' ? ' selected' : '') . '>admin</option>';
             echo '<option value="guest"' . ($u['role'] === 'guest' ? ' selected' : '') . '>guest</option>';
             echo '</select>';
             echo '<input name="password" type="password" placeholder="重置密码">';
+            echo '<label class="checkbox-inline"><input type="checkbox" name="avatar_clear" value="1">清除头像</label>';
             echo '<button type="submit">更新</button>';
             echo '</form>';
             echo '<form method="post" class="inline-form">';
@@ -604,11 +674,11 @@ if ($page === 'users') {
             echo '</form>';
         }
         echo '<h3>新增用户</h3>';
-        echo '<form method="post" class="inline-form">';
+        echo '<form method="post" class="inline-form" enctype="multipart/form-data">';
         echo '<input type="hidden" name="action" value="add_user">';
         echo '<input name="username" placeholder="用户名" required>'; 
         echo '<input name="nickname" placeholder="昵称">';
-        echo '<input name="avatar" placeholder="头像URL">';
+        echo '<input type="file" name="avatar_file" accept="image/*">';
         echo '<select name="role"><option value="guest">guest</option><option value="admin">admin</option></select>';
         echo '<input name="password" type="password" placeholder="初始密码">';
         echo '<button type="submit">创建</button>';
@@ -622,17 +692,19 @@ if ($page === 'settings') {
     require_admin();
     echo '<section class="section">';
     echo '<div class="section-header"><h2>系统设置</h2><p>配置站点外观与登录背景。</p></div>';
-    echo '<form method="post" class="admin-panel">';
+    echo '<form method="post" class="admin-panel" enctype="multipart/form-data">';
     echo '<input type="hidden" name="action" value="update_settings">';
     echo '<div class="form-grid">';
     echo '<label>站点名称<input name="site_name" value="' . htmlspecialchars($settings['site_name'] ?? '') . '"></label>';
-    echo '<label>站点图标URL<input name="favicon" value="' . htmlspecialchars($settings['favicon'] ?? '') . '"></label>';
+    echo '<label>站点图标上传<input type="file" name="favicon_file" accept="image/*,.ico"></label>';
     echo '<label>版权信息<input name="copyright" value="' . htmlspecialchars($settings['copyright'] ?? '') . '"></label>';
     echo '<label>登录背景模式<select name="bg_mode">';
     echo '<option value="random"' . (($settings['login_backgrounds']['mode'] ?? '') === 'random' ? ' selected' : '') . '>随机轮播</option>';
     echo '<option value="fixed"' . (($settings['login_backgrounds']['mode'] ?? '') === 'fixed' ? ' selected' : '') . '>固定第一张</option>';
     echo '</select></label>';
-    echo '<label class="span">登录背景列表 (一行一个URL)<textarea name="bg_images">' . htmlspecialchars(implode("\n", $settings['login_backgrounds']['images'] ?? [])) . '</textarea></label>';
+    echo '<label class="span">上传登录背景<input type="file" name="bg_images[]" accept="image/*" multiple></label>';
+    echo '<label><input type="checkbox" name="reset_bg" value="1"> 清空背景列表</label>';
+    echo '<label><input type="checkbox" name="favicon_clear" value="1"> 清空站点图标</label>';
     echo '<label class="span">画廊偏好角色 (按住Ctrl多选)<select name="preference_ids[]" multiple size="5">';
     foreach ($characters as $c) {
         $selected = in_array($c['id'], $settings['gallery_preferences']['character_ids'] ?? [], true) ? ' selected' : '';
@@ -640,6 +712,19 @@ if ($page === 'settings') {
     }
     echo '</select></label>';
     echo '</div>';
+    $bgList = $settings['login_backgrounds']['images'] ?? [];
+    if ($bgList) {
+        echo '<div class="image-list"><h4>当前登录背景</h4><div class="image-list-grid">';
+        foreach ($bgList as $bg) {
+            echo '<div class="image-list-item"><img src="' . htmlspecialchars($bg) . '" alt="背景"></div>';
+        }
+        echo '</div></div>';
+    }
+    if (!empty($settings['favicon'])) {
+        echo '<div class="image-list"><h4>当前站点图标</h4><div class="image-list-grid">';
+        echo '<div class="image-list-item"><img src="' . htmlspecialchars($settings['favicon']) . '" alt="图标"></div>';
+        echo '</div></div>';
+    }
     echo '<button type="submit">保存设置</button>';
     echo '</form>';
     echo '</section>';

@@ -71,6 +71,7 @@ nav a:hover::after {
   align-items: center;
   gap: 12px;
   font-size: 14px;
+  position: relative;
 }
 
 .user-chip img,
@@ -93,11 +94,47 @@ nav a:hover::after {
   font-weight: 700;
 }
 
-.logout {
-  background: var(--primary);
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 999px;
+.user-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.user-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: var(--card);
+  border-radius: 14px;
+  padding: 10px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  display: none;
+  min-width: 160px;
+  z-index: 20;
+}
+
+.user-menu.open {
+  display: grid;
+  gap: 6px;
+}
+
+.user-menu a {
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.user-menu a:hover {
+  background: rgba(127, 91, 255, 0.1);
+}
+
+.danger-link {
+  color: #ff4f78;
 }
 
 .site-main {
@@ -177,6 +214,16 @@ nav a:hover::after {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.alias {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--secondary);
+  background: rgba(255, 143, 209, 0.2);
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 .work-meta {
@@ -272,6 +319,14 @@ button.danger {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
   margin: 10px 0;
+}
+
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .work-hero,
@@ -376,6 +431,24 @@ button.danger {
 .dropzone.is-dragging {
   background: rgba(255, 143, 209, 0.15);
   border-color: var(--primary);
+}
+
+.image-list {
+  margin-top: 20px;
+}
+
+.image-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.image-list-item img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--border);
 }
 
 .hint {

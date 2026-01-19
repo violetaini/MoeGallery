@@ -5,9 +5,7 @@
   "login_backgrounds": {
     "mode": "random",
     "images": [
-      "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1400&q=80",
-      "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1400&q=80",
-      "https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?auto=format&fit=crop&w=1400&q=80"
+      "/assets/placeholder.svg"
     ]
   },
   "gallery_preferences": {

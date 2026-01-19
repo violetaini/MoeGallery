@@ -255,10 +255,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         require_admin();
         $id = $_POST['id'] ?? '';
         $characterId = $_POST['character_id'] ?? '';
+        $redirect = $_POST['redirect'] ?? '';
         $images = delete_item($images, $id);
         save_data('images.json', $images);
-        header('Location: ?page=character&id=' . urlencode($characterId));
+        if ($redirect) {
+            header('Location: ' . $redirect);
+        } else {
+            header('Location: ?page=character&id=' . urlencode($characterId));
+        }
         exit();
+    }
+
+    if ($action === 'update_image') {
+        require_admin();
+        $id = $_POST['id'] ?? '';
+        $characterId = $_POST['character_id'] ?? '';
+        $upload = handle_upload('image_file');
+        if (!$upload) {
+            $errors[] = '请上传新的图片文件。';
+        } else {
+            $images = update_item($images, $id, [
+                'path' => $upload
+            ]);
+            save_data('images.json', $images);
+            header('Location: ?page=image&id=' . urlencode($id));
+            exit();
+        }
     }
 
     if ($action === 'update_settings') {
@@ -297,8 +319,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'nickname' => trim($_POST['nickname'] ?? '')
         ];
         if ($isAdmin) {
-            $payload['username'] = trim($_POST['username'] ?? '');
-            $payload['role'] = $_POST['role'] ?? 'guest';
+            if (isset($_POST['username'])) {
+                $payload['username'] = trim($_POST['username'] ?? '');
+            }
+            if (isset($_POST['role'])) {
+                $payload['role'] = $_POST['role'] ?? 'guest';
+            }
         }
         if (!empty($_POST['avatar_clear'])) {
             $payload['avatar'] = '';
@@ -451,13 +477,13 @@ if ($page === 'gallery') {
     foreach (array_slice($filtered, 0, 12) as $img) {
         $character = find_by_id($characters, $img['character_id']);
         $work = find_by_id($works, $img['work_id']);
-        echo '<div class="gallery-card">';
+        echo '<a class="gallery-card gallery-link" href="?page=image&id=' . urlencode($img['id']) . '">';
         echo '<img src="' . htmlspecialchars($img['path']) . '" alt="画廊图片">';
-        echo '<div class="gallery-info">';
-        echo '<h3>' . htmlspecialchars($work['name'] ?? '') . '</h3>';
-        echo '<p>' . htmlspecialchars($character['name'] ?? '') . '</p>';
+        echo '<div class="gallery-overlay">';
+        echo '<span>' . htmlspecialchars($work['name'] ?? '') . '</span>';
+        echo '<span>' . htmlspecialchars($character['name'] ?? '') . '</span>';
         echo '</div>';
-        echo '</div>';
+        echo '</a>';
     }
     echo '</div>';
     echo '</section>';
@@ -620,6 +646,46 @@ if ($page === 'character') {
     }
 }
 
+if ($page === 'image') {
+    $imageId = $_GET['id'] ?? '';
+    $image = find_by_id($images, $imageId);
+    if ($image) {
+        $work = find_by_id($works, $image['work_id']);
+        $character = find_by_id($characters, $image['character_id']);
+        echo '<section class="section image-view">';
+        echo '<div class="section-header"><h2>原图预览</h2><p>' . htmlspecialchars($work['name'] ?? '') . ' · ' . htmlspecialchars($character['name'] ?? '') . '</p></div>';
+        echo '<div class="image-viewer">';
+        echo '<img src="' . htmlspecialchars($image['path']) . '" alt="原图">';
+        echo '</div>';
+        if ($user['role'] === 'admin') {
+            if ($errors) {
+                echo '<div class="alert">' . htmlspecialchars($errors[0]) . '</div>';
+            }
+            echo '<div class="admin-panel">';
+            echo '<h3>替换图片</h3>';
+            echo '<form method="post" enctype="multipart/form-data">';
+            echo '<input type="hidden" name="action" value="update_image">';
+            echo '<input type="hidden" name="id" value="' . htmlspecialchars($imageId) . '">';
+            echo '<input type="hidden" name="character_id" value="' . htmlspecialchars($image['character_id']) . '">';
+            echo '<div class="form-grid">';
+            echo '<label>上传新图片<input type="file" name="image_file" accept="image/*" required></label>';
+            echo '</div>';
+            echo '<button type="submit">保存替换</button>';
+            echo '</form>';
+            echo '<h3>删除图片</h3>';
+            echo '<form method="post">';
+            echo '<input type="hidden" name="action" value="delete_image">';
+            echo '<input type="hidden" name="id" value="' . htmlspecialchars($imageId) . '">';
+            echo '<input type="hidden" name="character_id" value="' . htmlspecialchars($image['character_id']) . '">';
+            echo '<input type="hidden" name="redirect" value="?page=gallery">';
+            echo '<button type="submit" class="danger">删除</button>';
+            echo '</form>';
+            echo '</div>';
+        }
+        echo '</section>';
+    }
+}
+
 if ($page === 'users') {
     echo '<section class="section">';
     echo '<div class="section-header"><h2>用户中心</h2><p>管理员可维护账号与权限。</p></div>';
@@ -639,7 +705,7 @@ if ($page === 'users') {
     echo '</div>';
     echo '<div class="admin-panel">';
     echo '<h3>编辑我的资料</h3>';
-    echo '<form method="post">';
+    echo '<form method="post" enctype="multipart/form-data">';
     echo '<input type="hidden" name="action" value="save_user">';
     echo '<input type="hidden" name="id" value="' . htmlspecialchars($user['id']) . '">';
     echo '<div class="form-grid">';

@@ -293,7 +293,7 @@ nav a:hover::after {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 13px;
-  height: 10cm;
+  height: 4cm;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;

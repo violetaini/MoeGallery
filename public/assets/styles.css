@@ -172,6 +172,16 @@ nav a:hover::after {
   border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
+.btn-secondary {
+  background: #fff;
+  color: var(--primary);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
 .section-header p {
   color: var(--muted);
 }
@@ -283,7 +293,7 @@ nav a:hover::after {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 13px;
-  height: 44px;
+  height: 10cm;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -566,77 +576,6 @@ button.danger {
   margin-top: 16px;
 }
 
-.image-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 16px;
-  flex-wrap: wrap;
-  max-width: 980px;
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-  justify-content: center;
-}
-
-.btn-secondary {
-  background: #fff;
-  color: var(--primary);
-  border: 1px solid var(--border);
-  padding: 8px 16px;
-  border-radius: 999px;
-  box-shadow: var(--shadow);
-  cursor: pointer;
-}
-
-.share-link {
-  margin-top: 16px;
-  background: var(--card);
-  border-radius: 14px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  max-width: 980px;
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-}
-
-.share-tabs {
-  display: grid;
-  gap: 8px;
-  justify-content: center;
-  text-align: center;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-
-.share-tab {
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.share-tab.active {
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.share-input {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 10px;
-}
-
-.share-input input {
-  width: 100%;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-}
-
 .share-panel {
   display: grid;
   gap: 16px;
@@ -671,48 +610,6 @@ button.danger {
   height: 18px;
   accent-color: var(--primary);
   z-index: 5;
-}
-
-.share-modal {
-  position: fixed;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(20, 16, 40, 0.5);
-  z-index: 40;
-}
-
-.share-modal.open {
-  display: flex;
-}
-
-.share-modal-card {
-  background: #fff;
-  border-radius: 18px;
-  padding: 20px;
-  width: min(420px, 90%);
-  box-shadow: var(--shadow);
-}
-
-.share-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.dialog-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 16px;
 }
 
 @media (max-width: 768px) {

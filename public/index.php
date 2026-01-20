@@ -377,7 +377,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ?page=users');
         exit();
     }
-
+// --- 新增代码开始：批量下载功能 ---
+    if ($action === 'download_images') {
+            require_admin(); // 确保只有管理员可以使用，如果想开放给所有用户，请移除此行
+            $imageIds = $_POST['image_ids'] ?? [];
+            
+            // 过滤出有效的图片数据
+            $validImages = array_filter($images, fn($img) => in_array($img['id'], $imageIds));
+    
+            if (!$validImages) {
+                $errors[] = '请至少选择一张图片。';
+            } elseif (!class_exists('ZipArchive')) {
+                $errors[] = '服务器未安装 php-zip 扩展，无法打包下载。';
+            } else {
+                $zip = new ZipArchive();
+                // 在系统临时目录创建一个临时 ZIP 文件
+                $zipName = 'gallery_' . date('Ymd_His') . '.zip';
+                $tempFile = sys_get_temp_dir() . '/' . $zipName;
+    
+                if ($zip->open($tempFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+                    foreach ($validImages as $img) {
+                        // 将 URL 路径 (/uploads/xxx.jpg) 转换为本地文件系统绝对路径
+                        $fileName = basename($img['path']);
+                        $localPath = UPLOAD_PATH . '/' . $fileName;
+                        
+                        if (file_exists($localPath)) {
+                            $zip->addFile($localPath, $fileName);
+                        }
+                    }
+                    $zip->close();
+    
+                    // 检查文件是否生成成功并输出给浏览器
+                    if (file_exists($tempFile)) {
+                        // 清除之前的输出缓冲，防止 ZIP 文件损坏
+                        if (ob_get_level()) ob_end_clean();
+                        
+                        header('Content-Description: File Transfer');
+                        header('Content-Type: application/zip');
+                        header('Content-Disposition: attachment; filename="' . $zipName . '"');
+                        header('Expires: 0');
+                        header('Cache-Control: must-revalidate');
+                        header('Pragma: public');
+                        header('Content-Length: ' . filesize($tempFile));
+                        
+                        readfile($tempFile);
+                        unlink($tempFile); // 下载完成后删除临时文件
+                        exit;
+                    } else {
+                        $errors[] = '打包失败，临时文件无法生成。';
+                    }
+                } else {
+                    $errors[] = '无法创建 ZIP 文件。';
+                }
+            }
+        }
+        // --- 新增代码结束 ---
+    
     if ($action === 'create_share') {
         require_admin();
         $imageIds = $_POST['image_ids'] ?? [];

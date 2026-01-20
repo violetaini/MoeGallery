@@ -649,18 +649,27 @@ if ($page === 'character') {
         echo '</div>';
         if ($user['role'] === 'admin') {
             echo '<div class="admin-panel">';
-            echo '<h3>新增图片</h3>';
-            echo '<form method="post" enctype="multipart/form-data" class="dropzone">';
-            echo '<input type="hidden" name="action" value="add_image">';
-            echo '<input type="hidden" name="character_id" value="' . htmlspecialchars($characterId) . '">';
-            echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($character['work_id']) . '">';
-            echo '<div class="form-grid">';
-            echo '<label>选择图片<input type="file" name="image_files[]" accept="image/*" multiple required></label>';
+            echo '<h3>现有图片</h3>';
+            echo '<form method="post" class="share-panel">';
+            // 注意：删除了 <input type="hidden" name="action" value="create_share">
+            
+            echo '<div class="share-toolbar">';
+            
+            // 这是一个只针对分享功能的设置，为了布局美观，可以加个 span 包裹或者保持原样
+            echo '<label>分享有效期<select name="ttl_hours">';
+            echo '<option value="1">1小时</option>';
+            echo '<option value="6">6小时</option>';
+            echo '<option value="24" selected>24小时</option>';
+            echo '<option value="168">7天</option>';
+            echo '</select></label>';
+        
+            // 【修改点】：给按钮添加 name="action" 和 value="..."
+            echo '<div style="display:flex; gap:10px;">'; // 加个简单的 flex 容器让按钮排排坐
+            echo '<button type="submit" name="action" value="create_share" class="btn-primary">生成分享链接</button>';
+            echo '<button type="submit" name="action" value="download_images" class="btn-secondary">批量下载选中</button>';
             echo '</div>';
-            echo '<p class="hint">将图片拖拽到此区域即可批量上传。</p>';
-            echo '<button type="submit">保存图片</button>';
-            echo '</form>';
-            echo '</div>';
+            
+            echo '</div>'; // end share-toolbar
         }
         echo '</section>';
     }

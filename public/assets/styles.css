@@ -348,7 +348,8 @@ nav a:hover::after {
   pointer-events: none;
 }
 
-.selection-dot {
+.gallery-select-persist::before {
+  content: '';
   width: 14px;
   height: 14px;
   border-radius: 999px;
@@ -357,23 +358,15 @@ nav a:hover::after {
   box-shadow:
     0 4px 10px rgba(0, 0, 0, 0.2),
     0 0 0 2px rgba(26, 26, 46, 0.35);
-  display: inline-block;
-  opacity: 1;
-  visibility: visible;
+  display: block;
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.gallery-select input:checked + .selection-dot {
-  background: #5d7bff;
-  border-color: #5d7bff;
+.selection-dot {
+  display: none;
 }
 
-.gallery-card.is-selected .selection-dot {
-  background: #5d7bff;
-  border-color: #5d7bff;
-}
-
-.gallery-card.is-selected .gallery-select-persist .selection-dot {
+.gallery-card.is-selected .gallery-select-persist::before {
   background: #5d7bff;
   border-color: #5d7bff;
 }

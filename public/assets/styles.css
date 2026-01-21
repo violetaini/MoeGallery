@@ -297,24 +297,38 @@ nav a:hover::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid var(--border);
-  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  color: #3b7bff;
+  font-size: 16px;
 }
 
 .gallery-select {
-  background: rgba(255, 255, 255, 0.85);
-  padding: 4px;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gallery-select input {
-  accent-color: var(--primary);
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.selection-dot {
   width: 16px;
   height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  display: inline-block;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.gallery-select input:checked + .selection-dot {
+  background: #5d7bff;
+  border-color: #5d7bff;
 }
 
 .muted {
@@ -673,13 +687,7 @@ button.danger {
 }
 
 .gallery-select input[type='checkbox'] {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  width: 18px;
-  height: 18px;
-  accent-color: var(--primary);
-  z-index: 5;
+  display: none;
 }
 
 @media (max-width: 768px) {

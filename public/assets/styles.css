@@ -294,7 +294,7 @@ nav a:hover::after {
 .gallery-download-actions {
   position: absolute;
   top: 12px;
-  left: 12px;
+  left: 44px;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -326,6 +326,15 @@ nav a:hover::after {
   justify-content: center;
 }
 
+.gallery-select-persist {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 6;
+  opacity: 1;
+  visibility: visible;
+}
+
 .gallery-select input {
   position: absolute;
   opacity: 0;
@@ -344,6 +353,11 @@ nav a:hover::after {
 }
 
 .gallery-select input:checked + .selection-dot {
+  background: #5d7bff;
+  border-color: #5d7bff;
+}
+
+.gallery-card.is-selected .selection-dot {
   background: #5d7bff;
   border-color: #5d7bff;
 }
@@ -703,8 +717,12 @@ button.danger {
   cursor: pointer;
 }
 
-.gallery-select input[type='checkbox'] {
-  display: none;
+.gallery-select-persist {
+  opacity: 1;
+}
+
+.gallery-select-persist .selection-dot {
+  opacity: 1;
 }
 
 @media (max-width: 768px) {

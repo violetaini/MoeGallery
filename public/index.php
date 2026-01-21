@@ -551,10 +551,11 @@ if ($page === 'gallery') {
         echo '<span>' . htmlspecialchars($work['name'] ?? '') . '</span>';
         echo '<span>' . htmlspecialchars($character['name'] ?? '') . '</span>';
         echo '</div>';
-        echo '<label class="gallery-select gallery-select-persist">';
-        echo '<input type="checkbox" class="gallery-download-select" name="download_paths[]" value="' . htmlspecialchars($img['path']) . '">';
-        echo '</label>';
         echo '<div class="gallery-download-actions">';
+        echo '<label class="gallery-select">';
+        echo '<input type="checkbox" class="gallery-download-select" name="download_paths[]" value="' . htmlspecialchars($img['path']) . '">';
+        echo '<span class="selection-dot" aria-hidden="true"></span>';
+        echo '</label>';
         echo '<a class="icon-button" href="' . htmlspecialchars($img['path']) . '" download aria-label="下载">⬇</a>';
         echo '</div>';
         echo '</div>';

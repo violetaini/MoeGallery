@@ -294,7 +294,7 @@ nav a:hover::after {
 .gallery-download-actions {
   position: absolute;
   top: 12px;
-  left: 44px;
+  left: 12px;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -326,49 +326,26 @@ nav a:hover::after {
   justify-content: center;
 }
 
-.gallery-select-persist {
+.gallery-select input {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 6;
-  opacity: 1;
-  visibility: visible;
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.gallery-select input {
+.selection-dot {
   width: 16px;
   height: 16px;
-  margin: 0;
-  cursor: pointer;
-  border-radius: 4px;
-  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: 999px;
   background: #fff;
-  box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.2),
-    0 0 0 2px rgba(26, 26, 46, 0.35);
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  display: inline-block;
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.gallery-select input:checked {
+.gallery-select input:checked + .selection-dot {
   background: #5d7bff;
   border-color: #5d7bff;
-}
-
-.gallery-select input:checked::after {
-  content: '✓';
-  color: #fff;
-  font-size: 10px;
 }
 
 .muted {
@@ -726,12 +703,8 @@ button.danger {
   cursor: pointer;
 }
 
-.gallery-select-persist {
-  opacity: 1;
-}
-
-.gallery-select-persist .selection-dot {
-  opacity: 1;
+.gallery-select input[type='checkbox'] {
+  display: none;
 }
 
 @media (max-width: 768px) {

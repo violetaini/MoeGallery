@@ -309,10 +309,6 @@ nav a:hover::after {
   transform: translateY(0);
 }
 
-.gallery-card.is-selected .gallery-download-actions {
-  opacity: 1;
-  transform: translateY(0);
-}
 
 .icon-button {
   display: inline-flex;
@@ -337,6 +333,10 @@ nav a:hover::after {
   z-index: 6;
   opacity: 1;
   visibility: visible;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
 }
 
 .gallery-select input {

@@ -186,6 +186,13 @@ nav a:hover::after {
   color: var(--muted);
 }
 
+.gallery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .gallery-grid,
 .work-grid,
 .character-grid,
@@ -242,6 +249,14 @@ nav a:hover::after {
   display: block;
 }
 
+.gallery-cover {
+  display: block;
+}
+
+.gallery-card {
+  position: relative;
+}
+
 .gallery-overlay {
   position: absolute;
   inset: 0;
@@ -257,6 +272,35 @@ nav a:hover::after {
 
 .gallery-card:hover .gallery-overlay {
   opacity: 1;
+}
+
+.gallery-download-actions {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  z-index: 5;
+}
+
+.gallery-download-actions .btn-secondary {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.gallery-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.gallery-select input {
+  accent-color: var(--primary);
 }
 
 .muted {
@@ -293,7 +337,7 @@ nav a:hover::after {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 13px;
-  height: 4cm;
+  height: 10cm;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -541,6 +585,18 @@ button.danger {
   border-radius: 14px;
 }
 
+.image-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
 .image-list {
   margin-top: 20px;
 }
@@ -570,7 +626,7 @@ button.danger {
   color: var(--muted);
 }
 
-.gallery-actions {
+.gallery-share .gallery-actions {
   display: flex;
   gap: 10px;
   margin-top: 16px;

@@ -87,3 +87,30 @@ document.querySelectorAll('.share-link').forEach((container) => {
     });
   });
 });
+
+const downloadSelectedButton = document.querySelector('[data-download-selected]');
+if (downloadSelectedButton) {
+  downloadSelectedButton.addEventListener('click', () => {
+    const selected = Array.from(
+      document.querySelectorAll('.gallery-download-select:checked')
+    );
+    if (selected.length === 0) {
+      alert('请先选择要下载的图片。');
+      return;
+    }
+    selected.forEach((checkbox, index) => {
+      const url = checkbox.getAttribute('data-download-url');
+      if (!url) {
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = '';
+      document.body.appendChild(link);
+      setTimeout(() => {
+        link.click();
+        link.remove();
+      }, 120 * index);
+    });
+  });
+}

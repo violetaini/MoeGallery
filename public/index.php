@@ -377,62 +377,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ?page=users');
         exit();
     }
-// --- 新增代码开始：批量下载功能 ---
-    if ($action === 'download_images') {
-            require_admin(); // 确保只有管理员可以使用，如果想开放给所有用户，请移除此行
-            $imageIds = $_POST['image_ids'] ?? [];
-            
-            // 过滤出有效的图片数据
-            $validImages = array_filter($images, fn($img) => in_array($img['id'], $imageIds));
-    
-            if (!$validImages) {
-                $errors[] = '请至少选择一张图片。';
-            } elseif (!class_exists('ZipArchive')) {
-                $errors[] = '服务器未安装 php-zip 扩展，无法打包下载。';
-            } else {
-                $zip = new ZipArchive();
-                // 在系统临时目录创建一个临时 ZIP 文件
-                $zipName = 'gallery_' . date('Ymd_His') . '.zip';
-                $tempFile = sys_get_temp_dir() . '/' . $zipName;
-    
-                if ($zip->open($tempFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
-                    foreach ($validImages as $img) {
-                        // 将 URL 路径 (/uploads/xxx.jpg) 转换为本地文件系统绝对路径
-                        $fileName = basename($img['path']);
-                        $localPath = UPLOAD_PATH . '/' . $fileName;
-                        
-                        if (file_exists($localPath)) {
-                            $zip->addFile($localPath, $fileName);
-                        }
-                    }
-                    $zip->close();
-    
-                    // 检查文件是否生成成功并输出给浏览器
-                    if (file_exists($tempFile)) {
-                        // 清除之前的输出缓冲，防止 ZIP 文件损坏
-                        if (ob_get_level()) ob_end_clean();
-                        
-                        header('Content-Description: File Transfer');
-                        header('Content-Type: application/zip');
-                        header('Content-Disposition: attachment; filename="' . $zipName . '"');
-                        header('Expires: 0');
-                        header('Cache-Control: must-revalidate');
-                        header('Pragma: public');
-                        header('Content-Length: ' . filesize($tempFile));
-                        
-                        readfile($tempFile);
-                        unlink($tempFile); // 下载完成后删除临时文件
-                        exit;
-                    } else {
-                        $errors[] = '打包失败，临时文件无法生成。';
-                    }
-                } else {
-                    $errors[] = '无法创建 ZIP 文件。';
-                }
-            }
-        }
-        // --- 新增代码结束 ---
-    
+
     if ($action === 'create_share') {
         require_admin();
         $imageIds = $_POST['image_ids'] ?? [];
@@ -556,17 +501,30 @@ if ($page === 'gallery') {
     shuffle($filtered);
     echo '<section class="section">';
     echo '<div class="section-header"><div><h2>今日随机画廊</h2><p>基于管理员偏好角色动态随机。</p></div></div>';
+    echo '<div class="gallery-toolbar">';
+    echo '<button type="button" class="btn-secondary" data-download-selected>多选下载</button>';
+    echo '<span class="muted">勾选图片后批量下载</span>';
+    echo '</div>';
     echo '<div class="gallery-grid">';
     foreach (array_slice($filtered, 0, 12) as $img) {
         $character = find_by_id($characters, $img['character_id']);
         $work = find_by_id($works, $img['work_id']);
-        echo '<a class="gallery-card gallery-link" href="?page=image&id=' . urlencode($img['id']) . '">';
+        echo '<div class="gallery-card gallery-link">';
+        echo '<a class="gallery-cover" href="?page=image&id=' . urlencode($img['id']) . '">';
         echo '<img src="' . htmlspecialchars($img['path']) . '" alt="画廊图片">';
+        echo '</a>';
         echo '<div class="gallery-overlay">';
         echo '<span>' . htmlspecialchars($work['name'] ?? '') . '</span>';
         echo '<span>' . htmlspecialchars($character['name'] ?? '') . '</span>';
         echo '</div>';
-        echo '</a>';
+        echo '<div class="gallery-download-actions">';
+        echo '<label class="gallery-select">';
+        echo '<input type="checkbox" class="gallery-download-select" data-download-url="' . htmlspecialchars($img['path']) . '">';
+        echo '<span>选择</span>';
+        echo '</label>';
+        echo '<a class="btn-secondary" href="' . htmlspecialchars($img['path']) . '" download>下载</a>';
+        echo '</div>';
+        echo '</div>';
     }
     echo '</div>';
     echo '</section>';
@@ -649,27 +607,18 @@ if ($page === 'character') {
         echo '</div>';
         if ($user['role'] === 'admin') {
             echo '<div class="admin-panel">';
-            echo '<h3>现有图片</h3>';
-            echo '<form method="post" class="share-panel">';
-            // 注意：删除了 <input type="hidden" name="action" value="create_share">
-            
-            echo '<div class="share-toolbar">';
-            
-            // 这是一个只针对分享功能的设置，为了布局美观，可以加个 span 包裹或者保持原样
-            echo '<label>分享有效期<select name="ttl_hours">';
-            echo '<option value="1">1小时</option>';
-            echo '<option value="6">6小时</option>';
-            echo '<option value="24" selected>24小时</option>';
-            echo '<option value="168">7天</option>';
-            echo '</select></label>';
-        
-            // 【修改点】：给按钮添加 name="action" 和 value="..."
-            echo '<div style="display:flex; gap:10px;">'; // 加个简单的 flex 容器让按钮排排坐
-            echo '<button type="submit" name="action" value="create_share" class="btn-primary">生成分享链接</button>';
-            echo '<button type="submit" name="action" value="download_images" class="btn-secondary">批量下载选中</button>';
+            echo '<h3>新增图片</h3>';
+            echo '<form method="post" enctype="multipart/form-data" class="dropzone">';
+            echo '<input type="hidden" name="action" value="add_image">';
+            echo '<input type="hidden" name="character_id" value="' . htmlspecialchars($characterId) . '">';
+            echo '<input type="hidden" name="work_id" value="' . htmlspecialchars($character['work_id']) . '">';
+            echo '<div class="form-grid">';
+            echo '<label>选择图片<input type="file" name="image_files[]" accept="image/*" multiple required></label>';
             echo '</div>';
-            
-            echo '</div>'; // end share-toolbar
+            echo '<p class="hint">将图片拖拽到此区域即可批量上传。</p>';
+            echo '<button type="submit">保存图片</button>';
+            echo '</form>';
+            echo '</div>';
         }
         echo '</section>';
     }
@@ -857,6 +806,9 @@ if ($page === 'image') {
         echo '<div class="section-header"><h2>原图预览</h2><p>' . htmlspecialchars($work['name'] ?? '') . ' · ' . htmlspecialchars($character['name'] ?? '') . '</p></div>';
         echo '<div class="image-viewer">';
         echo '<img src="' . htmlspecialchars($image['path']) . '" alt="原图">';
+        echo '</div>';
+        echo '<div class="image-actions">';
+        echo '<a class="btn-primary" href="' . htmlspecialchars($image['path']) . '" download>下载图片</a>';
         echo '</div>';
         if ($user['role'] === 'admin') {
             if ($errors) {

@@ -65,52 +65,13 @@ document.querySelectorAll('.share-modal').forEach((modal) => {
   });
 });
 
-document.querySelectorAll('.share-link').forEach((container) => {
-  const input = container.querySelector('.share-input input');
-  const url = container.getAttribute('data-share-url') || '';
-  const formats = {
-    url,
-    html: `<img src=\"${url}\" alt=\"image\">`,
-    bbcode: `[img]${url}[/img]`,
-    markdown: `![image](${url})`,
-  };
-  container.querySelectorAll('.share-tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
-      container.querySelectorAll('.share-tab').forEach((btn) => {
-        btn.classList.remove('active');
-      });
-      tab.classList.add('active');
-      const format = tab.getAttribute('data-format') || 'url';
-      if (input) {
-        input.value = formats[format] || url;
-      }
-    });
-  });
-});
-
-const downloadSelectedButton = document.querySelector('[data-download-selected]');
-if (downloadSelectedButton) {
-  downloadSelectedButton.addEventListener('click', () => {
-    const selected = Array.from(
-      document.querySelectorAll('.gallery-download-select:checked')
-    );
-    if (selected.length === 0) {
-      alert('请先选择要下载的图片。');
-      return;
+document.querySelectorAll('.gallery-download-select').forEach((checkbox) => {
+  const card = checkbox.closest('.gallery-card');
+  const syncState = () => {
+    if (card) {
+      card.classList.toggle('is-selected', checkbox.checked);
     }
-    selected.forEach((checkbox, index) => {
-      const url = checkbox.getAttribute('data-download-url');
-      if (!url) {
-        return;
-      }
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = '';
-      document.body.appendChild(link);
-      setTimeout(() => {
-        link.click();
-        link.remove();
-      }, 120 * index);
-    });
-  });
-}
+  };
+  checkbox.addEventListener('change', syncState);
+  syncState();
+});

@@ -397,6 +397,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
         }
     }
+
+    if ($action === 'download_zip') {
+        $paths = $_POST['download_paths'] ?? [];
+        $zip = new ZipArchive();
+        $tmp = tempnam(sys_get_temp_dir(), 'gallery_');
+        if ($tmp === false || $zip->open($tmp, ZipArchive::OVERWRITE) !== true) {
+            $errors[] = '无法生成压缩包。';
+        } else {
+            $baseDir = realpath(__DIR__ . '/uploads');
+            foreach ($paths as $path) {
+                $path = trim($path);
+                if ($path === '' || !str_starts_with($path, '/uploads/')) {
+                    continue;
+                }
+                $real = realpath(__DIR__ . $path);
+                if ($real && $baseDir && str_starts_with($real, $baseDir)) {
+                    $zip->addFile($real, basename($real));
+                }
+            }
+            $zip->close();
+            if (filesize($tmp) > 0) {
+                header('Content-Type: application/zip');
+                header('Content-Disposition: attachment; filename="gallery-download.zip"');
+                header('Content-Length: ' . filesize($tmp));
+                readfile($tmp);
+                unlink($tmp);
+                exit();
+            }
+            unlink($tmp);
+            $errors[] = '没有可下载的图片。';
+        }
+    }
 }
 
 if ($page === 'logout') {
@@ -501,8 +533,10 @@ if ($page === 'gallery') {
     shuffle($filtered);
     echo '<section class="section">';
     echo '<div class="section-header"><div><h2>今日随机画廊</h2><p>基于管理员偏好角色动态随机。</p></div></div>';
+    echo '<form method="post">';
+    echo '<input type="hidden" name="action" value="download_zip">';
     echo '<div class="gallery-toolbar">';
-    echo '<button type="button" class="btn-secondary" data-download-selected>多选下载</button>';
+    echo '<button type="submit" class="btn-secondary">多选下载</button>';
     echo '<span class="muted">勾选图片后批量下载</span>';
     echo '</div>';
     echo '<div class="gallery-grid">';
@@ -519,7 +553,7 @@ if ($page === 'gallery') {
         echo '</div>';
         echo '<div class="gallery-download-actions">';
         echo '<label class="gallery-select">';
-        echo '<input type="checkbox" class="gallery-download-select" data-download-url="' . htmlspecialchars($img['path']) . '">';
+        echo '<input type="checkbox" class="gallery-download-select" name="download_paths[]" value="' . htmlspecialchars($img['path']) . '">';
         echo '<span class="selection-dot" aria-hidden="true"></span>';
         echo '</label>';
         echo '<a class="icon-button" href="' . htmlspecialchars($img['path']) . '" download aria-label="下载">⬇</a>';
@@ -527,6 +561,7 @@ if ($page === 'gallery') {
         echo '</div>';
     }
     echo '</div>';
+    echo '</form>';
     echo '</section>';
 }
 

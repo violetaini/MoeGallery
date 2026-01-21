@@ -293,6 +293,11 @@ nav a:hover::after {
   transform: translateY(0);
 }
 
+.gallery-card.is-selected .gallery-download-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;

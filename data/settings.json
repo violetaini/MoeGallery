@@ -1,0 +1,12 @@
+{
+  "site_name": "私密二次元画廊",
+  "favicon": "",
+  "copyright": "© 2024 私人画廊",
+  "login_backgrounds": {
+    "mode": "random",
+    "images": []
+  },
+  "gallery_preferences": {
+    "character_ids": []
+  }
+}

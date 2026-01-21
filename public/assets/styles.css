@@ -268,6 +268,7 @@ nav a:hover::after {
   color: #fff;
   opacity: 0;
   transition: opacity 0.2s ease;
+  pointer-events: none;
 }
 
 .gallery-card:hover .gallery-overlay {
@@ -276,31 +277,44 @@ nav a:hover::after {
 
 .gallery-download-actions {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  top: 12px;
+  left: 12px;
   display: flex;
   gap: 8px;
   align-items: center;
   z-index: 5;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.gallery-download-actions .btn-secondary {
-  padding: 6px 12px;
-  font-size: 12px;
+.gallery-card:hover .gallery-download-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
+  font-size: 14px;
 }
 
 .gallery-select {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   background: rgba(255, 255, 255, 0.85);
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 12px;
+  padding: 4px;
+  border-radius: 8px;
 }
 
 .gallery-select input {
   accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
 }
 
 .muted {

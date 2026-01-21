@@ -520,9 +520,8 @@ if ($page === 'gallery') {
         echo '<div class="gallery-download-actions">';
         echo '<label class="gallery-select">';
         echo '<input type="checkbox" class="gallery-download-select" data-download-url="' . htmlspecialchars($img['path']) . '">';
-        echo '<span>选择</span>';
         echo '</label>';
-        echo '<a class="btn-secondary" href="' . htmlspecialchars($img['path']) . '" download>下载</a>';
+        echo '<a class="icon-button" href="' . htmlspecialchars($img['path']) . '" download aria-label="下载">⬇️</a>';
         echo '</div>';
         echo '</div>';
     }

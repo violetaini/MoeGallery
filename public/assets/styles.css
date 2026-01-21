@@ -309,10 +309,6 @@ nav a:hover::after {
   transform: translateY(0);
 }
 
-.gallery-card.is-selected .gallery-download-actions {
-  opacity: 1;
-  transform: translateY(0);
-}
 
 .icon-button {
   display: inline-flex;
@@ -337,9 +333,12 @@ nav a:hover::after {
   z-index: 6;
   opacity: 1;
   visibility: visible;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
   pointer-events: auto;
 }
 
@@ -350,12 +349,14 @@ nav a:hover::after {
 }
 
 .selection-dot {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  background: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.2),
+    0 0 0 2px rgba(26, 26, 46, 0.35);
   display: inline-block;
   opacity: 1;
   visibility: visible;

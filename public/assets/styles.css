@@ -309,6 +309,24 @@ nav a:hover::after {
   transform: translateY(0);
 }
 
+.gallery-card.is-selected .gallery-download-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.gallery-card.is-selected .gallery-download-actions .icon-button {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.gallery-card.is-selected:hover .gallery-download-actions .icon-button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 
 .icon-button {
   display: inline-flex;

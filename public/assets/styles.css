@@ -202,8 +202,10 @@ nav a:hover::after {
 }
 
 .gallery-grid {
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+  align-items: flex-start;
 }
 
 .work-grid {
@@ -230,6 +232,15 @@ nav a:hover::after {
   transition: transform 0.2s ease;
 }
 
+.gallery-grid .gallery-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
 .gallery-card:hover,
 .work-card:hover,
 .character-card:hover {
@@ -239,9 +250,14 @@ nav a:hover::after {
 .gallery-card img,
 .work-card img,
 .character-card img {
-  width: 100%;
+  width: auto;
   height: 240px;
   object-fit: cover;
+}
+
+.work-card img,
+.character-card img {
+  width: 100%;
 }
 
 .gallery-link {
@@ -250,7 +266,7 @@ nav a:hover::after {
 }
 
 .gallery-cover {
-  display: block;
+  display: inline-block;
 }
 
 .gallery-card {

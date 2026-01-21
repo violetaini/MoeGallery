@@ -710,12 +710,8 @@ button.danger {
   cursor: pointer;
 }
 
-.gallery-select-persist {
-  opacity: 1;
-}
-
-.gallery-select-persist .selection-dot {
-  opacity: 1;
+.gallery-select input[type='checkbox'] {
+  display: none;
 }
 
 @media (max-width: 768px) {

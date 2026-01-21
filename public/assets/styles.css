@@ -333,34 +333,42 @@ nav a:hover::after {
   z-index: 6;
   opacity: 1;
   visibility: visible;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   pointer-events: auto;
-  border-radius: 999px;
-  background: #fff;
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.2),
-    0 0 0 2px rgba(26, 26, 46, 0.35);
 }
 
 .gallery-select input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: #fff;
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.2),
+    0 0 0 2px rgba(26, 26, 46, 0.35);
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.selection-dot {
-  display: none;
-}
-
-.gallery-card.is-selected .gallery-select-persist {
+.gallery-select input:checked {
   background: #5d7bff;
   border-color: #5d7bff;
+}
+
+.gallery-select input:checked::after {
+  content: '✓';
+  color: #fff;
+  font-size: 10px;
 }
 
 .muted {

@@ -553,7 +553,6 @@ if ($page === 'gallery') {
         echo '</div>';
         echo '<label class="gallery-select gallery-select-persist">';
         echo '<input type="checkbox" class="gallery-download-select" name="download_paths[]" value="' . htmlspecialchars($img['path']) . '">';
-        echo '<span class="selection-dot" aria-hidden="true"></span>';
         echo '</label>';
         echo '<div class="gallery-download-actions">';
         echo '<a class="icon-button" href="' . htmlspecialchars($img['path']) . '" download aria-label="下载">⬇</a>';

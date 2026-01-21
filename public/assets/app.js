@@ -75,3 +75,15 @@ document.querySelectorAll('.gallery-download-select').forEach((checkbox) => {
   checkbox.addEventListener('change', syncState);
   syncState();
 });
+
+document.querySelectorAll('.gallery-select-persist').forEach((label) => {
+  label.addEventListener('click', (event) => {
+    const input = label.querySelector('input[type="checkbox"]');
+    if (!input) {
+      return;
+    }
+    event.preventDefault();
+    input.checked = !input.checked;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});

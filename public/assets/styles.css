@@ -333,13 +333,19 @@ nav a:hover::after {
   z-index: 6;
   opacity: 1;
   visibility: visible;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   pointer-events: auto;
+  border-radius: 999px;
+  background: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.2),
+    0 0 0 2px rgba(26, 26, 46, 0.35);
 }
 
 .gallery-select input {
@@ -349,18 +355,7 @@ nav a:hover::after {
 }
 
 .selection-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: #fff;
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.2),
-    0 0 0 2px rgba(26, 26, 46, 0.35);
-  display: inline-block;
-  opacity: 1;
-  visibility: visible;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  display: none;
 }
 
 .gallery-select input:checked + .selection-dot {
@@ -369,6 +364,11 @@ nav a:hover::after {
 }
 
 .gallery-card.is-selected .selection-dot {
+  background: #5d7bff;
+  border-color: #5d7bff;
+}
+
+.gallery-card.is-selected .gallery-select-persist {
   background: #5d7bff;
   border-color: #5d7bff;
 }

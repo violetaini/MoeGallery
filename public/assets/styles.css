@@ -250,7 +250,7 @@ nav a:hover::after {
 .gallery-card img,
 .work-card img,
 .character-card img {
-  width: auto;
+  width: 100%;
   height: 240px;
   object-fit: cover;
 }
@@ -306,6 +306,24 @@ nav a:hover::after {
 
 .gallery-card:hover .gallery-download-actions {
   opacity: 1;
+  transform: translateY(0);
+}
+
+.gallery-card.is-selected .gallery-download-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.gallery-card.is-selected .gallery-download-actions .icon-button {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.gallery-card.is-selected:hover .gallery-download-actions .icon-button {
+  opacity: 1;
+  pointer-events: auto;
   transform: translateY(0);
 }
 

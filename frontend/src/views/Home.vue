@@ -221,7 +221,9 @@ onBeforeUnmount(clearSlideTimer)
           :class="{ 'is-active': index === activeIndex }"
           type="button"
           :aria-label="slide.original_filename || slide.filename || `图片 ${slide.id}`"
-          @click="handleThumbClick(index)"
+          @pointerdown.stop
+          @dragstart.prevent
+          @click.stop="handleThumbClick(index)"
         >
           <img :src="thumbnailSrc(slide)" :alt="slide.original_filename || slide.filename || '图片'" draggable="false" />
         </button>

@@ -1,0 +1,7587 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Anime Gallery Media Server",
+    "description": "\nAnime Gallery Media Server API 覆盖前台图片浏览、后台媒体资料维护、批量上传任务、\n元数据导入、部署设置与系统健康检查。\n\n鉴权模型：\n\n- 浏览器后台会话使用 `agms_admin_session` HttpOnly Cookie。\n- 运维脚本建议使用 `Authorization: Bearer <AGMS_API_KEYS value>`。\n- 使用 Cookie 会话调用非安全方法时，还需要提交与 `agms_admin_csrf` Cookie 匹配的 `X-CSRF-Token`。\n- API Key 不依赖 Cookie，因此不需要 CSRF；请只在服务端保存，泄露后及时轮换。\n",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "当前部署域名"
+    },
+    {
+      "url": "/api",
+      "description": "API 前缀"
+    }
+  ],
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "管理员登录",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              },
+              "examples": {
+                "adminLogin": {
+                  "summary": "浏览器管理员登录",
+                  "value": {
+                    "username": "admin",
+                    "password": "change-this-password"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "创建 HttpOnly 管理员会话 Cookie。脚本和自动化任务应优先使用 API Key，而不是模拟浏览器登录。"
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "退出当前管理员会话",
+        "operationId": "logout_api_auth_logout_post",
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "撤销当前 Cookie 会话并清理管理员 Cookie。",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "查看当前管理员身份",
+        "operationId": "me_api_auth_me_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthUser"
+                },
+                "examples": {
+                  "example": {
+                    "summary": "示例响应",
+                    "value": {
+                      "username": "admin",
+                      "avatar_image_id": null,
+                      "avatar_image": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回已登录管理员资料。支持浏览器会话 Cookie 或运维 API Key。"
+      }
+    },
+    "/api/install/status": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "检查首次安装状态",
+        "operationId": "install_status_api_install_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallStatus"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回应用是否已经完成初始化。"
+      }
+    },
+    "/api/install": {
+      "post": {
+        "tags": [
+          "install"
+        ],
+        "summary": "执行首次安装",
+        "operationId": "install_api_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallRequest"
+              },
+              "examples": {
+                "sqliteInstall": {
+                  "summary": "SQLite 安装",
+                  "value": {
+                    "database_type": "sqlite",
+                    "admin_username": "admin",
+                    "admin_password": "change-this-password"
+                  }
+                },
+                "mysqlInstall": {
+                  "summary": "MySQL 安装",
+                  "value": {
+                    "database_type": "mysql",
+                    "mysql_host": "127.0.0.1",
+                    "mysql_port": 3306,
+                    "mysql_database": "anime_gallery",
+                    "mysql_username": "anime_gallery",
+                    "mysql_password": "change-this-db-password",
+                    "admin_username": "admin",
+                    "admin_password": "change-this-password"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "初始化 SQLite 或 MySQL 部署配置，创建管理员账号，执行迁移，写入 `.env`，并创建安装锁。"
+      }
+    },
+    "/storage/{relative_path}": {
+      "get": {
+        "tags": [
+          "storage"
+        ],
+        "summary": "读取存储媒体文件",
+        "operationId": "get_storage_file_storage__relative_path__get",
+        "parameters": [
+          {
+            "name": "relative_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Relative Path"
+            },
+            "description": "图片元数据返回的存储相对路径，例如 `preview/example.webp`。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "在路径规范化和数据库权限检查后，返回原图、预览图或缩略图。"
+      }
+    },
+    "/api/images": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "获取图片列表",
+        "operationId": "list_images_api_images_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "从 1 开始的页码。"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 24,
+              "title": "Page Size"
+            },
+            "description": "每页记录数。大多数列表接口最多返回 100 条。"
+          },
+          {
+            "name": "work_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Id"
+            },
+            "description": "作品数据库 ID。"
+          },
+          {
+            "name": "character_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Character Id"
+            },
+            "description": "角色数据库 ID。"
+          },
+          {
+            "name": "rating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(safe|sensitive|hidden)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rating"
+            },
+            "description": "`safe`、`sensitive` 或 `hidden`。"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            },
+            "description": "用于模糊搜索的关键词。"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(latest|random|favorites|resolution)$",
+              "default": "latest",
+              "title": "Sort"
+            },
+            "description": "`latest`、`random`、`favorites` 或 `resolution`。"
+          },
+          {
+            "name": "public_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Public Only"
+            },
+            "description": "为 true 时排除隐藏/私有图片。"
+          },
+          {
+            "name": "exclude_work_related",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Exclude Work Related"
+            },
+            "description": "排除已绑定作品的图片。"
+          },
+          {
+            "name": "exclude_character_related",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Exclude Character Related"
+            },
+            "description": "排除已绑定角色的图片。"
+          },
+          {
+            "name": "require_work_related",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Require Work Related"
+            },
+            "description": "只返回至少绑定一个作品的图片。"
+          },
+          {
+            "name": "require_character_related",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Require Character Related"
+            },
+            "description": "只返回至少绑定一个角色的图片。"
+          },
+          {
+            "name": "exclude_cover_images",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Exclude Cover Images"
+            },
+            "description": "排除已作为作品封面的图片。"
+          },
+          {
+            "name": "exclude_avatar_images",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Exclude Avatar Images"
+            },
+            "description": "排除已作为角色头像的图片。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "默认返回前台公开画廊图片。管理员鉴权后可查询隐藏/私有图片和后台专用筛选条件。"
+      }
+    },
+    "/api/images/upload": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "summary": "立即上传一张或多张图片",
+        "operationId": "upload_images_api_images_upload_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_images_api_images_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "上传文件，校验后缀与内容，支持静态 SDR 原图转 WebP、动图保留原格式、HDR JXR 转 HDR AVIF。"
+      }
+    },
+    "/api/images/preview": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "summary": "生成上传预览",
+        "operationId": "preview_upload_image_api_images_preview_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_upload_image_api_images_preview_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "文件正式入库前，为选中的上传文件返回临时 WebP 预览图。"
+      }
+    },
+    "/api/images/batch": {
+      "put": {
+        "tags": [
+          "images"
+        ],
+        "summary": "批量编辑图片元数据",
+        "operationId": "update_images_batch_api_images_batch_put",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageBatchUpdate"
+              },
+              "examples": {
+                "batchEdit": {
+                  "summary": "批量绑定作品并设置分级",
+                  "value": {
+                    "image_ids": [
+                      101,
+                      102
+                    ],
+                    "update": {
+                      "work_ids": [
+                        12
+                      ],
+                      "rating": "safe",
+                      "artist_name": "Kyoto Animation"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageBatchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "批量修改作品、角色、分级、收藏数、来源地址和作者。文件名不允许批量修改。"
+      },
+      "delete": {
+        "tags": [
+          "images"
+        ],
+        "summary": "批量删除图片",
+        "operationId": "delete_images_batch_api_images_batch_delete",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageBatchDelete"
+              },
+              "examples": {
+                "batchDelete": {
+                  "summary": "删除图片",
+                  "value": {
+                    "image_ids": [
+                      101,
+                      102
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageBatchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "删除多张图片记录及其原图、预览图和缩略图文件。"
+      }
+    },
+    "/api/images/{image_id}": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "获取图片详情",
+        "operationId": "get_image_api_images__image_id__get",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            },
+            "description": "图片数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回图片元数据和关联关系。隐藏/私有图片需要管理员鉴权。"
+      },
+      "put": {
+        "tags": [
+          "images"
+        ],
+        "summary": "更新单张图片",
+        "operationId": "update_image_api_images__image_id__put",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            },
+            "description": "图片数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "更新单张图片的元数据和关联关系。修改文件名时必须保留原后缀。"
+      },
+      "delete": {
+        "tags": [
+          "images"
+        ],
+        "summary": "删除单张图片",
+        "operationId": "delete_image_api_images__image_id__delete",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            },
+            "description": "图片数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "删除图片记录及其全部衍生文件。"
+      }
+    },
+    "/api/images/{image_id}/view": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "summary": "增加图片浏览数",
+        "operationId": "track_image_view_api_images__image_id__view_post",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            },
+            "description": "图片数据库 ID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "前台图片详情浮窗使用的公开计数接口。"
+      }
+    },
+    "/api/images/{image_id}/favorite": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "summary": "增加图片收藏数",
+        "operationId": "favorite_image_api_images__image_id__favorite_post",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            },
+            "description": "图片数据库 ID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "用于增加图片收藏计数的公开接口。"
+      },
+      "delete": {
+        "tags": [
+          "images"
+        ],
+        "summary": "减少图片收藏数",
+        "operationId": "unfavorite_image_api_images__image_id__favorite_delete",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            },
+            "description": "图片数据库 ID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "用于减少图片收藏计数的公开接口，最低不会低于 0。"
+      }
+    },
+    "/api/upload-tasks": {
+      "post": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "创建批量上传任务",
+        "operationId": "create_upload_tasks_api_upload_tasks_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_upload_tasks_api_upload_tasks_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTaskCreateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "将一个或多个文件加入服务端并发上传处理队列。"
+      },
+      "get": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "获取上传任务列表",
+        "operationId": "list_upload_tasks_api_upload_tasks_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ids"
+            },
+            "description": "可选，逗号分隔的上传任务 ID 列表，用于直接查询指定任务。"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "最多返回的结果数量。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTaskListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回最近的排队、运行、成功或失败上传任务，供管理员监控。"
+      }
+    },
+    "/api/upload-tasks/check-duplicates": {
+      "post": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "检查重复哈希",
+        "operationId": "check_upload_duplicates_api_upload_tasks_check_duplicates_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadDuplicateCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadDuplicateCheckResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "用客户端计算的 SHA-256 与已入库图片和待处理队列做重复预检。"
+      }
+    },
+    "/api/upload-tasks/check-duplicates-files": {
+      "post": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "检查重复上传文件",
+        "operationId": "check_upload_duplicate_files_api_upload_tasks_check_duplicates_files_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_check_upload_duplicate_files_api_upload_tasks_check_duplicates_files_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadDuplicateCheckResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "当客户端未计算哈希时，由服务端对选中文件执行重复预检。"
+      }
+    },
+    "/api/upload-tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "获取上传任务详情",
+        "operationId": "get_upload_task_api_upload_tasks__task_id__get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            },
+            "description": "上传任务 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTaskRead"
+                },
+                "examples": {
+                  "example": {
+                    "summary": "示例响应",
+                    "value": {
+                      "id": 1,
+                      "status": "succeeded",
+                      "filename": "example.webp",
+                      "error_message": null,
+                      "image_id": 100
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回单个上传任务的状态、结果或错误信息。"
+      }
+    },
+    "/api/imports/metadata": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "预览或提交元数据导入",
+        "operationId": "import_metadata_api_imports_metadata_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Dry Run"
+            },
+            "description": "为 true 时只校验和预览导入变更，不正式写入。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_metadata_api_imports_metadata_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataImportSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "从 CSV、JSON、XLSX 或 XLSM 导入作品和角色。正式提交前建议先使用 `dry_run=true` 预览。"
+      }
+    },
+    "/api/imports/metadata/template": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "下载元数据导入模板",
+        "operationId": "download_metadata_template_api_imports_metadata_template_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "csv",
+                "json",
+                "xlsx",
+                "xlsm"
+              ],
+              "type": "string",
+              "default": "xlsx",
+              "title": "Format"
+            },
+            "description": "模板格式：`csv`、`json`、`xlsx` 或 `xlsm`。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "下载包含全部支持字段的空白 CSV、JSON、XLSX 或 XLSM 模板。"
+      }
+    },
+    "/api/works": {
+      "get": {
+        "tags": [
+          "works"
+        ],
+        "summary": "获取作品列表",
+        "operationId": "list_works_api_works_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "从 1 开始的页码。"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 24,
+              "title": "Page Size"
+            },
+            "description": "每页记录数。大多数列表接口最多返回 100 条。"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            },
+            "description": "用于模糊搜索的关键词。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "获取作品记录，可按关键词筛选。"
+      },
+      "post": {
+        "tags": [
+          "works"
+        ],
+        "summary": "创建作品",
+        "operationId": "create_work_api_works_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "创建作品记录，并可同时绑定元数据和图片。"
+      }
+    },
+    "/api/works/{work_id}": {
+      "get": {
+        "tags": [
+          "works"
+        ],
+        "summary": "获取作品详情",
+        "operationId": "get_work_api_works__work_id__get",
+        "parameters": [
+          {
+            "name": "work_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Work Id"
+            },
+            "description": "作品数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回单个作品、作品角色和相关图片。"
+      },
+      "put": {
+        "tags": [
+          "works"
+        ],
+        "summary": "更新作品",
+        "operationId": "update_work_api_works__work_id__put",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "work_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Work Id"
+            },
+            "description": "作品数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "更新作品元数据、封面图和背景图绑定。"
+      },
+      "delete": {
+        "tags": [
+          "works"
+        ],
+        "summary": "删除作品",
+        "operationId": "delete_work_api_works__work_id__delete",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "work_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Work Id"
+            },
+            "description": "作品数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "删除作品记录并移除相关绑定。"
+      }
+    },
+    "/api/characters": {
+      "get": {
+        "tags": [
+          "characters"
+        ],
+        "summary": "获取角色列表",
+        "operationId": "list_characters_api_characters_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "从 1 开始的页码。"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 24,
+              "title": "Page Size"
+            },
+            "description": "每页记录数。大多数列表接口最多返回 100 条。"
+          },
+          {
+            "name": "work_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Id"
+            },
+            "description": "作品数据库 ID。"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            },
+            "description": "用于模糊搜索的关键词。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "获取角色记录，可按作品或关键词筛选。"
+      },
+      "post": {
+        "tags": [
+          "characters"
+        ],
+        "summary": "创建角色",
+        "operationId": "create_character_api_characters_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "创建角色，并可同时绑定作品和头像。"
+      }
+    },
+    "/api/characters/{character_id}": {
+      "get": {
+        "tags": [
+          "characters"
+        ],
+        "summary": "获取角色详情",
+        "operationId": "get_character_api_characters__character_id__get",
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Character Id"
+            },
+            "description": "角色数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回单个角色和相关图片。"
+      },
+      "put": {
+        "tags": [
+          "characters"
+        ],
+        "summary": "更新角色",
+        "operationId": "update_character_api_characters__character_id__put",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Character Id"
+            },
+            "description": "角色数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "更新角色元数据、作品绑定和头像图片。"
+      },
+      "delete": {
+        "tags": [
+          "characters"
+        ],
+        "summary": "删除角色",
+        "operationId": "delete_character_api_characters__character_id__delete",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Character Id"
+            },
+            "description": "角色数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "删除单个角色并移除相关绑定。"
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "获取标签列表",
+        "operationId": "list_tags_api_tags_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "从 1 开始的页码。"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            },
+            "description": "每页记录数。大多数列表接口最多返回 100 条。"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            },
+            "description": "用于模糊搜索的关键词。"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            },
+            "description": "兼容旧标签的类型筛选。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "获取为兼容旧数据保留的标签记录。"
+      },
+      "post": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "创建标签",
+        "operationId": "create_tag_api_tags_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "创建兼容旧数据的标签记录。"
+      }
+    },
+    "/api/tags/{tag_id}": {
+      "get": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "获取标签详情",
+        "operationId": "get_tag_api_tags__tag_id__get",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            },
+            "description": "兼容旧标签的数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回单个标签和相关图片。"
+      },
+      "put": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "更新标签",
+        "operationId": "update_tag_api_tags__tag_id__put",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            },
+            "description": "兼容旧标签的数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "更新兼容旧数据的标签记录。"
+      },
+      "delete": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "删除标签",
+        "operationId": "delete_tag_api_tags__tag_id__delete",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            },
+            "description": "兼容旧标签的数据库 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "删除兼容旧数据的标签记录。"
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "搜索媒体库",
+        "operationId": "search_api_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Q"
+            },
+            "description": "用于模糊搜索的关键词。"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 12,
+              "title": "Limit"
+            },
+            "description": "最多返回的结果数量。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "使用单个关键词搜索图片、作品和角色。"
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "获取后台统计",
+        "operationId": "stats_api_stats_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回后台首页统计计数。"
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "获取后台设置",
+        "operationId": "read_settings_api_settings_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回管理员偏好、前台首页图片绑定和上传队列参数。"
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "更新后台设置",
+        "operationId": "update_settings_api_settings_put",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSettingsUpdate"
+              },
+              "examples": {
+                "uploadWorkers": {
+                  "summary": "调整上传 worker",
+                  "value": {
+                    "upload_worker_count": 24,
+                    "upload_claim_batch_size": 4,
+                    "image_manage_view_mode": "waterfall"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图和上传 worker 参数。"
+      }
+    },
+    "/api/settings/public": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "获取公开设置",
+        "operationId": "read_public_settings_api_settings_public_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSettingsRead"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回前台首页和列表页背景图片设置。"
+      }
+    },
+    "/api/settings/auth-secret/rotate": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "轮换登录密钥",
+        "operationId": "rotate_admin_auth_secret_api_settings_auth_secret_rotate_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。"
+      }
+    },
+    "/api/system/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "获取系统健康状态",
+        "operationId": "system_health_api_system_health_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "examples": {
+                  "example": {
+                    "summary": "示例响应",
+                    "value": {
+                      "database": {
+                        "ok": true,
+                        "dialect": "mysql",
+                        "url": "mysql+pymysql://user:***@127.0.0.1:3306/anime_gallery"
+                      },
+                      "storage": {
+                        "ok": true
+                      },
+                      "auth_secret": {
+                        "configured": true,
+                        "ephemeral": false,
+                        "strong": true,
+                        "message": "已配置持久化强密钥"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回数据库、存储、衍生图、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "存活检查",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "examples": {
+                  "example": {
+                    "summary": "示例响应",
+                    "value": {
+                      "status": "ok",
+                      "name": "Anime Gallery Media Server"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "health"
+        ],
+        "description": "供反向代理和可用性监控使用的轻量免登录接口。"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdminSettingsRead": {
+        "properties": {
+          "image_manage_view_mode": {
+            "type": "string",
+            "pattern": "^(classic|waterfall)$",
+            "title": "Image Manage View Mode",
+            "default": "classic"
+          },
+          "upload_worker_count": {
+            "type": "integer",
+            "maximum": 96.0,
+            "minimum": 1.0,
+            "title": "Upload Worker Count",
+            "default": 12
+          },
+          "upload_claim_batch_size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Upload Claim Batch Size",
+            "default": 1
+          },
+          "admin_username": {
+            "type": "string",
+            "title": "Admin Username"
+          },
+          "admin_avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Avatar Image Id"
+          },
+          "admin_avatar_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home_slideshow_image_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Home Slideshow Image Ids"
+          },
+          "home_slideshow_images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageSummary"
+            },
+            "type": "array",
+            "title": "Home Slideshow Images"
+          },
+          "home_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Hero Image Id"
+          },
+          "home_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "works_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Works Hero Image Id"
+          },
+          "works_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "characters_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Characters Hero Image Id"
+          },
+          "characters_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ratings_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratings Hero Image Id"
+          },
+          "ratings_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "admin_username"
+        ],
+        "title": "AdminSettingsRead"
+      },
+      "AdminSettingsUpdate": {
+        "properties": {
+          "image_manage_view_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(classic|waterfall)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Manage View Mode"
+          },
+          "upload_worker_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 96.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Worker Count"
+          },
+          "upload_claim_batch_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Claim Batch Size"
+          },
+          "admin_username": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Username"
+          },
+          "admin_password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 6
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Password"
+          },
+          "admin_avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Avatar Image Id"
+          },
+          "clear_admin_avatar": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clear Admin Avatar"
+          },
+          "home_slideshow_image_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array",
+                "maxItems": 24
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Slideshow Image Ids"
+          },
+          "home_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Hero Image Id"
+          },
+          "clear_home_hero_image": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clear Home Hero Image"
+          },
+          "works_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Works Hero Image Id"
+          },
+          "clear_works_hero_image": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clear Works Hero Image"
+          },
+          "characters_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Characters Hero Image Id"
+          },
+          "clear_characters_hero_image": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clear Characters Hero Image"
+          },
+          "ratings_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratings Hero Image Id"
+          },
+          "clear_ratings_hero_image": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clear Ratings Hero Image"
+          }
+        },
+        "type": "object",
+        "title": "AdminSettingsUpdate"
+      },
+      "AuthUser": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          },
+          "avatar_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "AuthUser"
+      },
+      "Body_check_upload_duplicate_files_api_upload_tasks_check_duplicates_files_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_check_upload_duplicate_files_api_upload_tasks_check_duplicates_files_post"
+      },
+      "Body_create_upload_tasks_api_upload_tasks_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "work_ids": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Ids"
+          },
+          "character_ids": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Ids"
+          },
+          "rating": {
+            "type": "string",
+            "title": "Rating",
+            "default": "safe"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "default": true
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "artist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Name"
+          },
+          "merge_duplicate_relations": {
+            "type": "boolean",
+            "title": "Merge Duplicate Relations",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_create_upload_tasks_api_upload_tasks_post"
+      },
+      "Body_import_metadata_api_imports_metadata_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_metadata_api_imports_metadata_post"
+      },
+      "Body_preview_upload_image_api_images_preview_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_upload_image_api_images_preview_post"
+      },
+      "Body_upload_images_api_images_upload_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "work_ids": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Ids"
+          },
+          "character_ids": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Ids"
+          },
+          "rating": {
+            "type": "string",
+            "title": "Rating",
+            "default": "safe"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "default": true
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "artist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Name"
+          },
+          "merge_duplicate_relations": {
+            "type": "boolean",
+            "title": "Merge Duplicate Relations",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_images_api_images_upload_post"
+      },
+      "CharacterCreate": {
+        "properties": {
+          "work_id": {
+            "type": "integer",
+            "title": "Work Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "work_id",
+          "name"
+        ],
+        "title": "CharacterCreate"
+      },
+      "CharacterDetail": {
+        "properties": {
+          "work_id": {
+            "type": "integer",
+            "title": "Work Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "work": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatar_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageSummary"
+            },
+            "type": "array",
+            "title": "Images",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "work_id",
+          "name",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CharacterDetail"
+      },
+      "CharacterListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CharacterRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CharacterListResponse"
+      },
+      "CharacterRead": {
+        "properties": {
+          "work_id": {
+            "type": "integer",
+            "title": "Work Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "work": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatar_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "work_id",
+          "name",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CharacterRead"
+      },
+      "CharacterSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "work_id": {
+            "type": "integer",
+            "title": "Work Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "work_id",
+          "name"
+        ],
+        "title": "CharacterSummary"
+      },
+      "CharacterUpdate": {
+        "properties": {
+          "work_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          }
+        },
+        "type": "object",
+        "title": "CharacterUpdate"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImageBatchDelete": {
+        "properties": {
+          "image_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Image Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_ids"
+        ],
+        "title": "ImageBatchDelete"
+      },
+      "ImageBatchItemUpdate": {
+        "properties": {
+          "rating": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(safe|sensitive|hidden)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "artist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Name"
+          },
+          "favorite_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Count"
+          },
+          "work_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Ids"
+          },
+          "character_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ImageBatchItemUpdate"
+      },
+      "ImageBatchResult": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "ImageBatchResult"
+      },
+      "ImageBatchUpdate": {
+        "properties": {
+          "image_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Image Ids"
+          },
+          "update": {
+            "$ref": "#/components/schemas/ImageBatchItemUpdate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_ids",
+          "update"
+        ],
+        "title": "ImageBatchUpdate"
+      },
+      "ImageListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "ImageListResponse"
+      },
+      "ImageRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "file_path": {
+            "type": "string",
+            "title": "File Path"
+          },
+          "thumbnail_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Path"
+          },
+          "preview_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Path"
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "rating": {
+            "type": "string",
+            "title": "Rating"
+          },
+          "favorite_count": {
+            "type": "integer",
+            "title": "Favorite Count"
+          },
+          "dynamic_range": {
+            "type": "string",
+            "title": "Dynamic Range"
+          },
+          "is_animated": {
+            "type": "boolean",
+            "title": "Is Animated"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
+          "file_size": {
+            "type": "integer",
+            "title": "File Size"
+          },
+          "bit_depth": {
+            "type": "integer",
+            "title": "Bit Depth"
+          },
+          "color_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Profile"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "phash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phash"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "artist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Name"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public"
+          },
+          "view_count": {
+            "type": "integer",
+            "title": "View Count"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "works": {
+            "items": {
+              "$ref": "#/components/schemas/WorkSummary"
+            },
+            "type": "array",
+            "title": "Works",
+            "default": []
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/CharacterSummary"
+            },
+            "type": "array",
+            "title": "Characters",
+            "default": []
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/TagSummary"
+            },
+            "type": "array",
+            "title": "Tags",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "file_path",
+          "mime_type",
+          "width",
+          "height",
+          "rating",
+          "favorite_count",
+          "dynamic_range",
+          "is_animated",
+          "created_at",
+          "file_size",
+          "bit_depth",
+          "sha256",
+          "is_public",
+          "view_count",
+          "updated_at"
+        ],
+        "title": "ImageRead"
+      },
+      "ImageSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Path"
+          },
+          "thumbnail_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Path"
+          },
+          "preview_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Path"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "rating": {
+            "type": "string",
+            "title": "Rating"
+          },
+          "favorite_count": {
+            "type": "integer",
+            "title": "Favorite Count"
+          },
+          "dynamic_range": {
+            "type": "string",
+            "title": "Dynamic Range"
+          },
+          "is_animated": {
+            "type": "boolean",
+            "title": "Is Animated"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "width",
+          "height",
+          "rating",
+          "favorite_count",
+          "dynamic_range",
+          "is_animated",
+          "created_at"
+        ],
+        "title": "ImageSummary"
+      },
+      "ImageUpdate": {
+        "properties": {
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(safe|sensitive|hidden)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "artist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Name"
+          },
+          "is_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Public"
+          },
+          "favorite_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Count"
+          },
+          "work_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Ids"
+          },
+          "character_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Ids"
+          }
+        },
+        "type": "object",
+        "title": "ImageUpdate"
+      },
+      "ImageUploadResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageUploadResult"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ImageUploadResponse"
+      },
+      "ImageUploadResult": {
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageRead"
+          },
+          "duplicate": {
+            "type": "boolean",
+            "title": "Duplicate",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "ImageUploadResult"
+      },
+      "InstallRequest": {
+        "properties": {
+          "database_type": {
+            "type": "string",
+            "pattern": "^(sqlite|mysql)$",
+            "title": "Database Type"
+          },
+          "sqlite_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sqlite Path"
+          },
+          "mysql_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mysql Host"
+          },
+          "mysql_port": {
+            "type": "integer",
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Mysql Port",
+            "default": 3306
+          },
+          "mysql_database": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mysql Database"
+          },
+          "mysql_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mysql Username"
+          },
+          "mysql_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mysql Password"
+          },
+          "admin_username": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Admin Username"
+          },
+          "admin_password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 6,
+            "title": "Admin Password"
+          },
+          "auth_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "database_type",
+          "admin_username",
+          "admin_password"
+        ],
+        "title": "InstallRequest"
+      },
+      "InstallResponse": {
+        "properties": {
+          "installed": {
+            "type": "boolean",
+            "title": "Installed"
+          },
+          "database_type": {
+            "type": "string",
+            "title": "Database Type"
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "installed",
+          "database_type",
+          "restart_required"
+        ],
+        "title": "InstallResponse"
+      },
+      "InstallStatus": {
+        "properties": {
+          "installed": {
+            "type": "boolean",
+            "title": "Installed"
+          },
+          "lock_exists": {
+            "type": "boolean",
+            "title": "Lock Exists"
+          },
+          "database_initialized": {
+            "type": "boolean",
+            "title": "Database Initialized"
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "installed",
+          "lock_exists",
+          "database_initialized"
+        ],
+        "title": "InstallStatus"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "LoginResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "default": ""
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "cookie"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          },
+          "avatar_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "expires_in",
+          "username"
+        ],
+        "title": "LoginResponse"
+      },
+      "MetadataImportRow": {
+        "properties": {
+          "row_number": {
+            "type": "integer",
+            "title": "Row Number"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "work_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Name"
+          },
+          "character_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Name"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "row_number",
+          "action",
+          "status"
+        ],
+        "title": "MetadataImportRow"
+      },
+      "MetadataImportSummary": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "valid_rows": {
+            "type": "integer",
+            "title": "Valid Rows"
+          },
+          "error_rows": {
+            "type": "integer",
+            "title": "Error Rows"
+          },
+          "works_created": {
+            "type": "integer",
+            "title": "Works Created",
+            "default": 0
+          },
+          "works_updated": {
+            "type": "integer",
+            "title": "Works Updated",
+            "default": 0
+          },
+          "characters_created": {
+            "type": "integer",
+            "title": "Characters Created",
+            "default": 0
+          },
+          "characters_updated": {
+            "type": "integer",
+            "title": "Characters Updated",
+            "default": 0
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MetadataImportRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dry_run",
+          "total_rows",
+          "valid_rows",
+          "error_rows"
+        ],
+        "title": "MetadataImportSummary"
+      },
+      "PublicSettingsRead": {
+        "properties": {
+          "home_slideshow_image_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Home Slideshow Image Ids"
+          },
+          "home_slideshow_images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageSummary"
+            },
+            "type": "array",
+            "title": "Home Slideshow Images"
+          },
+          "home_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Hero Image Id"
+          },
+          "home_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "works_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Works Hero Image Id"
+          },
+          "works_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "characters_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Characters Hero Image Id"
+          },
+          "characters_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ratings_hero_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratings Hero Image Id"
+          },
+          "ratings_hero_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PublicSettingsRead"
+      },
+      "SearchResponse": {
+        "properties": {
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageSummary"
+            },
+            "type": "array",
+            "title": "Images"
+          },
+          "works": {
+            "items": {
+              "$ref": "#/components/schemas/WorkRead"
+            },
+            "type": "array",
+            "title": "Works"
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/CharacterRead"
+            },
+            "type": "array",
+            "title": "Characters"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/TagRead"
+            },
+            "type": "array",
+            "title": "Tags"
+          }
+        },
+        "type": "object",
+        "required": [
+          "images",
+          "works",
+          "characters",
+          "tags"
+        ],
+        "title": "SearchResponse"
+      },
+      "StatsResponse": {
+        "properties": {
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
+          },
+          "public_image_count": {
+            "type": "integer",
+            "title": "Public Image Count"
+          },
+          "work_count": {
+            "type": "integer",
+            "title": "Work Count"
+          },
+          "character_count": {
+            "type": "integer",
+            "title": "Character Count"
+          },
+          "total_file_size": {
+            "type": "integer",
+            "title": "Total File Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_count",
+          "public_image_count",
+          "work_count",
+          "character_count",
+          "total_file_size"
+        ],
+        "title": "StatsResponse"
+      },
+      "TagCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "pattern": "^(general|artist|style|clothing|scene|meta)$",
+            "title": "Type",
+            "default": "general"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TagCreate"
+      },
+      "TagDetail": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "pattern": "^(general|artist|style|clothing|scene|meta)$",
+            "title": "Type",
+            "default": "general"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageSummary"
+            },
+            "type": "array",
+            "title": "Images",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TagDetail"
+      },
+      "TagListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TagRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "TagListResponse"
+      },
+      "TagRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "pattern": "^(general|artist|style|clothing|scene|meta)$",
+            "title": "Type",
+            "default": "general"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TagRead"
+      },
+      "TagSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
+        "title": "TagSummary"
+      },
+      "TagUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(general|artist|style|clothing|scene|meta)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          }
+        },
+        "type": "object",
+        "title": "TagUpdate"
+      },
+      "UploadDuplicateCheckItem": {
+        "properties": {
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "duplicate": {
+            "type": "boolean",
+            "title": "Duplicate"
+          },
+          "duplicate_in_batch": {
+            "type": "boolean",
+            "title": "Duplicate In Batch"
+          },
+          "existing_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "sha256",
+          "duplicate",
+          "duplicate_in_batch"
+        ],
+        "title": "UploadDuplicateCheckItem"
+      },
+      "UploadDuplicateCheckRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UploadDuplicateCheckRequestItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "UploadDuplicateCheckRequest"
+      },
+      "UploadDuplicateCheckRequestItem": {
+        "properties": {
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sha256"
+        ],
+        "title": "UploadDuplicateCheckRequestItem"
+      },
+      "UploadDuplicateCheckResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UploadDuplicateCheckItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "UploadDuplicateCheckResponse"
+      },
+      "UploadTaskCreateResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UploadTaskRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "UploadTaskCreateResponse"
+      },
+      "UploadTaskListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UploadTaskRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "UploadTaskListResponse"
+      },
+      "UploadTaskRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
+          "file_size": {
+            "type": "integer",
+            "title": "File Size"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id"
+          },
+          "duplicate": {
+            "type": "boolean",
+            "title": "Duplicate"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "file_size",
+          "duplicate",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "UploadTaskRead"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WorkCharacterSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "work_id": {
+            "type": "integer",
+            "title": "Work Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "avatar_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Image Id"
+          },
+          "work": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatar_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "work_id",
+          "name"
+        ],
+        "title": "WorkCharacterSummary"
+      },
+      "WorkCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "cover_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Id"
+          },
+          "backdrop_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Image Id"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "production_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Year"
+          },
+          "run_time_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Time Minutes"
+          },
+          "community_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Rating"
+          },
+          "content_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Rating"
+          },
+          "genres": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genres"
+          },
+          "studios": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studios"
+          },
+          "official_site": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Official Site"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "WorkCreate"
+      },
+      "WorkDetail": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "cover_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Id"
+          },
+          "backdrop_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Image Id"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "production_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Year"
+          },
+          "run_time_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Time Minutes"
+          },
+          "community_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Rating"
+          },
+          "content_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Rating"
+          },
+          "genres": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genres"
+          },
+          "studios": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studios"
+          },
+          "official_site": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Official Site"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "cover_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "backdrop_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/WorkCharacterSummary"
+            },
+            "type": "array",
+            "title": "Characters",
+            "default": []
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageSummary"
+            },
+            "type": "array",
+            "title": "Images",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkDetail"
+      },
+      "WorkListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "WorkListResponse"
+      },
+      "WorkRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "cover_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Id"
+          },
+          "backdrop_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Image Id"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "production_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Year"
+          },
+          "run_time_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Time Minutes"
+          },
+          "community_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Rating"
+          },
+          "content_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Rating"
+          },
+          "genres": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genres"
+          },
+          "studios": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studios"
+          },
+          "official_site": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Official Site"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "cover_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "backdrop_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkRead"
+      },
+      "WorkSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "cover_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Id"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "WorkSummary"
+      },
+      "WorkUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "aliases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "cover_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Id"
+          },
+          "backdrop_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Image Id"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "production_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Year"
+          },
+          "run_time_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Time Minutes"
+          },
+          "community_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Rating"
+          },
+          "content_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Rating"
+          },
+          "genres": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genres"
+          },
+          "studios": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studios"
+          },
+          "official_site": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Official Site"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          }
+        },
+        "type": "object",
+        "title": "WorkUpdate"
+      }
+    },
+    "securitySchemes": {
+      "OperationsApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "AGMS_API_KEY",
+        "description": "通过 `AGMS_API_KEYS` 配置的运维 API Key。"
+      },
+      "AdminSessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "agms_admin_session",
+        "description": "浏览器管理员会话 Cookie。"
+      },
+      "CsrfTokenCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "agms_admin_csrf",
+        "description": "管理员会话同时签发的 CSRF Cookie。"
+      },
+      "CsrfTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "使用 Cookie 会话调用非安全方法时，必须与 CSRF Cookie 一致。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "auth",
+      "description": "管理员登录、退出和当前账号检查。"
+    },
+    {
+      "name": "install",
+      "description": "首次部署状态检查与初始化。"
+    },
+    {
+      "name": "images",
+      "description": "图片列表、上传、预览、详情、收藏和批量维护。"
+    },
+    {
+      "name": "upload-tasks",
+      "description": "高并发批量上传队列与重复文件预检。"
+    },
+    {
+      "name": "imports",
+      "description": "CSV、JSON、XLSX、XLSM 元数据导入模板与执行接口。"
+    },
+    {
+      "name": "works",
+      "description": "作品资料、详情页、封面图与背景图绑定。"
+    },
+    {
+      "name": "characters",
+      "description": "角色资料、头像绑定与作品关系。"
+    },
+    {
+      "name": "tags",
+      "description": "为兼容旧数据保留的标签接口。"
+    },
+    {
+      "name": "search",
+      "description": "前台图片、作品和角色的全库搜索。"
+    },
+    {
+      "name": "stats",
+      "description": "后台首页统计数据。"
+    },
+    {
+      "name": "settings",
+      "description": "后台偏好、前台首页设置和登录密钥轮换。"
+    },
+    {
+      "name": "system",
+      "description": "部署诊断、存储与编解码健康检查。"
+    },
+    {
+      "name": "storage",
+      "description": "带权限检查的存储文件访问。"
+    },
+    {
+      "name": "health",
+      "description": "轻量存活检查接口。"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=Anime Gallery Backend
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/anime-gallery/backend
+EnvironmentFile=/opt/anime-gallery/.env
+ExecStart=/opt/anime-gallery/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
+

@@ -277,6 +277,8 @@ sudo systemctl reload nginx
 
 把 `gallery.example.com` 改成你的域名。生产环境建议加 HTTPS，并在 `/admin` 前加登录或反向代理访问控制。
 
+如果站点套了阿里云 ESA/CDN，源站应把 ESA 注入的真实客户端 IP 显式传给后端。项目示例 Nginx 配置会优先使用 `ali-real-client-ip`，兼容 `ali-cdn-real-ip` 和 `true-client-ip`，并回退到 `$remote_addr`。生产环境还应在云防火墙或安全组限制源站直连，只允许 CDN/ESA 回源或增加回源鉴权头，避免外部请求伪造真实 IP 头。
+
 ### 6.7 环境变量
 
 `.env.example` 里列出了主要配置项，至少应关注：
@@ -312,7 +314,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 - 后台登录增加了基于来源 IP 的基础限流，默认 5 分钟窗口内最多 8 次失败尝试。
 - 当前限流状态保存在后端进程内存中，适合本地和单进程部署；如果生产环境使用多进程、多实例或反向代理集群，建议改为 Redis 等共享计数器。
-- 如部署在 Nginx/Caddy 等反向代理之后，需要正确传递真实客户端 IP，并限制外部伪造 `X-Forwarded-For`，否则基于 IP 的限流会失真。
+- 如部署在 Nginx/Caddy/ESA/CDN 等反向代理之后，需要正确传递真实客户端 IP。阿里云 ESA 场景优先使用 `ali-real-client-ip`，并限制源站直连或配置回源鉴权头，避免外部请求伪造真实 IP 头，否则基于 IP 的限流会失真。
 - 如果使用 `/install` 安装向导，`AGMS_AUTH_SECRET` 会自动生成；如果手工维护 `.env`，务必修改管理员账号、密码和 `AGMS_AUTH_SECRET`。密钥长度至少 32 个字符，不能使用示例占位符；更换密钥会让旧后台会话立即失效。
 - 生产环境建议只放行前台域名到 `cors_origins`，不要保留开发环境的 `localhost:5173`。
 

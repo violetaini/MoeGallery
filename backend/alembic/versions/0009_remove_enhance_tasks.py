@@ -9,6 +9,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import inspect
 
 revision: str = "0009_remove_enhance_tasks"
 down_revision: str | None = "0008_image_enhancement_tasks"
@@ -17,6 +18,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if not inspect(bind).has_table("image_enhancement_tasks"):
+        return
+    if bind.dialect.name in {"mysql", "mariadb"}:
+        op.drop_table("image_enhancement_tasks")
+        return
     op.drop_index(op.f("ix_image_enhancement_tasks_status"), table_name="image_enhancement_tasks")
     op.drop_index(op.f("ix_image_enhancement_tasks_source_image_id"), table_name="image_enhancement_tasks")
     op.drop_index(op.f("ix_image_enhancement_tasks_result_image_id"), table_name="image_enhancement_tasks")

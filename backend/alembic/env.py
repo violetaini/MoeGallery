@@ -1,7 +1,7 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, inspect, pool, text
 
 from app.config import settings
 from app.database import Base
@@ -16,6 +16,29 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+ALEMBIC_VERSION_LENGTH = 128
+
+
+def prepare_mysql_version_table(connection) -> None:  # noqa: ANN001
+    if connection.dialect.name not in {"mysql", "mariadb"}:
+        return
+    inspector = inspect(connection)
+    if inspector.has_table("alembic_version"):
+        connection.execute(
+            text(
+                "ALTER TABLE alembic_version "
+                f"MODIFY COLUMN version_num VARCHAR({ALEMBIC_VERSION_LENGTH}) NOT NULL"
+            )
+        )
+        return
+    connection.execute(
+        text(
+            "CREATE TABLE alembic_version ("
+            f"version_num VARCHAR({ALEMBIC_VERSION_LENGTH}) NOT NULL, "
+            "PRIMARY KEY (version_num)"
+            ")"
+        )
+    )
 
 
 def run_migrations_offline() -> None:
@@ -37,6 +60,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        prepare_mysql_version_table(connection)
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()

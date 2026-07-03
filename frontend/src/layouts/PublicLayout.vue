@@ -1,9 +1,10 @@
 <script setup>
 import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Search, Setting } from '@element-plus/icons-vue'
 import { useThemeStore } from '../stores/theme'
 
+const route = useRoute()
 const router = useRouter()
 const theme = useThemeStore()
 
@@ -16,7 +17,7 @@ function submitSearch(value) {
 </script>
 
 <template>
-  <div class="app-shell public-shell">
+  <div class="app-shell public-shell" :class="{ 'public-shell--home': route.name === 'home' }">
     <header class="top-nav">
       <RouterLink class="brand" to="/">
         <img class="brand-avatar" src="/avatar.webp" alt="Anime Gallery" />
@@ -43,7 +44,7 @@ function submitSearch(value) {
         <el-button class="nav-entry-button" :icon="Setting" @click="$router.push('/admin')">后台入口</el-button>
       </div>
     </header>
-    <main class="page-wrap">
+    <main class="page-wrap" :class="{ 'page-wrap--home': route.name === 'home' }">
       <RouterView v-slot="{ Component, route: viewRoute }">
         <Transition name="page-shell" mode="out-in">
           <div :key="viewRoute.fullPath" class="route-view" :class="{ 'route-view--home': viewRoute.name === 'home' }">

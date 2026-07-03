@@ -67,6 +67,18 @@ a {
   min-height: 100vh;
 }
 
+.public-shell {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+}
+
+.public-shell--home {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .top-nav {
   position: sticky;
   top: 0;
@@ -187,6 +199,13 @@ a {
   padding: 0 0 64px;
 }
 
+.page-wrap--home {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
 .route-view {
   width: min(1440px, calc(100% - 40px));
   margin: 0 auto;
@@ -196,6 +215,8 @@ a {
 .route-view--home {
   width: 100%;
   max-width: none;
+  height: 100%;
+  min-height: 0;
   padding: 0;
 }
 
@@ -3815,7 +3836,8 @@ body {
   --home-slideshow-image: url("/hero/gallery-bg.jpg");
   --home-progress-duration: 5600ms;
   position: relative;
-  min-height: max(var(--home-min-stage-height), calc(100vh - 82px));
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   border: 0;
   border-radius: 0;
@@ -3904,7 +3926,9 @@ body {
   grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
   gap: clamp(30px, 5vw, 72px);
   align-items: center;
-  min-height: inherit;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
   padding: clamp(34px, 5vw, 70px) clamp(28px, 5vw, 72px) 164px;
 }
 

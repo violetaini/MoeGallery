@@ -96,6 +96,18 @@ class LoginRateLimitTests(unittest.TestCase):
 
         self.assertEqual(auth_api._client_ip(request), "8.8.8.8")
 
+    def test_trusted_proxy_prefers_esa_real_client_ip(self):
+        request = _FakeRequest(
+            headers={
+                "ali-real-client-ip": "1.1.1.1",
+                "x-forwarded-for": "1.1.1.1, 8.8.8.8",
+                "x-real-ip": "8.8.8.8",
+            },
+            client_host="127.0.0.1",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "1.1.1.1")
+
     def test_untrusted_peer_cannot_spoof_forwarded_ip(self):
         request = _FakeRequest(
             headers={"x-forwarded-for": "1.1.1.1"},

@@ -22,6 +22,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _login_attempts: dict[str, list[int]] = {}
 _login_attempts_lock = threading.Lock()
 _MAX_LOGIN_RATE_LIMIT_KEYS = 4096
+_TRUSTED_CLIENT_IP_HEADERS = (
+    "ali-real-client-ip",
+    "ali-cdn-real-ip",
+    "true-client-ip",
+)
 
 
 def _parse_ip(value: str | None) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
@@ -53,6 +58,10 @@ def _client_ip(request: Request) -> str:
     peer = _peer_host(request)
     peer_ip = _parse_ip(peer)
     if _peer_can_set_forwarded_headers(request):
+        for header_name in _TRUSTED_CLIENT_IP_HEADERS:
+            header_ip = _parse_ip(request.headers.get(header_name))
+            if header_ip:
+                return str(header_ip)
         forwarded = request.headers.get("x-forwarded-for", "")
         for raw_part in reversed(forwarded.split(",")):
             forwarded_ip = _parse_ip(raw_part)

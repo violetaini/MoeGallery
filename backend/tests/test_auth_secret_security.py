@@ -15,10 +15,22 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app import auth
+from app.api import auth as auth_api
 from app.config import generate_api_key, generate_auth_secret, is_weak_auth_secret, settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import AdminSession
+
+
+class _FakeClient:
+    def __init__(self, host: str):
+        self.host = host
+
+
+class _FakeRequest:
+    def __init__(self, headers: dict[str, str] | None = None, client_host: str = "127.0.0.1"):
+        self.headers = headers or {}
+        self.client = _FakeClient(client_host)
 
 
 class AuthSecretSecurityTests(unittest.TestCase):
@@ -61,6 +73,58 @@ class AuthSecretSecurityTests(unittest.TestCase):
 
         with self.assertRaises(HTTPException):
             auth.verify_access_token(token)
+
+
+class LoginRateLimitTests(unittest.TestCase):
+    def setUp(self):
+        self.original_max_attempts = settings.login_rate_limit_max_attempts
+        self.original_window_seconds = settings.login_rate_limit_window_seconds
+        settings.login_rate_limit_max_attempts = 2
+        settings.login_rate_limit_window_seconds = 300
+        auth_api._login_attempts.clear()
+
+    def tearDown(self):
+        settings.login_rate_limit_max_attempts = self.original_max_attempts
+        settings.login_rate_limit_window_seconds = self.original_window_seconds
+        auth_api._login_attempts.clear()
+
+    def test_trusted_proxy_uses_rightmost_forwarded_ip(self):
+        request = _FakeRequest(
+            headers={"x-forwarded-for": "9.9.9.9, 8.8.8.8"},
+            client_host="127.0.0.1",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "8.8.8.8")
+
+    def test_untrusted_peer_cannot_spoof_forwarded_ip(self):
+        request = _FakeRequest(
+            headers={"x-forwarded-for": "1.1.1.1"},
+            client_host="9.9.9.9",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "9.9.9.9")
+
+    def test_rate_limit_applies_to_username_across_ips(self):
+        for ip in ("1.1.1.1", "8.8.8.8"):
+            request = _FakeRequest(headers={"x-forwarded-for": ip})
+            auth_api._enforce_login_rate_limit(request, "Admin")
+            auth_api._record_login_failure(request, "Admin")
+
+        blocked = _FakeRequest(headers={"x-forwarded-for": "9.9.9.9"})
+        with self.assertRaises(HTTPException) as raised:
+            auth_api._enforce_login_rate_limit(blocked, " admin ")
+        self.assertEqual(raised.exception.status_code, 429)
+
+    def test_rate_limit_applies_to_real_ip_when_forwarded_prefix_changes(self):
+        for index, spoofed_ip in enumerate(("9.9.9.9", "8.8.8.8")):
+            request = _FakeRequest(headers={"x-forwarded-for": f"{spoofed_ip}, 1.1.1.1"})
+            auth_api._enforce_login_rate_limit(request, f"probe-{index}")
+            auth_api._record_login_failure(request, f"probe-{index}")
+
+        blocked = _FakeRequest(headers={"x-forwarded-for": "7.7.7.7, 1.1.1.1"})
+        with self.assertRaises(HTTPException) as raised:
+            auth_api._enforce_login_rate_limit(blocked, "another-probe")
+        self.assertEqual(raised.exception.status_code, 429)
 
 
 class CookieSessionTests(unittest.TestCase):

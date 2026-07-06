@@ -2448,13 +2448,15 @@ a {
   display: grid;
   grid-template-columns: minmax(260px, 0.35fr) minmax(0, 1fr);
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .update-task-list {
   display: grid;
   gap: 8px;
+  align-content: start;
   min-width: 0;
+  min-height: 420px;
   padding: 14px;
 }
 
@@ -2503,7 +2505,9 @@ a {
 .update-task-detail {
   display: grid;
   gap: 14px;
+  align-content: start;
   min-width: 0;
+  min-height: 420px;
   padding: 16px;
 }
 
@@ -2514,8 +2518,8 @@ a {
 }
 
 .update-task-log {
-  min-height: 280px;
-  max-height: 460px;
+  min-height: 0;
+  max-height: 420px;
   margin: 0;
   overflow: auto;
   padding: 14px;

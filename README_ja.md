@@ -246,6 +246,24 @@ sudo ./venv/bin/pip install -r backend/requirements.txt
 
 その後、上記の手順で systemd サービスと Nginx 設定を有効化し、`/install` を開いてデータベース、管理者、秘密鍵の初期化を Web インストーラーで完了します。既存環境を更新する場合は、事前に `.env`、`storage/`、データベースをバックアップしてください。
 
+## アップグレード
+
+既存デプロイでは、同梱のアップグレードスクリプトを使用できます。
+
+```bash
+sudo bash /opt/anime-gallery/scripts/upgrade_release.sh /tmp/MoeGallery-vX.Y.Z.tar.gz
+```
+
+このスクリプトはタイムスタンプ付きバックアップを作成し、サービスを停止し、アプリケーションファイルのみを置き換え、`.env`、`installed.lock`、`storage/`、データベースファイルを保持し、Python 依存関係を更新し、Alembic マイグレーションを実行し、サービスを再起動して `/api/health` を確認します。
+
+アップグレードせずバックアップだけを作成する場合:
+
+```bash
+sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
+```
+
+バックアップは `/opt/anime-gallery/backups/upgrade-YYYYmmdd-HHMMSS/` に保存されます。MySQL は `mysqldump --single-transaction`、SQLite は sqlite backup API を使用します。
+
 ## Release 自動化
 
 このリポジトリは `.github/workflows/release.yml` により GitHub Releases の自動発行に対応しています。

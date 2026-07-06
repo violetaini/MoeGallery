@@ -246,6 +246,24 @@ sudo ./venv/bin/pip install -r backend/requirements.txt
 
 然後按上面的方式安裝 systemd 服務和 Nginx 配置，打開 `/install`，在網頁安裝器裡完成資料庫、管理員和密鑰初始化。已有部署升級前應先備份 `.env`、`storage/` 和資料庫。
 
+## 升級
+
+已有部署可以使用包內升級腳本：
+
+```bash
+sudo bash /opt/anime-gallery/scripts/upgrade_release.sh /tmp/MoeGallery-vX.Y.Z.tar.gz
+```
+
+腳本會建立帶時間戳的備份、停止服務、只替換程式檔案、保留 `.env`、`installed.lock`、`storage/` 和資料庫檔案、更新 Python 依賴、執行 Alembic 遷移、重啟服務，並檢查 `/api/health`。
+
+只備份不升級：
+
+```bash
+sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
+```
+
+備份會保存到 `/opt/anime-gallery/backups/upgrade-YYYYmmdd-HHMMSS/`。MySQL 使用 `mysqldump --single-transaction`，SQLite 使用 sqlite backup API。
+
 ## 自動 Release
 
 倉庫已透過 `.github/workflows/release.yml` 支援自動發布 GitHub Releases。

@@ -1,21 +1,31 @@
+import json
+import re
 import shutil
 import subprocess
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Annotated
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session
 from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session
 
 from app.auth import require_admin
-from app.config import auth_secret_health, settings
+from app.config import ROOT_DIR, auth_secret_health, settings
 from app.database import engine, get_db
 from app.models import Image
 from app.services.app_setting_service import get_upload_claim_batch_size, get_upload_worker_count
 from app.utils import image_process
 
 router = APIRouter(prefix="/system", tags=["system"])
+LATEST_RELEASE_URL = "https://api.github.com/repos/violetaini/MoeGallery/releases/latest"
+LATEST_RELEASE_CACHE_SECONDS = 30 * 60
+_latest_release_cache: dict[str, object] = {"checked_at": 0.0, "data": None}
 
 
 def _dir_stats(path: Path) -> dict:
@@ -81,12 +91,107 @@ def _database_info(db: Session) -> dict:
     return info
 
 
+def _current_app_version() -> str:
+    version_file = ROOT_DIR / "VERSION"
+    if version_file.exists():
+        try:
+            version = version_file.read_text(encoding="utf-8").strip()
+            if version:
+                return version
+        except OSError:
+            pass
+    return settings.app_version
+
+
+def _parse_semver(value: str | None) -> tuple[int, int, int] | None:
+    if not value:
+        return None
+    match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", value.strip(), re.IGNORECASE)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _latest_release_info() -> dict:
+    now = time.time()
+    cached_data = _latest_release_cache.get("data")
+    if cached_data and now - float(_latest_release_cache.get("checked_at") or 0) < LATEST_RELEASE_CACHE_SECONDS:
+        return dict(cached_data)
+    request = urllib.request.Request(
+        LATEST_RELEASE_URL,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "MoeGallery-system-health",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        data = {
+            "available": True,
+            "version": payload.get("tag_name") or "",
+            "url": payload.get("html_url") or "",
+            "checked_at": int(now),
+            "message": "ok",
+        }
+    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        data = {
+            "available": False,
+            "version": "",
+            "url": "",
+            "checked_at": int(now),
+            "message": str(exc),
+        }
+    _latest_release_cache["checked_at"] = now
+    _latest_release_cache["data"] = data
+    return data
+
+
+def _migration_info(db: Session) -> dict:
+    current = ""
+    try:
+        current = db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar() or ""
+    except Exception:
+        current = ""
+    latest_heads: list[str] = []
+    try:
+        alembic_config = Config(str(ROOT_DIR / "backend" / "alembic.ini"))
+        alembic_config.set_main_option("script_location", str(ROOT_DIR / "backend" / "alembic"))
+        latest_heads = list(ScriptDirectory.from_config(alembic_config).get_heads())
+    except Exception:
+        latest_heads = []
+    up_to_date = bool(current and latest_heads and current in latest_heads)
+    return {
+        "current": current,
+        "latest": latest_heads[0] if len(latest_heads) == 1 else ", ".join(latest_heads),
+        "up_to_date": up_to_date,
+        "message": "database schema is up to date" if up_to_date else "database schema migration is pending or unknown",
+    }
+
+
+def _application_info(db: Session) -> dict:
+    current_version = _current_app_version()
+    latest_release = _latest_release_info()
+    current_semver = _parse_semver(current_version)
+    latest_semver = _parse_semver(latest_release.get("version") if latest_release.get("available") else "")
+    update_available = bool(current_semver and latest_semver and latest_semver > current_semver)
+    migration = _migration_info(db)
+    return {
+        "current_version": current_version,
+        "configured_version": settings.app_version,
+        "latest_release": latest_release,
+        "update_available": update_available,
+        "migration": migration,
+    }
+
+
 @router.get("/health")
 def system_health(
     admin: Annotated[dict, Depends(require_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
     database_info = _database_info(db)
+    application_info = _application_info(db)
     ffmpeg = _ffmpeg_info()
     imagecodecs_available = image_process.imagecodecs is not None
     jpegxr_available = bool(
@@ -100,6 +205,7 @@ def system_health(
         original_stats["file_count"] == preview_stats["file_count"] == thumbnail_stats["file_count"] == image_count
     )
     return {
+        "application": application_info,
         "database": {
             **database_info,
         },

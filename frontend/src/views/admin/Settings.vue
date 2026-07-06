@@ -121,6 +121,9 @@ const imageFileCapacity = computed(() => {
 const healthCards = computed(() => {
   const data = health.value
   if (!data) return []
+  const application = data.application || {}
+  const latestRelease = application.latest_release || {}
+  const migration = application.migration || {}
   const original = storageStats('original')
   const preview = storageStats('preview')
   const thumbnail = storageStats('thumbnail')
@@ -146,7 +149,21 @@ const healthCards = computed(() => {
     ? `${missingFileDirs.join('、')}目录缺失`
     : fileHealth.message
   const filesReady = missingFileDirs.length === 0 && fileHealth.complete
+  const migrationReady = migration.up_to_date !== false
+  const versionDetail = application.update_available
+    ? `最新 ${latestRelease.version || '未知'} 可用`
+    : latestRelease.available
+      ? `最新 ${latestRelease.version || '未知'} · 迁移 ${migrationReady ? '已同步' : '待执行'}`
+      : `迁移 ${migrationReady ? '已同步' : '待执行'}`
+  const imageCapabilityReady = jxr.available && hdr.available
   return [
+    {
+      key: 'version',
+      label: '程序版本',
+      value: application.current_version || '未知',
+      detail: versionDetail,
+      tone: application.update_available || !migrationReady ? 'warning' : 'ok'
+    },
     {
       key: 'database',
       label: '数据库',
@@ -176,18 +193,11 @@ const healthCards = computed(() => {
       tone: ffmpeg.available ? 'ok' : 'danger'
     },
     {
-      key: 'jxr',
-      label: 'JPEG XR',
-      value: jxr.available ? '可用' : '缺失',
-      detail: jxr.available ? 'JXR 解码可用' : '缺少 JXR 解码支持',
-      tone: jxr.available ? 'ok' : 'warning'
-    },
-    {
-      key: 'hdr',
-      label: 'HDR AVIF',
-      value: hdr.available ? '可用' : '缺失',
-      detail: 'mdcv / clli 后处理',
-      tone: hdr.available ? 'ok' : 'warning'
+      key: 'image-capabilities',
+      label: '图像能力',
+      value: imageCapabilityReady ? '完整' : '需检查',
+      detail: `JXR ${jxr.available ? '可用' : '缺失'} · HDR ${hdr.available ? '可用' : '缺失'}`,
+      tone: imageCapabilityReady ? 'ok' : 'warning'
     },
     {
       key: 'auth-secret',

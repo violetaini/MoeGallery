@@ -246,6 +246,24 @@ sudo ./venv/bin/pip install -r backend/requirements.txt
 
 Then install the systemd service and Nginx config as shown above, open `/install`, and complete database, administrator, and secret initialization in the web installer. Existing deployments should back up `.env`, `storage/`, and the database before replacing application files.
 
+## Upgrading
+
+Use the bundled upgrade script for an existing deployment:
+
+```bash
+sudo bash /opt/anime-gallery/scripts/upgrade_release.sh /tmp/MoeGallery-vX.Y.Z.tar.gz
+```
+
+The script creates a timestamped backup, stops the service, replaces only application files, keeps `.env`, `installed.lock`, `storage/`, and database files, updates Python dependencies, runs Alembic migrations, restarts the service, and checks `/api/health`.
+
+Create only a backup without upgrading:
+
+```bash
+sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
+```
+
+Backups are stored in `/opt/anime-gallery/backups/upgrade-YYYYmmdd-HHMMSS/`. For MySQL, the backup script uses `mysqldump --single-transaction`; for SQLite, it uses the sqlite backup API.
+
 ## Release Automation
 
 This repository publishes GitHub Releases automatically through `.github/workflows/release.yml`.

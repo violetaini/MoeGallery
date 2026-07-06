@@ -1164,7 +1164,10 @@ a {
 
 .admin-brand {
   position: relative;
+  display: flex;
   height: var(--admin-chrome-height);
+  width: 100%;
+  box-sizing: border-box;
   padding: 0 16px;
   border-bottom: 1px solid rgba(232, 224, 250, 0.48);
   background: var(--admin-chrome-surface);
@@ -1204,7 +1207,7 @@ a {
   height: var(--admin-chrome-height);
   min-height: var(--admin-chrome-height);
   margin-left: 0;
-  padding: 0 20px 0 0;
+  padding: 0 20px;
   border-bottom: 1px solid rgba(232, 224, 250, 0.48);
   background: var(--admin-chrome-surface);
   backdrop-filter: blur(18px);

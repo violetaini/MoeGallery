@@ -118,7 +118,7 @@ def auth_secret_health(value: str) -> dict:
 
 class Settings(BaseSettings):
     app_name: str = "Anime Gallery Media Server"
-    app_version: str = "0.1.3"
+    app_version: str = "0.1.4"
     api_prefix: str = "/api"
     database_url: str = f"sqlite:///{(ROOT_DIR / 'backend' / 'anime_gallery.db').as_posix()}"
     storage_path: Path = ROOT_DIR / "storage"

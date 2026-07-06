@@ -77,7 +77,7 @@ onMounted(refreshAdminProfile)
       aria-label="关闭管理菜单"
       @click="mobileMenuOpen = false"
     ></button>
-    <el-aside width="232px" class="admin-aside">
+    <el-aside width="216px" class="admin-aside">
       <RouterLink class="admin-brand" to="/">
         <img class="brand-avatar" :src="avatarUrl" alt="Anime Gallery" />
         <span class="brand-copy">

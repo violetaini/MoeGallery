@@ -64,16 +64,6 @@ jobs:
       - name: Package release archives
         run: python scripts/package_release.py --version "${{ steps.meta.outputs.version }}" --output-dir dist-release
 
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MoeGallery-${{ steps.meta.outputs.version }}
-          path: |
-            dist-release/*.zip
-            dist-release/*.tar.gz
-            dist-release/SHA256SUMS.txt
-          if-no-files-found: error
-
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

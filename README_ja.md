@@ -173,7 +173,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ## デプロイ
 
-ディレクトリを作成し、バックエンド依存関係をインストールします。
+ディレクトリを作成し、バックエンド依存関係をインストールし、フロントエンドをビルドします。
 
 ```bash
 sudo mkdir -p /opt/anime-gallery
@@ -183,31 +183,6 @@ sudo bash /opt/anime-gallery/scripts/create_linux_dirs.sh
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo /opt/anime-gallery/venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
-```
-
-本番 MySQL の例:
-
-```sql
-CREATE DATABASE anime_gallery
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
-GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
-FLUSH PRIVILEGES;
-```
-
-`AGMS_DATABASE_URL` を設定します。
-
-```env
-AGMS_DATABASE_URL=mysql+pymysql://anime_gallery:change-this-db-password@127.0.0.1:3306/anime_gallery?charset=utf8mb4
-```
-
-マイグレーションを実行し、フロントエンドをビルドします。
-
-```bash
-cd /opt/anime-gallery/backend
-sudo -u www-data /opt/anime-gallery/venv/bin/alembic upgrade head
 
 cd /opt/anime-gallery/frontend
 npm install
@@ -228,6 +203,23 @@ sudo systemctl reload nginx
 ```
 
 Nginx 例の `gallery.example.com` を自分のドメインに変更し、本番環境では HTTPS を有効にしてください。
+
+クリーンデプロイでは、ブラウザーで `/install` を開きます。インストーラーが SQLite または MySQL の設定、`.env` の書き込み、マイグレーション、管理者アカウント初期化、`AGMS_AUTH_SECRET` 生成、`installed.lock` 作成を行います。
+
+インストーラーで MySQL を選択する場合は、先に空のデータベースと専用アカウントを作成してください。
+
+```sql
+CREATE DATABASE anime_gallery
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
+GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
+FLUSH PRIVILEGES;
+```
+
+MySQL のホスト、ポート、データベース名、ユーザー名、パスワードはインストールページで入力します。インストーラーが再起動を求めたら、バックエンドサービスを再起動してください。
+
+手動で `.env` を編集し Alembic マイグレーションを実行する必要があるのは、インストーラーを意図的に使わない場合、または既存環境をアップグレードする場合だけです。
 
 ## Release パッケージでのデプロイ
 
@@ -250,10 +242,9 @@ sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
 ```
 
-その後、`.env` を編集し、マイグレーションを実行し、systemd サービスと Nginx 設定を有効化します。既存環境を更新する場合は、事前に `.env`、`storage/`、データベースをバックアップしてください。
+その後、上記の手順で systemd サービスと Nginx 設定を有効化し、`/install` を開いてデータベース、管理者、秘密鍵の初期化を Web インストーラーで完了します。既存環境を更新する場合は、事前に `.env`、`storage/`、データベースをバックアップしてください。
 
 ## Release 自動化
 

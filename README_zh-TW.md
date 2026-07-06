@@ -173,7 +173,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ## 部署
 
-建立目錄並安裝後端依賴：
+建立目錄、安裝後端依賴並建置前端：
 
 ```bash
 sudo mkdir -p /opt/anime-gallery
@@ -183,31 +183,6 @@ sudo bash /opt/anime-gallery/scripts/create_linux_dirs.sh
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo /opt/anime-gallery/venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
-```
-
-生產 MySQL 範例：
-
-```sql
-CREATE DATABASE anime_gallery
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
-GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
-FLUSH PRIVILEGES;
-```
-
-設定 `AGMS_DATABASE_URL`：
-
-```env
-AGMS_DATABASE_URL=mysql+pymysql://anime_gallery:change-this-db-password@127.0.0.1:3306/anime_gallery?charset=utf8mb4
-```
-
-執行遷移並建置前端：
-
-```bash
-cd /opt/anime-gallery/backend
-sudo -u www-data /opt/anime-gallery/venv/bin/alembic upgrade head
 
 cd /opt/anime-gallery/frontend
 npm install
@@ -228,6 +203,23 @@ sudo systemctl reload nginx
 ```
 
 把 Nginx 範例中的 `gallery.example.com` 改成自己的網域，生產環境啟用 HTTPS。
+
+乾淨部署時，打開瀏覽器訪問 `/install`。安裝頁會配置 SQLite 或 MySQL、寫入 `.env`、執行遷移、初始化管理員帳號、產生 `AGMS_AUTH_SECRET`，並建立 `installed.lock`。
+
+如果安裝頁選擇 MySQL，先建立空資料庫和專用帳號：
+
+```sql
+CREATE DATABASE anime_gallery
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
+GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
+FLUSH PRIVILEGES;
+```
+
+然後在安裝頁填寫 MySQL 主機、連接埠、資料庫名、使用者名稱和密碼。安裝頁提示需要重啟時，重啟後端服務即可。
+
+只有明確跳過安裝器，或升級已有部署時，才需要手動編輯 `.env` 和手動執行 Alembic 遷移。
 
 ## Release 包部署
 
@@ -250,10 +242,9 @@ sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
 ```
 
-然後編輯 `.env`、執行遷移、安裝 systemd 服務並啟用 Nginx 配置。已有部署升級前應先備份 `.env`、`storage/` 和資料庫。
+然後按上面的方式安裝 systemd 服務和 Nginx 配置，打開 `/install`，在網頁安裝器裡完成資料庫、管理員和密鑰初始化。已有部署升級前應先備份 `.env`、`storage/` 和資料庫。
 
 ## 自動 Release
 

@@ -173,7 +173,7 @@ After a successful install, the app writes `.env`, runs migrations, initializes 
 
 ## Deployment
 
-Create directories and install backend dependencies:
+Create directories, install backend dependencies, and build the frontend:
 
 ```bash
 sudo mkdir -p /opt/anime-gallery
@@ -183,31 +183,6 @@ sudo bash /opt/anime-gallery/scripts/create_linux_dirs.sh
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo /opt/anime-gallery/venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
-```
-
-For MySQL production deployments:
-
-```sql
-CREATE DATABASE anime_gallery
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
-GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
-FLUSH PRIVILEGES;
-```
-
-Set `AGMS_DATABASE_URL`:
-
-```env
-AGMS_DATABASE_URL=mysql+pymysql://anime_gallery:change-this-db-password@127.0.0.1:3306/anime_gallery?charset=utf8mb4
-```
-
-Run migrations and build the frontend:
-
-```bash
-cd /opt/anime-gallery/backend
-sudo -u www-data /opt/anime-gallery/venv/bin/alembic upgrade head
 
 cd /opt/anime-gallery/frontend
 npm install
@@ -228,6 +203,23 @@ sudo systemctl reload nginx
 ```
 
 Change `gallery.example.com` in the Nginx example to your own domain and enable HTTPS in production.
+
+For a clean deployment, open `/install` in the browser. The installer configures SQLite or MySQL, writes `.env`, runs migrations, initializes the admin account, generates `AGMS_AUTH_SECRET`, and creates `installed.lock`.
+
+If you choose MySQL in the installer, create an empty database and a dedicated account first:
+
+```sql
+CREATE DATABASE anime_gallery
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
+GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
+FLUSH PRIVILEGES;
+```
+
+Enter the MySQL host, port, database name, username, and password on the install page. Restart the backend after the installer reports that a restart is required.
+
+Manual `.env` editing and manual Alembic migration are only needed if you intentionally bypass the installer or upgrade an existing deployment.
 
 ## Release Package Deployment
 
@@ -250,10 +242,9 @@ sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
 ```
 
-Then edit `.env`, run migrations, install the systemd service, and enable the Nginx config as shown above. Existing deployments should back up `.env`, `storage/`, and the database before replacing application files.
+Then install the systemd service and Nginx config as shown above, open `/install`, and complete database, administrator, and secret initialization in the web installer. Existing deployments should back up `.env`, `storage/`, and the database before replacing application files.
 
 ## Release Automation
 

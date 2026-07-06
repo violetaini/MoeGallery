@@ -173,7 +173,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ## 部署
 
-创建目录并安装后端依赖：
+创建目录、安装后端依赖并构建前端：
 
 ```bash
 sudo mkdir -p /opt/anime-gallery
@@ -183,31 +183,6 @@ sudo bash /opt/anime-gallery/scripts/create_linux_dirs.sh
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo /opt/anime-gallery/venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
-```
-
-生产 MySQL 示例：
-
-```sql
-CREATE DATABASE anime_gallery
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
-GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
-FLUSH PRIVILEGES;
-```
-
-设置 `AGMS_DATABASE_URL`：
-
-```env
-AGMS_DATABASE_URL=mysql+pymysql://anime_gallery:change-this-db-password@127.0.0.1:3306/anime_gallery?charset=utf8mb4
-```
-
-执行迁移并构建前端：
-
-```bash
-cd /opt/anime-gallery/backend
-sudo -u www-data /opt/anime-gallery/venv/bin/alembic upgrade head
 
 cd /opt/anime-gallery/frontend
 npm install
@@ -228,6 +203,23 @@ sudo systemctl reload nginx
 ```
 
 把 Nginx 示例中的 `gallery.example.com` 改成自己的域名，生产环境启用 HTTPS。
+
+干净部署时，打开浏览器访问 `/install`。安装页会配置 SQLite 或 MySQL、写入 `.env`、执行迁移、初始化管理员账号、生成 `AGMS_AUTH_SECRET`，并创建 `installed.lock`。
+
+如果安装页选择 MySQL，先创建空数据库和专用账号：
+
+```sql
+CREATE DATABASE anime_gallery
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
+GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
+FLUSH PRIVILEGES;
+```
+
+然后在安装页填写 MySQL 主机、端口、数据库名、用户名和密码。安装页提示需要重启时，重启后端服务即可。
+
+只有明确跳过安装器，或升级已有部署时，才需要手动编辑 `.env` 和手动执行 Alembic 迁移。
 
 ## Release 包部署
 
@@ -250,10 +242,9 @@ sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=
 cd /opt/anime-gallery
 sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r backend/requirements.txt
-sudo cp .env.example .env
 ```
 
-然后编辑 `.env`、执行迁移、安装 systemd 服务并启用 Nginx 配置。已有部署升级前应先备份 `.env`、`storage/` 和数据库。
+然后按上面的方式安装 systemd 服务和 Nginx 配置，打开 `/install`，在网页安装器里完成数据库、管理员和密钥初始化。已有部署升级前应先备份 `.env`、`storage/` 和数据库。
 
 ## 自动 Release
 

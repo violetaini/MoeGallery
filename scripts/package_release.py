@@ -55,9 +55,11 @@ def _write_release_notes(stage_root: Path, version: str) -> None:
                 "cd /opt/anime-gallery",
                 "sudo python3 -m venv venv",
                 "sudo ./venv/bin/pip install -r backend/requirements.txt",
-                "sudo cp .env.example .env",
-                "# edit .env, run migrations, and enable the systemd/Nginx examples",
+                "# enable the systemd/Nginx examples, then open /install",
                 "```",
+                "",
+                "For a clean deployment, configure SQLite/MySQL, the admin account, and the session secret in the web installer.",
+                "Manual `.env` editing is only needed when bypassing the installer or upgrading an existing deployment.",
                 "",
             ]
         ),

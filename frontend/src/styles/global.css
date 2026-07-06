@@ -1132,6 +1132,9 @@ a {
   --admin-chrome-bg:
     linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(250, 246, 255, 0.82)),
     rgba(255, 255, 255, 0.78);
+  --admin-chrome-surface:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(250, 246, 255, 0.9)),
+    #fff;
   min-height: 100vh;
   background:
     radial-gradient(circle at top left, rgba(255, 119, 168, 0.1), transparent 22%),
@@ -1163,7 +1166,8 @@ a {
   position: relative;
   height: var(--admin-chrome-height);
   padding: 0 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.76);
+  border-bottom: 1px solid rgba(232, 224, 250, 0.48);
+  background: var(--admin-chrome-surface);
 }
 
 .admin-brand::after {
@@ -1173,7 +1177,7 @@ a {
   bottom: -1px;
   left: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), var(--accent-3), transparent);
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 26%, var(--accent-2) 64%, var(--accent-3) 100%);
   opacity: 0.7;
 }
 
@@ -1200,8 +1204,8 @@ a {
   height: var(--admin-chrome-height);
   min-height: var(--admin-chrome-height);
   margin-left: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.72);
-  background: var(--admin-chrome-bg);
+  border-bottom: 1px solid rgba(232, 224, 250, 0.48);
+  background: var(--admin-chrome-surface);
   backdrop-filter: blur(18px);
 }
 
@@ -3596,8 +3600,8 @@ body {
 }
 
 .admin-header {
-  border-bottom-color: rgba(255, 255, 255, 0.76);
-  background: var(--admin-chrome-bg);
+  border-bottom-color: rgba(232, 224, 250, 0.48);
+  background: var(--admin-chrome-surface);
   box-shadow: none;
 }
 
@@ -3609,8 +3613,15 @@ body {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), var(--accent-3), transparent);
   opacity: 0.7;
+}
+
+.top-nav::after {
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), var(--accent-3), transparent);
+}
+
+.admin-header::after {
+  background: linear-gradient(90deg, var(--accent-3) 0%, var(--accent-2) 34%, var(--accent-3) 70%, transparent 100%);
 }
 
 .brand-avatar,

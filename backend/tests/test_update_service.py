@@ -16,7 +16,7 @@ from app.auth import require_admin
 from app.database import get_db
 from app.main import app
 from app.services import update_service
-from app.services.release_service import LATEST_RELEASE_URL, build_latest_release_url
+from app.services.release_service import LATEST_RELEASE_URL, build_latest_release_url, build_proxy_url
 
 
 class ReleaseServiceTests(unittest.TestCase):
@@ -33,6 +33,18 @@ class ReleaseServiceTests(unittest.TestCase):
         self.assertIn(
             "https%3A%2F%2Fapi.github.com",
             build_latest_release_url("https://proxy.example.com/?target={url}"),
+        )
+
+    def test_build_proxy_url_supports_release_assets(self):
+        asset_url = "https://github.com/violetaini/MoeGallery/releases/download/v1.0.0/MoeGallery-v1.0.0.tar.gz"
+        self.assertEqual(build_proxy_url("", asset_url), asset_url)
+        self.assertEqual(
+            build_proxy_url("https://gh-proxy.example.com/", asset_url),
+            f"https://gh-proxy.example.com/{asset_url}",
+        )
+        self.assertIn(
+            "https%3A%2F%2Fgithub.com",
+            build_proxy_url("https://proxy.example.com/?target={url}", asset_url),
         )
 
 

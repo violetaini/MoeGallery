@@ -37,22 +37,27 @@ def parse_semver(value: str | None) -> tuple[int, int, int] | None:
     return tuple(int(part) for part in match.groups())
 
 
-def build_latest_release_url(proxy_url: str) -> str:
+def build_proxy_url(proxy_url: str, target_url: str) -> str:
     proxy_url = proxy_url.strip()
     if not proxy_url:
-        return LATEST_RELEASE_URL
+        return target_url
     if "{raw_url}" in proxy_url:
-        return proxy_url.replace("{raw_url}", LATEST_RELEASE_URL)
+        return proxy_url.replace("{raw_url}", target_url)
     if "{url}" in proxy_url:
-        return proxy_url.replace("{url}", urllib.parse.quote(LATEST_RELEASE_URL, safe=""))
-    return f"{proxy_url.rstrip('/')}/{LATEST_RELEASE_URL}"
+        return proxy_url.replace("{url}", urllib.parse.quote(target_url, safe=""))
+    return f"{proxy_url.rstrip('/')}/{target_url}"
 
 
-def _asset_summary(asset: dict[str, Any]) -> dict[str, object]:
+def build_latest_release_url(proxy_url: str) -> str:
+    return build_proxy_url(proxy_url, LATEST_RELEASE_URL)
+
+
+def _asset_summary(asset: dict[str, Any], proxy_url: str = "") -> dict[str, object]:
+    download_url = asset.get("browser_download_url") or ""
     return {
         "name": asset.get("name") or "",
         "size": int(asset.get("size") or 0),
-        "browser_download_url": asset.get("browser_download_url") or "",
+        "browser_download_url": build_proxy_url(proxy_url, download_url) if download_url else "",
     }
 
 
@@ -78,7 +83,7 @@ def latest_release_info(db: Session) -> dict:
             "available": True,
             "version": payload.get("tag_name") or "",
             "url": payload.get("html_url") or "",
-            "assets": [_asset_summary(asset) for asset in payload.get("assets") or []],
+            "assets": [_asset_summary(asset, proxy_url) for asset in payload.get("assets") or []],
             "proxied": bool(proxy_url),
             "checked_at": int(now),
             "message": "ok",

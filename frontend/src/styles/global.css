@@ -1205,7 +1205,7 @@ a {
   height: var(--admin-chrome-height);
   min-height: var(--admin-chrome-height);
   margin-left: 0;
-  padding: 0 20px 0 24px;
+  padding: 0 20px 0 118px;
   border-bottom: 1px solid rgba(232, 224, 250, 0.48);
   background: var(--admin-chrome-surface);
   backdrop-filter: blur(18px);

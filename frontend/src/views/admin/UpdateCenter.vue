@@ -17,10 +17,24 @@ const latestRelease = computed(() => updateInfo.value?.latest_release || {})
 const latestVersion = computed(() => latestRelease.value.version || '未知')
 const currentVersion = computed(() => updateInfo.value?.current_version || '未知')
 const updateAvailable = computed(() => Boolean(updateInfo.value?.update_available))
+const updaterStatus = computed(() => updateInfo.value?.updater_status || {})
 const updaterModeText = computed(() => {
-  if (!updateInfo.value?.updater_available) return '不可用'
+  if (!updaterStatus.value.dry_run_available) return '不可用'
+  if (!updaterStatus.value.available) return '仅校验'
   return updateInfo.value?.updater_mode === 'command' ? '独立服务' : '本地任务'
 })
+const updaterSeverityType = computed(() => {
+  if (updaterStatus.value.severity === 'ok') return 'success'
+  if (updaterStatus.value.severity === 'danger') return 'danger'
+  return 'warning'
+})
+const updaterHint = computed(() => {
+  if (!updateInfo.value) return '等待检查更新环境'
+  const details = [...(updaterStatus.value.issues || []), ...(updaterStatus.value.warnings || [])]
+  return details[0] || updaterStatus.value.message || '更新环境正常'
+})
+const canDryRun = computed(() => Boolean(latestRelease.value.available && updaterStatus.value.dry_run_available && !runningTask.value))
+const canUpgrade = computed(() => Boolean(updateAvailable.value && updaterStatus.value.available && !runningTask.value))
 const statusText = computed(() => {
   if (!updateInfo.value) return '未检查'
   if (!latestRelease.value.available) return '检查失败'
@@ -97,6 +111,14 @@ async function createTask(dryRun) {
     ElMessage.info('当前已经是最新版本')
     return
   }
+  if (dryRun && !updaterStatus.value.dry_run_available) {
+    ElMessage.warning(updaterHint.value)
+    return
+  }
+  if (!dryRun && !updaterStatus.value.available) {
+    ElMessage.warning(`正式更新未就绪：${updaterHint.value}`)
+    return
+  }
   if (!dryRun) {
     await ElMessageBox.confirm(
       '更新会先备份并校验安装包，然后替换程序文件、执行数据库迁移并重启服务。执行期间后台可能短暂断开。',
@@ -166,9 +188,19 @@ onBeforeUnmount(() => {
       <div class="update-summary-card">
         <span>更新执行</span>
         <strong>{{ updaterModeText }}</strong>
-        <small>{{ updateInfo?.updater_mode === 'command' ? '由独立命令接管' : '当前进程启动任务' }}</small>
+        <small>{{ updaterStatus.message || '等待检查' }}</small>
       </div>
     </section>
+
+    <el-alert
+      v-if="updateInfo"
+      class="update-env-alert"
+      :type="updaterSeverityType"
+      :closable="false"
+      show-icon
+      :title="updaterStatus.message || '更新环境检查完成'"
+      :description="updaterHint"
+    />
 
     <section class="update-action-panel">
       <div class="update-action-copy">
@@ -177,14 +209,14 @@ onBeforeUnmount(() => {
       </div>
       <div class="update-action-buttons">
         <el-button :icon="Refresh" :loading="checkLoading || taskLoading" @click="refreshAll">刷新</el-button>
-        <el-button :icon="Download" :loading="starting" :disabled="!latestRelease.available || Boolean(runningTask)" @click="createTask(true)">
+        <el-button :icon="Download" :loading="starting" :disabled="!canDryRun" @click="createTask(true)">
           下载校验
         </el-button>
         <el-button
           type="primary"
           :icon="VideoPlay"
           :loading="starting"
-          :disabled="!updateAvailable || !updateInfo?.updater_available || Boolean(runningTask)"
+          :disabled="!canUpgrade"
           @click="createTask(false)"
         >
           开始更新

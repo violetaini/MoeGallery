@@ -2419,6 +2419,10 @@ a {
   line-height: 1.15;
 }
 
+.update-env-alert {
+  border-radius: 10px;
+}
+
 .update-action-panel {
   display: flex;
   align-items: center;

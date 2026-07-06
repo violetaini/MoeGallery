@@ -25,6 +25,7 @@ class UpdateCheckResponse(BaseModel):
     update_available: bool
     updater_available: bool
     updater_mode: str
+    updater_status: dict = Field(default_factory=dict)
 
 
 class UpdateTaskCreate(BaseModel):

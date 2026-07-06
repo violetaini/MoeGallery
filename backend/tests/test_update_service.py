@@ -72,6 +72,13 @@ class UpdateServiceTests(unittest.TestCase):
         with (
             patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
             patch("app.services.update_service.latest_release_info", return_value=self._fake_release()),
+            patch("app.services.update_service.updater_status", return_value={
+                "available": True,
+                "dry_run_available": True,
+                "issues": [],
+                "warnings": [],
+                "message": "ok",
+            }),
             patch("app.services.update_service.trigger_update_task", return_value=None),
         ):
             task = update_service.create_update_task(None, dry_run=True)
@@ -84,10 +91,33 @@ class UpdateServiceTests(unittest.TestCase):
         with (
             patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
             patch("app.services.update_service.latest_release_info", return_value=self._fake_release()),
+            patch("app.services.update_service.updater_status", return_value={
+                "available": True,
+                "dry_run_available": True,
+                "issues": [],
+                "warnings": [],
+                "message": "ok",
+            }),
             patch("app.services.update_service.trigger_update_task", return_value=None),
         ):
             with self.assertRaises(ValueError):
                 update_service.create_update_task(None, dry_run=True)
+
+    def test_formal_update_requires_ready_updater(self):
+        with (
+            patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
+            patch("app.services.update_service.latest_release_info", return_value=self._fake_release()),
+            patch("app.services.update_service.updater_status", return_value={
+                "available": False,
+                "dry_run_available": True,
+                "issues": [],
+                "warnings": ["未配置独立 updater 服务"],
+                "message": "只能下载校验",
+            }),
+        ):
+            with self.assertRaises(ValueError) as raised:
+                update_service.create_update_task(None, dry_run=False)
+        self.assertIn("正式更新未就绪", str(raised.exception))
 
 
 class UpdateApiTests(unittest.TestCase):
@@ -123,6 +153,7 @@ class UpdateApiTests(unittest.TestCase):
                 "update_available": True,
                 "updater_available": True,
                 "updater_mode": "command",
+                "updater_status": {"available": True, "dry_run_available": True, "message": "独立 updater 服务已配置"},
             },
         ):
             response = self.client.get("/api/updates/check")

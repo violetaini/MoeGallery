@@ -60,16 +60,81 @@ def updater_mode() -> str:
     return "local"
 
 
-def updater_available() -> bool:
-    if settings.update_trigger_command.strip():
-        return True
+def updater_status() -> dict:
     runner = ROOT_DIR / "scripts" / "update_runner.py"
-    return runner.exists()
+    upgrade_script = ROOT_DIR / "scripts" / "upgrade_release.sh"
+    backup_script = ROOT_DIR / "scripts" / "backup_before_upgrade.sh"
+    trigger_command = settings.update_trigger_command.strip()
+    mode = "command" if trigger_command else "local"
+    issues: list[str] = []
+    warnings: list[str] = []
+
+    runner_exists = runner.exists()
+    upgrade_script_exists = upgrade_script.exists()
+    backup_script_exists = backup_script.exists()
+    if not runner_exists:
+        issues.append("缺少 scripts/update_runner.py")
+    if not upgrade_script_exists:
+        issues.append("缺少 scripts/upgrade_release.sh")
+    if not backup_script_exists:
+        issues.append("缺少 scripts/backup_before_upgrade.sh")
+    if not trigger_command:
+        warnings.append("未配置独立 updater 服务，正式更新不建议在生产环境使用")
+    if os.name == "nt":
+        warnings.append("当前是 Windows 环境，只支持下载校验，不支持正式替换运行中的服务")
+
+    dry_run_available = runner_exists
+    production_ready = bool(trigger_command and runner_exists and upgrade_script_exists and backup_script_exists)
+    local_upgrade_available = bool(
+        not trigger_command
+        and os.name != "nt"
+        and runner_exists
+        and upgrade_script_exists
+        and backup_script_exists
+    )
+    available = production_ready or local_upgrade_available
+    if production_ready:
+        message = "独立 updater 服务已配置"
+        severity = "ok"
+    elif local_upgrade_available:
+        message = "本地 updater 可用，但生产建议改用独立服务"
+        severity = "warning"
+    elif dry_run_available:
+        message = "只能下载校验，正式更新未就绪"
+        severity = "warning"
+    else:
+        message = "更新执行器不可用"
+        severity = "danger"
+
+    return {
+        "mode": mode,
+        "available": available,
+        "dry_run_available": dry_run_available,
+        "production_ready": production_ready,
+        "local_upgrade_available": local_upgrade_available,
+        "runner_exists": runner_exists,
+        "upgrade_script_exists": upgrade_script_exists,
+        "backup_script_exists": backup_script_exists,
+        "trigger_configured": bool(trigger_command),
+        "trigger_command": trigger_command,
+        "service_name": settings.update_service_name,
+        "health_url": settings.update_health_url,
+        "os": os.name,
+        "severity": severity,
+        "message": message,
+        "issues": issues,
+        "warnings": warnings,
+    }
+
+
+def updater_available() -> bool:
+    return bool(updater_status()["available"])
 
 
 def check_for_updates(db: Session) -> dict:
     current_version = current_app_version()
     latest_release = latest_release_info(db)
+    status = updater_status()
     return {
         "current_version": current_version,
         "latest_release": latest_release,
@@ -77,8 +142,9 @@ def check_for_updates(db: Session) -> dict:
             current_version,
             latest_release.get("version") if latest_release.get("available") else "",
         ),
-        "updater_available": updater_available(),
-        "updater_mode": updater_mode(),
+        "updater_available": status["available"],
+        "updater_mode": status["mode"],
+        "updater_status": status,
     }
 
 
@@ -155,6 +221,12 @@ def _new_task(
 def create_update_task(db: Session, version: str | None = None, dry_run: bool = False, force: bool = False) -> dict:
     if running_task():
         raise ValueError("已有更新任务正在执行")
+    status = updater_status()
+    if dry_run and not status["dry_run_available"]:
+        raise ValueError("更新下载校验不可用：缺少 scripts/update_runner.py")
+    if not dry_run and not status["available"]:
+        problems = status["issues"] or status["warnings"] or [status["message"]]
+        raise ValueError("正式更新未就绪：" + "；".join(problems))
     current_version = current_app_version()
     release = latest_release_info(db)
     if not release.get("available"):

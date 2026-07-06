@@ -7,6 +7,7 @@ class AdminSettingsRead(BaseModel):
     image_manage_view_mode: str = Field(default="classic", pattern="^(classic|waterfall)$")
     upload_worker_count: int = Field(default=12, ge=1, le=96)
     upload_claim_batch_size: int = Field(default=1, ge=1, le=100)
+    github_proxy_url: str = Field(default="", max_length=500)
     admin_username: str
     admin_avatar_image_id: int | None = None
     admin_avatar_image: ImageSummary | None = None
@@ -26,6 +27,7 @@ class AdminSettingsUpdate(BaseModel):
     image_manage_view_mode: str | None = Field(default=None, pattern="^(classic|waterfall)$")
     upload_worker_count: int | None = Field(default=None, ge=1, le=96)
     upload_claim_batch_size: int | None = Field(default=None, ge=1, le=100)
+    github_proxy_url: str | None = Field(default=None, max_length=500)
     admin_username: str | None = Field(default=None, min_length=1, max_length=80)
     admin_password: str | None = Field(default=None, min_length=6, max_length=128)
     admin_avatar_image_id: int | None = Field(default=None, ge=1)

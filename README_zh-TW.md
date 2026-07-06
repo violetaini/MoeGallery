@@ -277,7 +277,15 @@ git push origin v0.1.0
 
 也可以在 GitHub Actions 頁面手動執行 `Release` workflow，填寫 `v0.1.0` 這樣的版本號。
 
-workflow 會安裝 Node.js 和 Python、檢查後端語法、建置前端、執行 `scripts/package_release.py` 打包、上傳 workflow artifact，並建立或更新 GitHub Release。
+workflow 會安裝 Node.js 和 Python、檢查後端語法、建置前端、執行 `scripts/package_release.py` 打包，並把 `.zip`、`.tar.gz` 和 `SHA256SUMS.txt` 作為獨立資產發布到 GitHub Release。
+
+## 更新檢查代理
+
+後台「系統健康」的程式版本卡片會讀取本地 `VERSION`，並訪問 GitHub Release API 檢查最新版本。伺服器無法直連 GitHub 時，可在「系統設定 / GitHub 更新檢查」裡配置代理 URL。
+
+- 留空：直接訪問 `https://api.github.com/repos/violetaini/MoeGallery/releases/latest`。
+- 普通前綴：例如 `https://gh-proxy.example.com/`，程式會請求 `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest`。
+- 模板 URL：支援 `{url}` 和 `{raw_url}` 佔位符，分別代表 URL 編碼後的目標地址和原始目標地址。
 
 ## ESA/CDN 後的真實客戶端 IP
 

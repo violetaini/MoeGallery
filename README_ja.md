@@ -277,7 +277,15 @@ git push origin v0.1.0
 
 または GitHub Actions 画面で `Release` workflow を手動実行し、`v0.1.0` のようなバージョンを入力します。
 
-workflow は Node.js と Python をセットアップし、バックエンド構文を確認し、フロントエンドをビルドし、`scripts/package_release.py` でパッケージを作成し、workflow artifact をアップロードして GitHub Release を作成または更新します。
+workflow は Node.js と Python をセットアップし、バックエンド構文を確認し、フロントエンドをビルドし、`scripts/package_release.py` でパッケージを作成し、`.zip`、`.tar.gz`、`SHA256SUMS.txt` を個別の GitHub Release アセットとして公開します。
+
+## 更新チェックプロキシ
+
+管理画面の「システムヘルス」にあるバージョンカードは、ローカルの `VERSION` を読み取り、GitHub Release API で最新バージョンを確認します。サーバーから GitHub へ直接アクセスできない場合は、「システム設定 / GitHub 更新チェック」でプロキシ URL を設定できます。
+
+- 空欄: `https://api.github.com/repos/violetaini/MoeGallery/releases/latest` に直接アクセスします。
+- プレフィックス型: 例 `https://gh-proxy.example.com/` は `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest` として使われます。
+- テンプレート型: `{url}` は URL エンコード済みの対象 URL、`{raw_url}` は元の対象 URL に置換されます。
 
 ## ESA/CDN 配下の実クライアント IP
 

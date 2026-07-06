@@ -2366,6 +2366,13 @@ a {
   gap: 14px;
 }
 
+.github-proxy-settings {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.45fr) minmax(320px, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
 .upload-queue-control-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(240px, 1fr));
@@ -5470,6 +5477,10 @@ body {
   }
 
   .upload-queue-control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .github-proxy-settings {
     grid-template-columns: 1fr;
   }
 

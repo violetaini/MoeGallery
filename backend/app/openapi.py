@@ -185,11 +185,11 @@ OPERATION_METADATA = {
     ("DELETE", "/api/tags/{tag_id}"): {"summary": "删除标签", "description": "删除兼容旧数据的标签记录。"},
     ("GET", "/api/search"): {"summary": "搜索媒体库", "description": "使用单个关键词搜索图片、作品和角色。"},
     ("GET", "/api/stats"): {"summary": "获取后台统计", "description": "返回后台首页统计计数。"},
-    ("GET", "/api/settings"): {"summary": "获取后台设置", "description": "返回管理员偏好、前台首页图片绑定和上传队列参数。"},
+    ("GET", "/api/settings"): {"summary": "获取后台设置", "description": "返回管理员偏好、前台首页图片绑定、上传队列参数和 GitHub 更新检查代理。"},
     ("GET", "/api/settings/public"): {"summary": "获取公开设置", "description": "返回前台首页和列表页背景图片设置。"},
-    ("PUT", "/api/settings"): {"summary": "更新后台设置", "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图和上传 worker 参数。"},
+    ("PUT", "/api/settings"): {"summary": "更新后台设置", "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、上传 worker 参数和 GitHub 更新检查代理。"},
     ("POST", "/api/settings/auth-secret/rotate"): {"summary": "轮换登录密钥", "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。"},
-    ("GET", "/api/system/health"): {"summary": "获取系统健康状态", "description": "返回数据库、存储、衍生图、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"},
+    ("GET", "/api/system/health"): {"summary": "获取系统健康状态", "description": "返回程序版本、最新 Release、数据库迁移状态、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"},
     ("GET", "/api/health"): {"tags": ["health"], "summary": "存活检查", "description": "供反向代理和可用性监控使用的轻量免登录接口。"},
 }
 
@@ -268,8 +268,13 @@ REQUEST_EXAMPLES = {
     ("PUT", "/api/settings"): {
         "application/json": {
             "uploadWorkers": {
-                "summary": "调整上传 worker",
-                "value": {"upload_worker_count": 24, "upload_claim_batch_size": 4, "image_manage_view_mode": "waterfall"},
+                "summary": "调整上传 worker 和更新检查代理",
+                "value": {
+                    "upload_worker_count": 24,
+                    "upload_claim_batch_size": 4,
+                    "image_manage_view_mode": "waterfall",
+                    "github_proxy_url": "https://gh-proxy.example.com/",
+                },
             }
         }
     },

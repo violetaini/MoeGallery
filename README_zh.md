@@ -56,8 +56,8 @@ MoeGallery 是一个面向二次元图片收藏与整理的自托管媒体库，
 - 后台图片管理支持经典表格和瀑布画廊两种模式。
 - 批量上传支持预览、分页、重复预检、任务队列、状态轮询，以及上传前单张移除。
 - 批量导入支持 CSV、JSON、XLSX、XLSM 模板。
-- 后台偏好可维护管理员资料、头像、密码、图片管理显示模式、上传 worker 参数和首页/列表背景图。
-- 系统健康面板检查数据库、存储一致性、上传队列、ffmpeg、JXR 解码、AVIF 编码和 HDR metadata patch 能力。
+- 后台偏好可维护管理员资料、头像、密码、图片管理显示模式、上传 worker 参数、GitHub 更新检查代理和首页/列表背景图。
+- 系统健康面板检查程序版本、最新 Release、数据库迁移状态、存储一致性、上传队列、ffmpeg、JXR 解码、AVIF 编码和 HDR metadata patch 能力。
 - 后台安全包含 HttpOnly Cookie 会话、CSRF 校验、登录防爆破、运维 API Key、安装锁和强随机 `AGMS_AUTH_SECRET`。
 
 ## 图片管线
@@ -277,7 +277,15 @@ git push origin v0.1.0
 
 也可以在 GitHub Actions 页面手动运行 `Release` workflow，填写 `v0.1.0` 这样的版本号。
 
-workflow 会安装 Node.js 和 Python、检查后端语法、构建前端、运行 `scripts/package_release.py` 打包、上传 workflow artifact，并创建或更新 GitHub Release。
+workflow 会安装 Node.js 和 Python、检查后端语法、构建前端、运行 `scripts/package_release.py` 打包，并把 `.zip`、`.tar.gz` 和 `SHA256SUMS.txt` 作为独立资产发布到 GitHub Release。
+
+## 更新检查代理
+
+后台“系统健康”的程序版本卡片会读取本地 `VERSION`，并访问 GitHub Release API 检查最新版本。服务器无法直连 GitHub 时，可在“系统设置 / GitHub 更新检查”里配置代理 URL。
+
+- 留空：直接访问 `https://api.github.com/repos/violetaini/MoeGallery/releases/latest`。
+- 普通前缀：例如 `https://gh-proxy.example.com/`，程序会请求 `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest`。
+- 模板 URL：支持 `{url}` 和 `{raw_url}` 占位符，分别代表 URL 编码后的目标地址和原始目标地址。
 
 ## ESA/CDN 后的真实客户端 IP
 

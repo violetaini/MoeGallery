@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Annotated
@@ -19,13 +20,17 @@ from app.auth import require_admin
 from app.config import ROOT_DIR, auth_secret_health, settings
 from app.database import engine, get_db
 from app.models import Image
-from app.services.app_setting_service import get_upload_claim_batch_size, get_upload_worker_count
+from app.services.app_setting_service import (
+    get_github_release_proxy_url,
+    get_upload_claim_batch_size,
+    get_upload_worker_count,
+)
 from app.utils import image_process
 
 router = APIRouter(prefix="/system", tags=["system"])
 LATEST_RELEASE_URL = "https://api.github.com/repos/violetaini/MoeGallery/releases/latest"
 LATEST_RELEASE_CACHE_SECONDS = 30 * 60
-_latest_release_cache: dict[str, object] = {"checked_at": 0.0, "data": None}
+_latest_release_cache: dict[str, dict[str, object]] = {}
 
 
 def _dir_stats(path: Path) -> dict:
@@ -112,13 +117,27 @@ def _parse_semver(value: str | None) -> tuple[int, int, int] | None:
     return tuple(int(part) for part in match.groups())
 
 
-def _latest_release_info() -> dict:
+def _build_latest_release_url(proxy_url: str) -> str:
+    proxy_url = proxy_url.strip()
+    if not proxy_url:
+        return LATEST_RELEASE_URL
+    if "{raw_url}" in proxy_url:
+        return proxy_url.replace("{raw_url}", LATEST_RELEASE_URL)
+    if "{url}" in proxy_url:
+        return proxy_url.replace("{url}", urllib.parse.quote(LATEST_RELEASE_URL, safe=""))
+    return f"{proxy_url.rstrip('/')}/{LATEST_RELEASE_URL}"
+
+
+def _latest_release_info(db: Session) -> dict:
     now = time.time()
-    cached_data = _latest_release_cache.get("data")
-    if cached_data and now - float(_latest_release_cache.get("checked_at") or 0) < LATEST_RELEASE_CACHE_SECONDS:
+    proxy_url = get_github_release_proxy_url(db)
+    request_url = _build_latest_release_url(proxy_url)
+    cached = _latest_release_cache.get(request_url) or {}
+    cached_data = cached.get("data")
+    if cached_data and now - float(cached.get("checked_at") or 0) < LATEST_RELEASE_CACHE_SECONDS:
         return dict(cached_data)
     request = urllib.request.Request(
-        LATEST_RELEASE_URL,
+        request_url,
         headers={
             "Accept": "application/vnd.github+json",
             "User-Agent": "MoeGallery-system-health",
@@ -131,6 +150,7 @@ def _latest_release_info() -> dict:
             "available": True,
             "version": payload.get("tag_name") or "",
             "url": payload.get("html_url") or "",
+            "proxied": bool(proxy_url),
             "checked_at": int(now),
             "message": "ok",
         }
@@ -139,11 +159,11 @@ def _latest_release_info() -> dict:
             "available": False,
             "version": "",
             "url": "",
+            "proxied": bool(proxy_url),
             "checked_at": int(now),
             "message": str(exc),
         }
-    _latest_release_cache["checked_at"] = now
-    _latest_release_cache["data"] = data
+    _latest_release_cache[request_url] = {"checked_at": now, "data": data}
     return data
 
 
@@ -171,7 +191,7 @@ def _migration_info(db: Session) -> dict:
 
 def _application_info(db: Session) -> dict:
     current_version = _current_app_version()
-    latest_release = _latest_release_info()
+    latest_release = _latest_release_info(db)
     current_semver = _parse_semver(current_version)
     latest_semver = _parse_semver(latest_release.get("version") if latest_release.get("available") else "")
     update_available = bool(current_semver and latest_semver and latest_semver > current_semver)

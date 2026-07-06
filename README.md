@@ -277,7 +277,15 @@ git push origin v0.1.0
 
 Or open GitHub Actions, run the `Release` workflow manually, and enter a version such as `v0.1.0`.
 
-The workflow installs Node.js and Python, checks backend syntax, builds the frontend, runs `scripts/package_release.py`, uploads the package as a workflow artifact, and creates or updates the GitHub Release.
+The workflow installs Node.js and Python, checks backend syntax, builds the frontend, runs `scripts/package_release.py`, and publishes the `.zip`, `.tar.gz`, and `SHA256SUMS.txt` files as independent GitHub Release assets.
+
+## Update Check Proxy
+
+The system health version card reads the local `VERSION` file and calls the GitHub Release API to check the latest release. If the server cannot reach GitHub directly, configure a proxy URL in Admin Settings / GitHub Update Check.
+
+- Empty value: call `https://api.github.com/repos/violetaini/MoeGallery/releases/latest` directly.
+- Prefix proxy: for example `https://gh-proxy.example.com/` becomes `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest`.
+- Template proxy: `{url}` uses the URL-encoded target URL, and `{raw_url}` uses the original target URL.
 
 ## Real Client IP Behind ESA/CDN
 

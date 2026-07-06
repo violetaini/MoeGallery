@@ -10,10 +10,13 @@ from app.database import get_db
 from app.models import AppSetting, Image
 from app.schemas.settings import AdminSettingsRead, AdminSettingsUpdate, PublicSettingsRead
 from app.services.app_setting_service import (
+    GITHUB_RELEASE_PROXY_URL_KEY,
     UPLOAD_CLAIM_BATCH_SIZE_KEY,
     UPLOAD_WORKER_COUNT_KEY,
+    get_github_release_proxy_url,
     get_upload_claim_batch_size,
     get_upload_worker_count,
+    normalize_github_release_proxy_url,
 )
 from app.services.admin_account_service import get_admin_account, update_admin_account
 from app.services.auth_session_service import clear_admin_session_cookie, rotate_auth_secret
@@ -44,7 +47,7 @@ def _normalize_image_manage_view_mode(value: str | None) -> str:
 
 def _get_value(db: Session, key: str, default: str) -> str:
     setting = db.get(AppSetting, key)
-    return _normalize_image_manage_view_mode(setting.value if setting else default)
+    return setting.value if setting else default
 
 
 def _set_value(db: Session, key: str, value: str) -> None:
@@ -153,11 +156,14 @@ def _read_settings(db: Session) -> dict[str, object]:
     account = get_admin_account(db)
     slideshow_image_ids, slideshow_images = _read_image_list_setting(db, HOME_SLIDESHOW_IMAGE_IDS_KEY)
     return {
-        "image_manage_view_mode": _get_value(
-            db,
-            IMAGE_MANAGE_VIEW_MODE_KEY,
-            DEFAULT_IMAGE_MANAGE_VIEW_MODE,
+        "image_manage_view_mode": _normalize_image_manage_view_mode(
+            _get_value(
+                db,
+                IMAGE_MANAGE_VIEW_MODE_KEY,
+                DEFAULT_IMAGE_MANAGE_VIEW_MODE,
+            )
         ),
+        "github_proxy_url": get_github_release_proxy_url(db),
         "upload_worker_count": get_upload_worker_count(db),
         "upload_claim_batch_size": get_upload_claim_batch_size(db),
         "admin_username": account.username,
@@ -197,6 +203,15 @@ def update_settings(
         _set_value(db, UPLOAD_WORKER_COUNT_KEY, str(data["upload_worker_count"]))
     if data.get("upload_claim_batch_size") is not None:
         _set_value(db, UPLOAD_CLAIM_BATCH_SIZE_KEY, str(data["upload_claim_batch_size"]))
+    if data.get("github_proxy_url") is not None:
+        try:
+            github_proxy_url = normalize_github_release_proxy_url(data["github_proxy_url"])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if github_proxy_url:
+            _set_value(db, GITHUB_RELEASE_PROXY_URL_KEY, github_proxy_url)
+        else:
+            _delete_value(db, GITHUB_RELEASE_PROXY_URL_KEY)
     try:
         if "home_slideshow_image_ids" in data:
             _set_image_list_setting(db, HOME_SLIDESHOW_IMAGE_IDS_KEY, data.get("home_slideshow_image_ids"))

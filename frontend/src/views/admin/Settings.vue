@@ -17,6 +17,7 @@ const imageManageViewMode = ref(getImageManageViewMode())
 const router = useRouter()
 const uploadWorkerCount = ref(12)
 const uploadClaimBatchSize = ref(1)
+const githubProxyUrl = ref('')
 const adminUsername = ref('')
 const adminPassword = ref('')
 const adminAvatarImage = ref(null)
@@ -151,9 +152,9 @@ const healthCards = computed(() => {
   const filesReady = missingFileDirs.length === 0 && fileHealth.complete
   const migrationReady = migration.up_to_date !== false
   const versionDetail = application.update_available
-    ? `最新 ${latestRelease.version || '未知'} 可用`
+    ? `最新 ${latestRelease.version || '未知'} 可用 · ${latestRelease.proxied ? '代理检查' : '直连检查'}`
     : latestRelease.available
-      ? `最新 ${latestRelease.version || '未知'} · 迁移 ${migrationReady ? '已同步' : '待执行'}`
+      ? `最新 ${latestRelease.version || '未知'} · ${latestRelease.proxied ? '代理检查' : '直连检查'} · 迁移 ${migrationReady ? '已同步' : '待执行'}`
       : `迁移 ${migrationReady ? '已同步' : '待执行'}`
   const imageCapabilityReady = jxr.available && hdr.available
   return [
@@ -463,6 +464,7 @@ async function loadAdminSettings() {
     imageManageViewMode.value = normalizeImageManageViewMode(data.image_manage_view_mode)
     uploadWorkerCount.value = data.upload_worker_count || 12
     uploadClaimBatchSize.value = data.upload_claim_batch_size || 1
+    githubProxyUrl.value = data.github_proxy_url || ''
     syncAccount(data)
     setImageManageViewMode(imageManageViewMode.value)
   } catch (error) {
@@ -485,7 +487,8 @@ async function saveAdminPreferences() {
       home_slideshow_image_ids: homeSlideshowImageIds.value,
       image_manage_view_mode: normalizeImageManageViewMode(imageManageViewMode.value),
       upload_worker_count: uploadWorkerCount.value,
-      upload_claim_batch_size: uploadClaimBatchSize.value
+      upload_claim_batch_size: uploadClaimBatchSize.value,
+      github_proxy_url: githubProxyUrl.value.trim()
     }
     heroBackgroundItems.value.forEach((item) => {
       if (item.imageId) payload[item.imageIdField] = item.imageId
@@ -496,6 +499,7 @@ async function saveAdminPreferences() {
     imageManageViewMode.value = normalizeImageManageViewMode(data.image_manage_view_mode)
     uploadWorkerCount.value = data.upload_worker_count
     uploadClaimBatchSize.value = data.upload_claim_batch_size
+    githubProxyUrl.value = data.github_proxy_url || ''
     syncAccount(data)
     setImageManageViewMode(imageManageViewMode.value)
     ElMessage.success('后台偏好已保存')
@@ -881,6 +885,19 @@ onMounted(async () => {
                 />
               </div>
             </div>
+          </div>
+
+          <div class="admin-preference-section github-proxy-settings">
+            <div class="admin-preference-copy">
+              <strong>GitHub 更新检查</strong>
+              <span>用于系统健康获取最新版本；留空则直接访问 GitHub。</span>
+            </div>
+            <el-input
+              v-model="githubProxyUrl"
+              clearable
+              maxlength="500"
+              placeholder="例如：https://gh-proxy.example.com/"
+            />
           </div>
         </div>
       </section>

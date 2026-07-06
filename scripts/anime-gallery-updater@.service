@@ -1,0 +1,15 @@
+[Unit]
+Description=MoeGallery updater task %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/anime-gallery
+EnvironmentFile=-/opt/anime-gallery/.env
+ExecStart=/opt/anime-gallery/venv/bin/python /opt/anime-gallery/scripts/update_runner.py --app-dir /opt/anime-gallery --task-id %i
+
+[Install]
+WantedBy=multi-user.target

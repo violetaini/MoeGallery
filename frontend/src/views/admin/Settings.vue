@@ -151,11 +151,13 @@ const healthCards = computed(() => {
     : fileHealth.message
   const filesReady = missingFileDirs.length === 0 && fileHealth.complete
   const migrationReady = migration.up_to_date !== false
-  const versionDetail = application.update_available
-    ? `最新 ${latestRelease.version || '未知'} 可用 · ${latestRelease.proxied ? '代理检查' : '直连检查'}`
-    : latestRelease.available
-      ? `最新 ${latestRelease.version || '未知'} · ${latestRelease.proxied ? '代理检查' : '直连检查'} · 迁移 ${migrationReady ? '已同步' : '待执行'}`
-      : `迁移 ${migrationReady ? '已同步' : '待执行'}`
+  const versionDetail = !migrationReady
+    ? '数据库待迁移'
+    : application.update_available
+      ? `可更新至 ${latestRelease.version || '新版本'}`
+      : latestRelease.available
+        ? '已是最新'
+        : '更新检查失败'
   const imageCapabilityReady = jxr.available && hdr.available
   return [
     {

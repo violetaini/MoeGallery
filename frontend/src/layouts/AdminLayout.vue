@@ -9,6 +9,7 @@ import {
   FolderAdd,
   Menu as MenuIcon,
   Picture,
+  Refresh,
   Setting,
   SwitchButton,
   Upload,
@@ -32,6 +33,7 @@ const activeMenu = computed(() => {
   if (route.path.startsWith('/admin/works')) return '/admin/works'
   if (route.path.startsWith('/admin/characters')) return '/admin/characters'
   if (route.path.startsWith('/admin/api-docs')) return '/admin/api-docs'
+  if (route.path.startsWith('/admin/updates')) return '/admin/updates'
   if (route.path.startsWith('/admin/settings')) return '/admin/settings'
   return '/admin'
 })
@@ -111,6 +113,10 @@ onMounted(refreshAdminProfile)
         <el-menu-item index="/admin/characters">
           <el-icon><User /></el-icon>
           <span>角色管理</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/updates">
+          <el-icon><Refresh /></el-icon>
+          <span>更新中心</span>
         </el-menu-item>
         <el-menu-item index="/admin/settings">
           <el-icon><Setting /></el-icon>

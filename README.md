@@ -264,6 +264,27 @@ sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
 
 Backups are stored in `/opt/anime-gallery/backups/upgrade-YYYYmmdd-HHMMSS/`. For MySQL, the backup script uses `mysqldump --single-transaction`; for SQLite, it uses the sqlite backup API.
 
+## Panel Updates
+
+The Admin Update Center can check GitHub Releases, download the `.tar.gz` archive, verify `SHA256SUMS.txt`, and create a real upgrade task.
+
+For production, trigger upgrades through the independent systemd updater service so the main FastAPI process does not update and restart itself:
+
+```bash
+sudo cp /opt/anime-gallery/scripts/anime-gallery-updater@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
+Then configure `.env`:
+
+```env
+AGMS_UPDATE_TRIGGER_COMMAND=sudo -n systemctl start anime-gallery-updater@{task_id}.service
+AGMS_UPDATE_SERVICE_NAME=anime-gallery
+AGMS_UPDATE_HEALTH_URL=http://127.0.0.1:8000/api/health
+```
+
+The web service user must be allowed to start that updater unit without a password. Without `AGMS_UPDATE_TRIGGER_COMMAND`, the backend starts a local child process, which is suitable for local previews and download verification but is not recommended for production upgrades.
+
 ## Release Automation
 
 This repository publishes GitHub Releases automatically through `.github/workflows/release.yml`.

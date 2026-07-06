@@ -30,7 +30,7 @@ class SavedImageFiles(TypedDict):
 
 
 def ensure_storage_dirs() -> None:
-    for name in ("original", "preview", "thumbnail", "tasks"):
+    for name in ("original", "preview", "thumbnail", "tasks", "updates"):
         (settings.storage_path / name).mkdir(parents=True, exist_ok=True)
 
 

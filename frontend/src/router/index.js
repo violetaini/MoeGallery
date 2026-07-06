@@ -23,6 +23,7 @@ import Settings from '../views/admin/Settings.vue'
 import AdminWorkDetail from '../views/admin/AdminWorkDetail.vue'
 import AdminCharacterDetail from '../views/admin/AdminCharacterDetail.vue'
 import ApiDocs from '../views/admin/ApiDocs.vue'
+import UpdateCenter from '../views/admin/UpdateCenter.vue'
 import { clearAuthSession, setAuthSession } from '../api/client'
 import { galleryApi } from '../api/gallery'
 
@@ -105,6 +106,7 @@ const router = createRouter({
         { path: 'works/:id', name: 'admin-work-detail', component: AdminWorkDetail, meta: { title: '作品主页' } },
         { path: 'characters', name: 'admin-characters', component: CharacterManage, meta: { title: '角色管理' } },
         { path: 'characters/:id', name: 'admin-character-detail', component: AdminCharacterDetail, meta: { title: '角色主页' } },
+        { path: 'updates', name: 'admin-updates', component: UpdateCenter, meta: { title: '更新中心' } },
         { path: 'settings', name: 'admin-settings', component: Settings, meta: { title: '系统设置' } }
       ]
     }

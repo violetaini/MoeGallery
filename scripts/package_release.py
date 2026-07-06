@@ -17,6 +17,12 @@ def _ignore_backend(path: str, names: list[str]) -> set[str]:
     return ignored
 
 
+def _ignore_runtime_cache(path: str, names: list[str]) -> set[str]:
+    ignored = {"__pycache__", ".pytest_cache"}
+    ignored.update(name for name in names if name.endswith((".pyc", ".pyo")))
+    return ignored
+
+
 def _copytree(src: Path, dst: Path, ignore=None) -> None:
     if dst.exists():
         shutil.rmtree(dst)
@@ -40,7 +46,7 @@ def _write_release_notes(stage_root: Path, version: str) -> None:
                 "",
                 "- backend FastAPI source, Alembic migrations, and Python requirements",
                 "- prebuilt frontend assets in `frontend/dist`",
-                "- deployment, backup, upgrade, Nginx/systemd examples, documentation, and license",
+                "- deployment, backup, upgrade, updater, Nginx/systemd examples, documentation, and license",
                 "- empty `storage/` and `logs/` directories for deployment layout",
                 "",
                 "Not included:",
@@ -89,7 +95,7 @@ def _stage(version: str, output_dir: Path) -> Path:
 
     _copytree(ROOT / "backend", stage_root / "backend", ignore=_ignore_backend)
     _copytree(frontend_dist, stage_root / "frontend" / "dist")
-    _copytree(ROOT / "scripts", stage_root / "scripts")
+    _copytree(ROOT / "scripts", stage_root / "scripts", ignore=_ignore_runtime_cache)
     if (ROOT / "docs").exists():
         _copytree(ROOT / "docs", stage_root / "docs")
 
@@ -110,6 +116,7 @@ def _stage(version: str, output_dir: Path) -> Path:
         "storage/preview",
         "storage/thumbnail",
         "storage/tasks",
+        "storage/updates",
         "logs",
     ]:
         (stage_root / directory).mkdir(parents=True, exist_ok=True)

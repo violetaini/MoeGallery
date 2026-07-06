@@ -1,11 +1,5 @@
-import json
-import re
 import shutil
 import subprocess
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Annotated
 
@@ -20,17 +14,11 @@ from app.auth import require_admin
 from app.config import ROOT_DIR, auth_secret_health, settings
 from app.database import engine, get_db
 from app.models import Image
-from app.services.app_setting_service import (
-    get_github_release_proxy_url,
-    get_upload_claim_batch_size,
-    get_upload_worker_count,
-)
+from app.services.app_setting_service import get_upload_claim_batch_size, get_upload_worker_count
+from app.services.release_service import current_app_version, latest_release_info, parse_semver
 from app.utils import image_process
 
 router = APIRouter(prefix="/system", tags=["system"])
-LATEST_RELEASE_URL = "https://api.github.com/repos/violetaini/MoeGallery/releases/latest"
-LATEST_RELEASE_CACHE_SECONDS = 30 * 60
-_latest_release_cache: dict[str, dict[str, object]] = {}
 
 
 def _dir_stats(path: Path) -> dict:
@@ -96,77 +84,6 @@ def _database_info(db: Session) -> dict:
     return info
 
 
-def _current_app_version() -> str:
-    version_file = ROOT_DIR / "VERSION"
-    if version_file.exists():
-        try:
-            version = version_file.read_text(encoding="utf-8").strip()
-            if version:
-                return version
-        except OSError:
-            pass
-    return settings.app_version
-
-
-def _parse_semver(value: str | None) -> tuple[int, int, int] | None:
-    if not value:
-        return None
-    match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", value.strip(), re.IGNORECASE)
-    if not match:
-        return None
-    return tuple(int(part) for part in match.groups())
-
-
-def _build_latest_release_url(proxy_url: str) -> str:
-    proxy_url = proxy_url.strip()
-    if not proxy_url:
-        return LATEST_RELEASE_URL
-    if "{raw_url}" in proxy_url:
-        return proxy_url.replace("{raw_url}", LATEST_RELEASE_URL)
-    if "{url}" in proxy_url:
-        return proxy_url.replace("{url}", urllib.parse.quote(LATEST_RELEASE_URL, safe=""))
-    return f"{proxy_url.rstrip('/')}/{LATEST_RELEASE_URL}"
-
-
-def _latest_release_info(db: Session) -> dict:
-    now = time.time()
-    proxy_url = get_github_release_proxy_url(db)
-    request_url = _build_latest_release_url(proxy_url)
-    cached = _latest_release_cache.get(request_url) or {}
-    cached_data = cached.get("data")
-    if cached_data and now - float(cached.get("checked_at") or 0) < LATEST_RELEASE_CACHE_SECONDS:
-        return dict(cached_data)
-    request = urllib.request.Request(
-        request_url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "MoeGallery-system-health",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=3) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        data = {
-            "available": True,
-            "version": payload.get("tag_name") or "",
-            "url": payload.get("html_url") or "",
-            "proxied": bool(proxy_url),
-            "checked_at": int(now),
-            "message": "ok",
-        }
-    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        data = {
-            "available": False,
-            "version": "",
-            "url": "",
-            "proxied": bool(proxy_url),
-            "checked_at": int(now),
-            "message": str(exc),
-        }
-    _latest_release_cache[request_url] = {"checked_at": now, "data": data}
-    return data
-
-
 def _migration_info(db: Session) -> dict:
     current = ""
     try:
@@ -190,10 +107,10 @@ def _migration_info(db: Session) -> dict:
 
 
 def _application_info(db: Session) -> dict:
-    current_version = _current_app_version()
-    latest_release = _latest_release_info(db)
-    current_semver = _parse_semver(current_version)
-    latest_semver = _parse_semver(latest_release.get("version") if latest_release.get("available") else "")
+    current_version = current_app_version()
+    latest_release = latest_release_info(db)
+    current_semver = parse_semver(current_version)
+    latest_semver = parse_semver(latest_release.get("version") if latest_release.get("available") else "")
     update_available = bool(current_semver and latest_semver and latest_semver > current_semver)
     migration = _migration_info(db)
     return {

@@ -33,6 +33,7 @@ TAGS_METADATA = [
     {"name": "stats", "description": "后台首页统计数据。"},
     {"name": "settings", "description": "后台偏好、前台首页设置和登录密钥轮换。"},
     {"name": "system", "description": "部署诊断、存储与编解码健康检查。"},
+    {"name": "updates", "description": "后台更新检查、下载校验和升级任务。"},
     {"name": "storage", "description": "带权限检查的存储文件访问。"},
     {"name": "health", "description": "轻量存活检查接口。"},
 ]
@@ -68,6 +69,10 @@ PROTECTED_OPERATIONS = {
     ("PUT", "/api/settings"),
     ("POST", "/api/settings/auth-secret/rotate"),
     ("GET", "/api/system/health"),
+    ("GET", "/api/updates/check"),
+    ("GET", "/api/updates/tasks"),
+    ("POST", "/api/updates/tasks"),
+    ("GET", "/api/updates/tasks/{task_id}"),
 }
 
 
@@ -190,6 +195,10 @@ OPERATION_METADATA = {
     ("PUT", "/api/settings"): {"summary": "更新后台设置", "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、上传 worker 参数和 GitHub 更新检查代理。"},
     ("POST", "/api/settings/auth-secret/rotate"): {"summary": "轮换登录密钥", "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。"},
     ("GET", "/api/system/health"): {"summary": "获取系统健康状态", "description": "返回程序版本、最新 Release、数据库迁移状态、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"},
+    ("GET", "/api/updates/check"): {"summary": "检查可用更新", "description": "读取当前版本并查询 GitHub Latest Release，返回是否有新版本以及更新执行模式。"},
+    ("GET", "/api/updates/tasks"): {"summary": "获取更新任务列表", "description": "返回最近的后台更新任务、进度和日志摘要。"},
+    ("POST", "/api/updates/tasks"): {"summary": "创建更新任务", "description": "创建下载校验或正式更新任务。正式更新会校验 SHA256、备份、迁移数据库并重启服务。"},
+    ("GET", "/api/updates/tasks/{task_id}"): {"summary": "获取更新任务详情", "description": "返回单个更新任务的状态、进度和日志。"},
     ("GET", "/api/health"): {"tags": ["health"], "summary": "存活检查", "description": "供反向代理和可用性监控使用的轻量免登录接口。"},
 }
 
@@ -202,7 +211,7 @@ PARAMETER_DESCRIPTIONS = {
     "character_id": "角色数据库 ID。",
     "tag_id": "兼容旧标签的数据库 ID。",
     "image_id": "图片数据库 ID。",
-    "task_id": "上传任务 ID。",
+    "task_id": "任务 ID。",
     "ids": "可选，逗号分隔的上传任务 ID 列表，用于直接查询指定任务。",
     "limit": "最多返回的结果数量。",
     "type": "兼容旧标签的类型筛选。",
@@ -278,6 +287,18 @@ REQUEST_EXAMPLES = {
             }
         }
     },
+    ("POST", "/api/updates/tasks"): {
+        "application/json": {
+            "dryRun": {
+                "summary": "只下载并校验",
+                "value": {"dry_run": True, "force": True},
+            },
+            "upgrade": {
+                "summary": "正式更新到最新版本",
+                "value": {"dry_run": False},
+            },
+        }
+    },
 }
 
 
@@ -302,6 +323,15 @@ RESPONSE_EXAMPLES = {
             "database": {"ok": True, "dialect": "mysql", "url": "mysql+pymysql://user:***@127.0.0.1:3306/anime_gallery"},
             "storage": {"ok": True},
             "auth_secret": {"configured": True, "ephemeral": False, "strong": True, "message": "已配置持久化强密钥"},
+        },
+    },
+    ("GET", "/api/updates/check"): {
+        "200": {
+            "current_version": "v0.1.2",
+            "latest_release": {"available": True, "version": "v0.1.3", "proxied": False},
+            "update_available": True,
+            "updater_available": True,
+            "updater_mode": "command",
         },
     },
 }

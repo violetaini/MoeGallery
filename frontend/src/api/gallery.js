@@ -135,6 +135,18 @@ export const galleryApi = {
   systemHealth() {
     return api.get('/system/health').then((r) => r.data)
   },
+  checkUpdates() {
+    return api.get('/updates/check').then((r) => r.data)
+  },
+  updateTasks(params = {}) {
+    return api.get('/updates/tasks', { params }).then((r) => r.data)
+  },
+  createUpdateTask(payload) {
+    return api.post('/updates/tasks', payload).then((r) => r.data)
+  },
+  updateTask(id) {
+    return api.get(`/updates/tasks/${id}`).then((r) => r.data)
+  },
   apiDocs() {
     return api.get('/api-docs/openapi.json', { baseURL: '' }).then((r) => r.data)
   }

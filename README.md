@@ -306,7 +306,6 @@ The system health version card reads the local `VERSION` file and calls the GitH
 
 - Empty value: call `https://api.github.com/repos/violetaini/MoeGallery/releases/latest` directly.
 - Prefix proxy: for example `https://gh-proxy.example.com/` becomes `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest`.
-- Production example: `https://docker.chitanda.net/` proxies both `https://api.github.com/...` and `https://github.com/.../releases/download/...` URLs.
 - Template proxy: `{url}` uses the URL-encoded target URL, and `{raw_url}` uses the original target URL.
 
 ## Real Client IP Behind ESA/CDN

@@ -306,7 +306,6 @@ workflow は Node.js と Python をセットアップし、バックエンド構
 
 - 空欄: `https://api.github.com/repos/violetaini/MoeGallery/releases/latest` に直接アクセスします。
 - プレフィックス型: 例 `https://gh-proxy.example.com/` は `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest` として使われます。
-- 本番例: `https://docker.chitanda.net/` は `https://api.github.com/...` と `https://github.com/.../releases/download/...` の両方をプロキシします。
 - テンプレート型: `{url}` は URL エンコード済みの対象 URL、`{raw_url}` は元の対象 URL に置換されます。
 
 ## ESA/CDN 配下の実クライアント IP

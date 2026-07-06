@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Build and publish release package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Check backend syntax
+        run: python -m compileall backend/app
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Resolve release version
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="${{ inputs.version }}"
+          fi
+          if [[ ! "$version" =~ ^v[0-9A-Za-z._-]+$ ]]; then
+            echo "Release version must start with v and contain only letters, numbers, dots, underscores, or hyphens." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Package release archives
+        run: python scripts/package_release.py --version "${{ steps.meta.outputs.version }}" --output-dir dist-release
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MoeGallery-${{ steps.meta.outputs.version }}
+          path: |
+            dist-release/*.zip
+            dist-release/*.tar.gz
+            dist-release/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
+        run: |
+          files=(dist-release/*.zip dist-release/*.tar.gz dist-release/SHA256SUMS.txt)
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" "${files[@]}" --clobber
+          else
+            gh release create "$VERSION" "${files[@]}" \
+              --title "MoeGallery $VERSION" \
+              --target "$GITHUB_SHA" \
+              --generate-notes
+          fi

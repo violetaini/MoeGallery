@@ -20,6 +20,7 @@ __pycache__/
 installed.lock
 _e2e_tmp/
 _package_stage/
+dist-release/
 tools/
 *.zip
 github.txt

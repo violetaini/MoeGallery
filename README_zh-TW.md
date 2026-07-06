@@ -229,6 +229,47 @@ sudo systemctl reload nginx
 
 把 Nginx 範例中的 `gallery.example.com` 改成自己的網域，生產環境啟用 HTTPS。
 
+## Release 包部署
+
+GitHub Releases 會提供預建部署包：
+
+```text
+MoeGallery-vX.Y.Z.zip
+MoeGallery-vX.Y.Z.tar.gz
+SHA256SUMS.txt
+```
+
+壓縮包包含後端原始碼、Alembic 遷移、已建置的 `frontend/dist`、部署腳本、文件、`.env.example`，以及空的 `storage/` 和 `logs/` 目錄。壓縮包不會包含 `.env`、資料庫檔案、上傳圖片、日誌、虛擬環境、`node_modules` 或私鑰。
+
+部署 Release 包：
+
+```bash
+sudo mkdir -p /opt/anime-gallery
+sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=1
+
+cd /opt/anime-gallery
+sudo python3 -m venv venv
+sudo ./venv/bin/pip install -r backend/requirements.txt
+sudo cp .env.example .env
+```
+
+然後編輯 `.env`、執行遷移、安裝 systemd 服務並啟用 Nginx 配置。已有部署升級前應先備份 `.env`、`storage/` 和資料庫。
+
+## 自動 Release
+
+倉庫已透過 `.github/workflows/release.yml` 支援自動發布 GitHub Releases。
+
+透過 tag 發布：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+也可以在 GitHub Actions 頁面手動執行 `Release` workflow，填寫 `v0.1.0` 這樣的版本號。
+
+workflow 會安裝 Node.js 和 Python、檢查後端語法、建置前端、執行 `scripts/package_release.py` 打包、上傳 workflow artifact，並建立或更新 GitHub Release。
+
 ## ESA/CDN 後的真實客戶端 IP
 
 如果站點套了阿里雲 ESA/CDN，需要把邊緣節點提供的真實客戶端 IP 傳給後端。範例 Nginx 配置優先使用 `ali-real-client-ip`，相容 `ali-cdn-real-ip` 和 `true-client-ip`，最後回退到 `$remote_addr`。

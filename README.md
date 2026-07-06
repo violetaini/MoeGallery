@@ -229,6 +229,47 @@ sudo systemctl reload nginx
 
 Change `gallery.example.com` in the Nginx example to your own domain and enable HTTPS in production.
 
+## Release Package Deployment
+
+GitHub Releases contain prebuilt deployment archives:
+
+```text
+MoeGallery-vX.Y.Z.zip
+MoeGallery-vX.Y.Z.tar.gz
+SHA256SUMS.txt
+```
+
+The archives include backend source, Alembic migrations, prebuilt `frontend/dist`, deployment scripts, documentation, `.env.example`, and empty `storage/` and `logs/` directories. They do not include `.env`, database files, uploaded images, logs, virtualenvs, `node_modules`, or private keys.
+
+Deploy a release archive:
+
+```bash
+sudo mkdir -p /opt/anime-gallery
+sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=1
+
+cd /opt/anime-gallery
+sudo python3 -m venv venv
+sudo ./venv/bin/pip install -r backend/requirements.txt
+sudo cp .env.example .env
+```
+
+Then edit `.env`, run migrations, install the systemd service, and enable the Nginx config as shown above. Existing deployments should back up `.env`, `storage/`, and the database before replacing application files.
+
+## Release Automation
+
+This repository publishes GitHub Releases automatically through `.github/workflows/release.yml`.
+
+Create a release from a tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Or open GitHub Actions, run the `Release` workflow manually, and enter a version such as `v0.1.0`.
+
+The workflow installs Node.js and Python, checks backend syntax, builds the frontend, runs `scripts/package_release.py`, uploads the package as a workflow artifact, and creates or updates the GitHub Release.
+
 ## Real Client IP Behind ESA/CDN
 
 If the site is behind Alibaba Cloud ESA/CDN, pass the real client IP from the edge to the backend. The example Nginx config prefers `ali-real-client-ip`, also accepts `ali-cdn-real-ip` and `true-client-ip`, then falls back to `$remote_addr`.

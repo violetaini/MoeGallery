@@ -229,6 +229,47 @@ sudo systemctl reload nginx
 
 Nginx 例の `gallery.example.com` を自分のドメインに変更し、本番環境では HTTPS を有効にしてください。
 
+## Release パッケージでのデプロイ
+
+GitHub Releases にはビルド済みデプロイアーカイブが含まれます。
+
+```text
+MoeGallery-vX.Y.Z.zip
+MoeGallery-vX.Y.Z.tar.gz
+SHA256SUMS.txt
+```
+
+アーカイブには、バックエンドソース、Alembic マイグレーション、ビルド済み `frontend/dist`、デプロイスクリプト、ドキュメント、`.env.example`、空の `storage/` と `logs/` ディレクトリが含まれます。`.env`、データベースファイル、アップロード画像、ログ、仮想環境、`node_modules`、秘密鍵は含まれません。
+
+Release パッケージをデプロイする例:
+
+```bash
+sudo mkdir -p /opt/anime-gallery
+sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=1
+
+cd /opt/anime-gallery
+sudo python3 -m venv venv
+sudo ./venv/bin/pip install -r backend/requirements.txt
+sudo cp .env.example .env
+```
+
+その後、`.env` を編集し、マイグレーションを実行し、systemd サービスと Nginx 設定を有効化します。既存環境を更新する場合は、事前に `.env`、`storage/`、データベースをバックアップしてください。
+
+## Release 自動化
+
+このリポジトリは `.github/workflows/release.yml` により GitHub Releases の自動発行に対応しています。
+
+タグからリリースを作成する場合:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+または GitHub Actions 画面で `Release` workflow を手動実行し、`v0.1.0` のようなバージョンを入力します。
+
+workflow は Node.js と Python をセットアップし、バックエンド構文を確認し、フロントエンドをビルドし、`scripts/package_release.py` でパッケージを作成し、workflow artifact をアップロードして GitHub Release を作成または更新します。
+
 ## ESA/CDN 配下の実クライアント IP
 
 Alibaba Cloud ESA/CDN 配下で運用する場合、エッジが提供する実クライアント IP をバックエンドへ渡してください。Nginx 例は `ali-real-client-ip` を優先し、`ali-cdn-real-ip` と `true-client-ip` にも対応し、最後に `$remote_addr` へフォールバックします。

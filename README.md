@@ -14,8 +14,15 @@
 </div>
 
 <p align="center">
-  <a href="https://anime.chitanda.net/">在线站点</a> |
-  <a href="https://anime.chitanda.net/api-docs">API 文档</a> |
+  <a href="README.md">English</a> |
+  <a href="README_zh.md">简体中文</a> |
+  <a href="README_zh-TW.md">繁體中文</a> |
+  <a href="README_ja.md">日本語</a>
+</p>
+
+<p align="center">
+  <a href="https://anime.chitanda.net/">Live Site</a> |
+  <a href="https://anime.chitanda.net/api-docs">API Docs</a> |
   <a href="https://github.com/violetaini/MoeGallery">GitHub</a>
 </p>
 
@@ -33,56 +40,58 @@
   <code>hdr</code>
 </p>
 
-MoeGallery 是一个面向二次元图片收藏与整理的自托管媒体库。它提供前台画廊、首页幻灯片、作品页、角色页、分级筛选、图片详情浮层，以及后台图片上传、元数据维护、作品与角色绑定、批量导入、系统健康检查和 API 文档。
+## About
 
-项目定位接近“图片版本 Jellyfin”：前台负责浏览和展示，后台负责上传、绑定、整理和维护。普通静态图片会统一生成 WebP 预览和缩略图，动图保留原格式，HDR/JXR 图片会走专门的转码链路并生成浏览器可显示的预览。
+MoeGallery is a self-hosted anime image media library for organizing illustrations, screenshots, characters, works, ratings, and image metadata. It provides a public gallery experience for browsing and a private admin panel for uploading, binding, editing, importing, and maintaining the media library.
+
+The project is designed as a Jellyfin-like media library for images: the frontend focuses on gallery browsing, work pages, character pages, ratings, slideshow visuals, and detail overlays; the backend handles uploads, metadata, storage, duplicate checks, image conversion, background jobs, authentication, and API documentation.
 
 ## Features
 
-- 前台首页：全屏幻灯片展示，可在后台指定首页图片；未指定时默认从图库随机选取。
-- 图片库：瀑布流画廊、关键词搜索、按作品/角色/分级筛选、按最新/随机/收藏数/分辨率排序。
-- 图片详情：点击图片在当前页面打开浮层详情；独立图片详情路由仍保留。
-- 作品与角色：作品详情页使用媒体库式背景、封面、角色头像和图片分页；后台作品页可创建角色、选择角色并上传图片。
-- 分级系统：固定 `safe / sensitive / hidden`，隐藏内容不会在匿名前台公开展示。
-- 后台图片管理：经典表格与瀑布模式可切换，支持预览、编辑、批量删除、批量修改作品/角色/分级/收藏数/来源/作者。
-- 批量上传：多文件预览、上传前重复检测、任务队列处理、上传状态轮询、单张预览删除和分页预览。
-- 批量导入：支持 CSV / JSON / XLSX / XLSM 模板下载与元数据导入，采用“预检 -> 确认导入”流程。
-- 管理员偏好：头像、用户名、密码、图片管理显示模式、上传队列参数和首页/列表背景图可在后台维护。
-- 系统健康：检查数据库、存储目录、原图/预览图/缩略图一致性、ffmpeg、JXR 解码、AVIF/HDR metadata patch 能力。
-- 安全：后台 HttpOnly Cookie 会话、CSRF 校验、登录防爆破、API Key 运维访问、安装锁、生产强随机 `AGMS_AUTH_SECRET`。
+- Fullscreen visual home page with configurable slideshow images.
+- Public image gallery with waterfall layout, search, filters by work/character/rating, and sorting by latest, random, favorites, or resolution.
+- Image detail overlay on top of the gallery, with direct detail routes still available.
+- Work and character pages with media-library style backdrops, posters, avatars, paginated sections, and admin editing pages.
+- Fixed rating system: `safe`, `sensitive`, and `hidden`.
+- Admin image management with classic table mode and gallery waterfall mode.
+- Batch upload with previews, pagination, duplicate pre-checks, queue processing, status polling, and per-file removal before upload.
+- Batch metadata import from CSV, JSON, XLSX, and XLSM templates.
+- Admin preferences for profile, avatar, password, image-management display mode, upload worker parameters, and home/list background images.
+- System health panel for database, storage consistency, upload queue, ffmpeg, JXR decoding, AVIF encoding, and HDR metadata patching.
+- Admin security with HttpOnly cookie sessions, CSRF validation, login brute-force protection, operations API keys, install lock, and strong `AGMS_AUTH_SECRET` handling.
 
 ## Media Pipeline
 
-| 类型 | 入库策略 | 预览策略 |
+| Source | Storage strategy | Preview strategy |
 | --- | --- | --- |
-| 普通静态图片 | 原图转 WebP | 生成 WebP preview / thumbnail |
-| GIF / 动图 | 保留原格式 | 生成静态 WebP preview / thumbnail |
-| JXR / HDR | JXR 转 HDR AVIF，写入 `nclx / mdcv / clli` | 生成 SDR WebP preview / thumbnail |
-| 非 8-bit 图片 | 保留 HDR/高位深原图 | 生成 SDR WebP preview / thumbnail |
+| Normal static images | Convert original to WebP | Generate WebP preview and thumbnail |
+| GIF / animated images | Preserve original format | Generate static WebP preview and thumbnail |
+| JXR / HDR images | Convert JXR to HDR AVIF with `nclx / mdcv / clli` | Generate SDR WebP preview and thumbnail |
+| Non-8-bit images | Preserve HDR / high-bit-depth original | Generate SDR WebP preview and thumbnail |
 
-允许上传的常见后缀包括：
+Supported upload suffixes include:
 
 ```text
 .jpg .jpeg .png .webp .gif .bmp .tif .tiff .heif .heic .avif .jxr
 ```
 
-后端会同时校验后缀和解码能力。不在白名单内、无法解码或伪装成图片的文件会被拒绝。
+The backend validates both filename suffixes and actual decoder support. Files outside the whitelist, files that cannot be decoded, and disguised non-image uploads are rejected.
 
 ## Routes
 
 ```text
-/                         首页幻灯片
-/gallery                  图片库
-/images/:id               图片详情
-/works                    作品列表
-/works/:id                作品详情
-/characters               角色列表
-/characters/:id           角色详情
-/tags                     分级页
-/search                   搜索页
-/admin                    后台入口
-/install                  首次安装向导
-/api-docs                 后台 API 文档
+/                         Home slideshow
+/gallery                  Image gallery
+/images/:id               Image detail
+/works                    Work list
+/works/:id                Work detail
+/characters               Character list
+/characters/:id           Character detail
+/tags                     Rating page
+/search                   Search page
+/admin                    Admin panel
+/install                  First-install wizard
+/api-docs                 Admin API documentation
 ```
 
 ## Tech Stack
@@ -130,7 +139,7 @@ Copy `.env.example` to `.env` and adjust the deployment values.
 
 ```text
 AGMS_DATABASE_URL                  SQLite or MySQL SQLAlchemy URL
-AGMS_STORAGE_PATH                  Storage root for original, preview, thumbnail, and task files
+AGMS_STORAGE_PATH                  Storage root for originals, previews, thumbnails, and task files
 AGMS_ADMIN_USERNAME                Initial fallback admin username
 AGMS_ADMIN_PASSWORD                Initial fallback admin password
 AGMS_AUTH_SECRET                   Strong session signing secret, generated by installer
@@ -154,7 +163,7 @@ When `installed.lock` is missing and the target database has no valid Alembic ve
 
 The installer can initialize either SQLite or MySQL:
 
-- SQLite: database path is chosen by the application.
+- SQLite: the database path is chosen by the application.
 - MySQL: enter host, port, database name, username, and password.
 - Storage: uses the project `storage/` directory.
 - Admin: set the first administrator username and password.

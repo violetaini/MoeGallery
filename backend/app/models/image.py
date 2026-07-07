@@ -17,6 +17,7 @@ class Image(Base, TimestampMixin):
     preview_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     width: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     height: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    orientation: Mapped[str] = mapped_column(String(20), default="square", nullable=False, index=True)
     file_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
     is_animated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

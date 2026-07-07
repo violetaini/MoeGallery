@@ -3,7 +3,7 @@
   "info": {
     "title": "Anime Gallery Media Server",
     "description": "\nAnime Gallery Media Server API 覆盖前台图片浏览、后台媒体资料维护、批量上传任务、\n元数据导入、部署设置与系统健康检查。\n\n鉴权模型：\n\n- 浏览器后台会话使用 `agms_admin_session` HttpOnly Cookie。\n- 运维脚本建议使用 `Authorization: Bearer <AGMS_API_KEYS value>`。\n- 使用 Cookie 会话调用非安全方法时，还需要提交与 `agms_admin_csrf` Cookie 匹配的 `X-CSRF-Token`。\n- API Key 不依赖 Cookie，因此不需要 CSRF；请只在服务端保存，泄露后及时轮换。\n",
-    "version": "0.1.0"
+    "version": "0.1.5"
   },
   "servers": [
     {
@@ -467,6 +467,23 @@
               "title": "Rating"
             },
             "description": "`safe`、`sensitive` 或 `hidden`。"
+          },
+          {
+            "name": "orientation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(landscape|portrait|square)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orientation"
+            }
           },
           {
             "name": "q",
@@ -1786,7 +1803,7 @@
               "type": "integer",
               "title": "Task Id"
             },
-            "description": "上传任务 ID。"
+            "description": "任务 ID。"
           },
           {
             "name": "agms_admin_session",
@@ -1861,6 +1878,392 @@
           }
         },
         "description": "返回单个上传任务的状态、结果或错误信息。"
+      }
+    },
+    "/api/updates/check": {
+      "get": {
+        "tags": [
+          "updates"
+        ],
+        "summary": "检查可用更新",
+        "operationId": "check_updates_api_updates_check_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateCheckResponse"
+                },
+                "examples": {
+                  "example": {
+                    "summary": "示例响应",
+                    "value": {
+                      "current_version": "v0.1.2",
+                      "latest_release": {
+                        "available": true,
+                        "version": "v0.1.3",
+                        "proxied": false
+                      },
+                      "update_available": true,
+                      "updater_available": true,
+                      "updater_mode": "command"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "读取当前版本并查询 GitHub Latest Release，返回是否有新版本以及更新执行模式。"
+      }
+    },
+    "/api/updates/tasks": {
+      "get": {
+        "tags": [
+          "updates"
+        ],
+        "summary": "获取更新任务列表",
+        "operationId": "list_update_tasks_api_updates_tasks_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "最多返回的结果数量。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateTaskListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回最近的后台更新任务、进度和日志摘要。"
+      },
+      "post": {
+        "tags": [
+          "updates"
+        ],
+        "summary": "创建更新任务",
+        "operationId": "create_update_task_api_updates_tasks_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskCreate"
+              },
+              "examples": {
+                "dryRun": {
+                  "summary": "只下载并校验",
+                  "value": {
+                    "dry_run": true,
+                    "force": true
+                  }
+                },
+                "upgrade": {
+                  "summary": "正式更新到最新版本",
+                  "value": {
+                    "dry_run": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateTaskRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "创建下载校验或正式更新任务。正式更新会校验 SHA256、备份、迁移数据库并重启服务。"
+      }
+    },
+    "/api/updates/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "updates"
+        ],
+        "summary": "获取更新任务详情",
+        "operationId": "get_update_task_api_updates_tasks__task_id__get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            },
+            "description": "任务 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateTaskRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回单个更新任务的状态、进度和日志。"
       }
     },
     "/api/imports/metadata": {
@@ -3584,7 +3987,7 @@
             }
           }
         },
-        "description": "返回管理员偏好、前台首页图片绑定和上传队列参数。"
+        "description": "返回管理员偏好、前台首页图片绑定、上传队列参数和 GitHub 更新检查代理。"
       },
       "put": {
         "tags": [
@@ -3630,11 +4033,12 @@
               },
               "examples": {
                 "uploadWorkers": {
-                  "summary": "调整上传 worker",
+                  "summary": "调整上传 worker 和更新检查代理",
                   "value": {
                     "upload_worker_count": 24,
                     "upload_claim_batch_size": 4,
-                    "image_manage_view_mode": "waterfall"
+                    "image_manage_view_mode": "waterfall",
+                    "github_proxy_url": "https://gh-proxy.example.com/"
                   }
                 }
               }
@@ -3683,7 +4087,7 @@
             }
           }
         },
-        "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图和上传 worker 参数。"
+        "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、上传 worker 参数和 GitHub 更新检查代理。"
       }
     },
     "/api/settings/public": {
@@ -3884,7 +4288,7 @@
             }
           }
         },
-        "description": "返回数据库、存储、衍生图、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"
+        "description": "返回程序版本、最新 Release、数据库迁移状态、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"
       }
     },
     "/api/health": {
@@ -3940,6 +4344,12 @@
             "minimum": 1.0,
             "title": "Upload Claim Batch Size",
             "default": 1
+          },
+          "github_proxy_url": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Github Proxy Url",
+            "default": ""
           },
           "admin_username": {
             "type": "string",
@@ -4110,6 +4520,18 @@
               }
             ],
             "title": "Upload Claim Batch Size"
+          },
+          "github_proxy_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github Proxy Url"
           },
           "admin_username": {
             "anyOf": [
@@ -5156,6 +5578,10 @@
             "type": "integer",
             "title": "Height"
           },
+          "orientation": {
+            "type": "string",
+            "title": "Orientation"
+          },
           "rating": {
             "type": "string",
             "title": "Rating"
@@ -5290,6 +5716,7 @@
           "mime_type",
           "width",
           "height",
+          "orientation",
           "rating",
           "favorite_count",
           "dynamic_range",
@@ -5366,6 +5793,10 @@
             "type": "integer",
             "title": "Height"
           },
+          "orientation": {
+            "type": "string",
+            "title": "Orientation"
+          },
           "rating": {
             "type": "string",
             "title": "Rating"
@@ -5394,6 +5825,7 @@
           "filename",
           "width",
           "height",
+          "orientation",
           "rating",
           "favorite_count",
           "dynamic_range",
@@ -5691,6 +6123,51 @@
         ],
         "title": "InstallStatus"
       },
+      "LatestRelease": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "default": ""
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseAsset"
+            },
+            "type": "array",
+            "title": "Assets"
+          },
+          "proxied": {
+            "type": "boolean",
+            "title": "Proxied",
+            "default": false
+          },
+          "checked_at": {
+            "type": "integer",
+            "title": "Checked At",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "available"
+        ],
+        "title": "LatestRelease"
+      },
       "LoginRequest": {
         "properties": {
           "username": {
@@ -5968,6 +6445,29 @@
         },
         "type": "object",
         "title": "PublicSettingsRead"
+      },
+      "ReleaseAsset": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "default": 0
+          },
+          "browser_download_url": {
+            "type": "string",
+            "title": "Browser Download Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "browser_download_url"
+        ],
+        "title": "ReleaseAsset"
       },
       "SearchResponse": {
         "properties": {
@@ -6278,6 +6778,189 @@
         },
         "type": "object",
         "title": "TagUpdate"
+      },
+      "UpdateCheckResponse": {
+        "properties": {
+          "current_version": {
+            "type": "string",
+            "title": "Current Version"
+          },
+          "latest_release": {
+            "$ref": "#/components/schemas/LatestRelease"
+          },
+          "update_available": {
+            "type": "boolean",
+            "title": "Update Available"
+          },
+          "updater_available": {
+            "type": "boolean",
+            "title": "Updater Available"
+          },
+          "updater_mode": {
+            "type": "string",
+            "title": "Updater Mode"
+          },
+          "updater_status": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Updater Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current_version",
+          "latest_release",
+          "update_available",
+          "updater_available",
+          "updater_mode"
+        ],
+        "title": "UpdateCheckResponse"
+      },
+      "UpdateTaskCreate": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "UpdateTaskCreate"
+      },
+      "UpdateTaskListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateTaskRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "UpdateTaskListResponse"
+      },
+      "UpdateTaskRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "current_version": {
+            "type": "string",
+            "title": "Current Version"
+          },
+          "target_version": {
+            "type": "string",
+            "title": "Target Version"
+          },
+          "release_url": {
+            "type": "string",
+            "title": "Release Url",
+            "default": ""
+          },
+          "archive_url": {
+            "type": "string",
+            "title": "Archive Url",
+            "default": ""
+          },
+          "checksum_url": {
+            "type": "string",
+            "title": "Checksum Url",
+            "default": ""
+          },
+          "archive_name": {
+            "type": "string",
+            "title": "Archive Name",
+            "default": ""
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "progress": {
+            "type": "integer",
+            "title": "Progress",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "log": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Log"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "current_version",
+          "target_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "UpdateTaskRead"
       },
       "UploadDuplicateCheckItem": {
         "properties": {
@@ -7574,6 +8257,10 @@
     {
       "name": "system",
       "description": "部署诊断、存储与编解码健康检查。"
+    },
+    {
+      "name": "updates",
+      "description": "后台更新检查、下载校验和升级任务。"
     },
     {
       "name": "storage",

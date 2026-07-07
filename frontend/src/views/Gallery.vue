@@ -1,9 +1,10 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { useRoute } from 'vue-router'
 import { storageUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
+import { orientationOptions } from '../constants/orientations'
 import { ratingOptions } from '../constants/ratings'
 import ImageMasonry from '../components/ImageMasonry.vue'
 
@@ -14,12 +15,18 @@ const characters = ref([])
 const publicSettings = ref(null)
 const total = ref(0)
 const loading = ref(false)
+const preloading = ref(false)
+const loadMoreSentinel = ref(null)
 const page = ref(1)
 const pageSize = 48
+const preloadedPage = ref(null)
+const preloadedItems = ref([])
+const preloadedTotal = ref(0)
 const filters = reactive({
   work_id: undefined,
   character_id: undefined,
   rating: undefined,
+  orientation: undefined,
   sort: 'latest'
 })
 const optionLoading = reactive({
@@ -30,6 +37,15 @@ const optionSearchSeq = {
   works: 0,
   characters: 0
 }
+let loadObserver = null
+let loadSeq = 0
+let preloadSeq = 0
+let preloadTargetPage = null
+let preloadPromise = null
+let loadingMore = false
+const assetPreloadConcurrency = 6
+const assetPreloadRetries = 1
+const assetPreloadTimeout = 12000
 
 const hasMore = computed(() => images.value.length < total.value)
 const fallbackHeroBackdrop = '/hero/gallery-bg.jpg'
@@ -41,6 +57,7 @@ const activeFilterLabel = computed(() => {
   if (filters.character_id) return '角色视角'
   if (filters.work_id) return '作品视角'
   if (filters.rating) return `${ratingOptions.find((item) => item.value === filters.rating)?.label || filters.rating}分级`
+  if (filters.orientation) return `${orientationOptions.find((item) => item.value === filters.orientation)?.label || filters.orientation}画廊`
   return '精选画廊'
 })
 
@@ -91,34 +108,200 @@ async function loadPublicSettings() {
   }
 }
 
-async function loadImages(reset = false) {
-  if (loading.value) return
-  loading.value = true
-  if (reset) {
-    page.value = 1
-    images.value = []
-  }
-  const data = await galleryApi.images({
-    page: page.value,
+function activeImageParams(targetPage) {
+  return {
+    page: targetPage,
     page_size: pageSize,
     require_work_related: true,
     require_character_related: true,
     ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined))
-  })
-  images.value = reset ? data.items : [...images.value, ...data.items]
-  total.value = data.total
-  loading.value = false
+  }
 }
 
-function loadMore() {
-  page.value += 1
-  loadImages()
+function preloadSingleAsset(source) {
+  if (typeof window === 'undefined') return Promise.resolve(false)
+
+  return new Promise((resolve) => {
+    let attempt = 0
+
+    const start = () => {
+      let settled = false
+      const preload = new window.Image()
+      const timer = window.setTimeout(() => finish(false), assetPreloadTimeout)
+
+      const finish = (ok) => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timer)
+        preload.onload = null
+        preload.onerror = null
+        if (!ok && attempt < assetPreloadRetries) {
+          attempt += 1
+          window.setTimeout(start, 220)
+          return
+        }
+        resolve(ok)
+      }
+
+      preload.decoding = 'async'
+      preload.loading = 'eager'
+      preload.onload = () => finish(true)
+      preload.onerror = () => finish(false)
+      preload.src = source
+    }
+
+    start()
+  })
+}
+
+async function preloadImageAssets(items = [], seq = preloadSeq) {
+  if (typeof window === 'undefined') return
+  const sources = [
+    ...new Set(
+      items
+        .map((image) => storageUrl(image.thumbnail_path || image.preview_path || image.file_path))
+        .filter(Boolean)
+    )
+  ]
+  if (!sources.length) return
+
+  let cursor = 0
+  const workerCount = Math.min(assetPreloadConcurrency, sources.length)
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < sources.length && seq === preloadSeq) {
+      const source = sources[cursor]
+      cursor += 1
+      await preloadSingleAsset(source)
+    }
+  })
+  await Promise.allSettled(workers)
+}
+
+function clearPreload() {
+  preloadSeq += 1
+  preloadTargetPage = null
+  preloadPromise = null
+  preloading.value = false
+  preloadedPage.value = null
+  preloadedItems.value = []
+  preloadedTotal.value = 0
+}
+
+function observeLoadMoreSentinel() {
+  loadObserver?.disconnect()
+  if (!loadMoreSentinel.value || !hasMore.value) return
+  loadObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        loadMore()
+      }
+    },
+    {
+      root: null,
+      rootMargin: '720px 0px',
+      threshold: 0.01
+    }
+  )
+  loadObserver.observe(loadMoreSentinel.value)
+}
+
+async function preloadNextPage() {
+  if (preloading.value || loading.value || !hasMore.value) return
+  const nextPage = page.value + 1
+  if (preloadedPage.value === nextPage) return
+
+  const seq = ++preloadSeq
+  preloadTargetPage = nextPage
+  preloading.value = true
+  preloadPromise = galleryApi.images(activeImageParams(nextPage))
+
+  try {
+    const data = await preloadPromise
+    if (seq !== preloadSeq) return
+    preloadedPage.value = nextPage
+    preloadedItems.value = data.items || []
+    preloadedTotal.value = data.total || 0
+    void preloadImageAssets(preloadedItems.value, seq)
+  } catch (error) {
+    if (seq === preloadSeq) {
+      preloadedPage.value = null
+      preloadedItems.value = []
+      preloadedTotal.value = 0
+    }
+  } finally {
+    if (seq === preloadSeq) {
+      preloadTargetPage = null
+      preloadPromise = null
+      preloading.value = false
+    }
+  }
+}
+
+async function loadImages(reset = false) {
+  if (loading.value) return
+  const seq = ++loadSeq
+  let shouldPreload = false
+  loading.value = true
+  if (reset) {
+    page.value = 1
+    images.value = []
+    total.value = 0
+    clearPreload()
+  }
+  try {
+    const data = await galleryApi.images(activeImageParams(page.value))
+    if (seq !== loadSeq) return
+    images.value = reset ? data.items : [...images.value, ...data.items]
+    total.value = data.total
+    await nextTick()
+    observeLoadMoreSentinel()
+    shouldPreload = true
+  } finally {
+    if (seq === loadSeq) {
+      loading.value = false
+    }
+  }
+  if (shouldPreload && seq === loadSeq) {
+    preloadNextPage()
+  }
+}
+
+async function loadMore() {
+  if (loading.value || loadingMore || !hasMore.value) return
+  const nextPage = page.value + 1
+  const expectedLoadSeq = loadSeq
+  const expectedPreloadSeq = preloadSeq
+
+  loadingMore = true
+  try {
+    if (preloading.value && preloadTargetPage === nextPage && preloadPromise) {
+      await preloadPromise.catch(() => null)
+      if (expectedLoadSeq !== loadSeq || expectedPreloadSeq !== preloadSeq) return
+    }
+
+    if (preloadedPage.value === nextPage) {
+      page.value = nextPage
+      images.value = [...images.value, ...preloadedItems.value]
+      total.value = preloadedTotal.value || total.value
+      clearPreload()
+      await nextTick()
+      observeLoadMoreSentinel()
+      preloadNextPage()
+      return
+    }
+
+    page.value += 1
+    await loadImages()
+  } finally {
+    loadingMore = false
+  }
 }
 
 function resetFilters() {
   filters.work_id = undefined
   filters.character_id = undefined
   filters.rating = undefined
+  filters.orientation = undefined
   filters.sort = 'latest'
   loadImages(true)
 }
@@ -127,8 +310,14 @@ onMounted(async () => {
   filters.work_id = route.query.work_id ? Number(route.query.work_id) : undefined
   filters.character_id = route.query.character_id ? Number(route.query.character_id) : undefined
   filters.rating = route.query.rating || undefined
+  filters.orientation = route.query.orientation || undefined
   await Promise.all([loadPublicSettings(), loadFilters()])
   await loadImages(true)
+})
+
+onBeforeUnmount(() => {
+  clearPreload()
+  loadObserver?.disconnect()
 })
 </script>
 
@@ -185,6 +374,14 @@ onMounted(async () => {
     >
       <el-option v-for="rating in ratingOptions" :key="rating.value" :label="rating.label" :value="rating.value" />
     </el-select>
+    <el-select
+      v-model="filters.orientation"
+      clearable
+      placeholder="方向"
+      @change="loadImages(true)"
+    >
+      <el-option v-for="orientation in orientationOptions" :key="orientation.value" :label="orientation.label" :value="orientation.value" />
+    </el-select>
     <el-select v-model="filters.sort" @change="loadImages(true)">
       <el-option label="最新上传" value="latest" />
       <el-option label="随机漫游" value="random" />
@@ -199,7 +396,9 @@ onMounted(async () => {
     <span class="muted">{{ total }} 张图片</span>
   </div>
   <ImageMasonry :images="images" :loading="loading" />
-  <div v-if="hasMore" style="display: flex; justify-content: center; margin-top: 22px">
-    <el-button size="large" :loading="loading" @click="loadMore">加载更多</el-button>
+  <div v-if="hasMore" ref="loadMoreSentinel" class="gallery-load-sentinel" @click="loadMore">
+    <span v-if="loading">正在加载更多...</span>
+    <span v-else-if="preloading">下一页已在预加载，继续下滑</span>
+    <span v-else>继续下滑自动加载更多</span>
   </div>
 </template>

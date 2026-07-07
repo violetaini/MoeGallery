@@ -468,6 +468,30 @@ a {
   font-size: 13px;
 }
 
+.gallery-load-sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 76px;
+  margin: 24px 0 8px;
+  color: rgba(61, 49, 90, 0.68);
+  font-size: 13px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.gallery-load-sentinel span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 18px;
+  border: 1px solid rgba(119, 98, 171, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 26px rgba(77, 61, 120, 0.08);
+}
+
 .muted {
   color: var(--muted);
 }
@@ -501,7 +525,9 @@ a {
   min-width: 0;
   height: 100%;
   border-radius: 0;
-  background: var(--line);
+  background:
+    var(--image-placeholder, none) center / cover no-repeat,
+    var(--line);
   transition: filter 0.18s ease, transform 0.18s ease;
 }
 
@@ -524,7 +550,12 @@ a {
 
 .image-card img {
   height: 100%;
-  background: var(--line);
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.image-card.is-image-loaded img {
+  opacity: 1;
 }
 
 .chip-row {
@@ -3890,6 +3921,7 @@ body {
 .image-card {
   border-radius: 6px;
   background:
+    var(--image-placeholder, none) center / cover no-repeat,
     linear-gradient(135deg, rgba(255, 111, 163, 0.14), rgba(52, 184, 223, 0.14));
   box-shadow: 0 8px 20px rgba(47, 37, 86, 0.08);
 }
@@ -4011,7 +4043,7 @@ body {
 }
 
 .home-slideshow {
-  --home-slideshow-image: url("/hero/gallery-bg.jpg");
+  --home-slideshow-image: url("/placeholder/image-loading-landscape.webp");
   --home-progress-duration: 5600ms;
   position: relative;
   height: 100%;
@@ -4198,6 +4230,7 @@ body {
   border-radius: 12px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 30px),
+    url("/placeholder/image-loading-landscape.webp") center / cover no-repeat,
     rgba(7, 8, 14, 0.7);
   box-shadow: 0 28px 76px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(20px);
@@ -4214,6 +4247,12 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.24s ease;
+}
+
+.home-slide-frame.is-image-loaded img {
+  opacity: 1;
 }
 
 .home-slide-frame::before {

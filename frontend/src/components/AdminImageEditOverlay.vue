@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { galleryApi } from '../api/gallery'
+import { orientationLabel } from '../constants/orientations'
 import { ratingLabel, ratingOptions, ratingTagType } from '../constants/ratings'
 import ResponsiveImage from './ResponsiveImage.vue'
 
@@ -169,6 +170,7 @@ onBeforeUnmount(() => {
             <h2>{{ title }}</h2>
             <div class="chip-row">
               <el-tag>{{ dimensions }}</el-tag>
+              <el-tag>{{ orientationLabel(image.orientation) }}</el-tag>
               <el-tag type="success">{{ fileSize }}</el-tag>
               <el-tag :type="ratingTagType(form.rating)">{{ ratingLabel(form.rating) }}</el-tag>
               <el-tag v-if="image.dynamic_range === 'hdr'" type="warning">HDR</el-tag>

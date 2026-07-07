@@ -1,17 +1,22 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { storageUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
+import { imageLoadingPlaceholders } from '../utils/imagePlaceholder'
 
-const fallbackImage = '/hero/gallery-bg.jpg'
+const fallbackImage = imageLoadingPlaceholders.landscape
 const slides = ref([])
 const loading = ref(false)
 const activeIndex = ref(0)
 const paused = ref(false)
 const progressKey = ref(0)
 const railRef = ref(null)
+const activeDisplayImageSrc = ref(fallbackImage)
+const activeImageLoaded = ref(false)
+const activeImageRetryCount = ref(0)
 const slideInterval = 5600
+const maxActiveImageRetries = 2
 let slideTimer = null
 const railDrag = {
   active: false,
@@ -24,7 +29,7 @@ const activeSlide = computed(() => slides.value[activeIndex.value] || null)
 const activeImageSrc = computed(() => imageSrc(activeSlide.value))
 const activeTitle = computed(() => activeSlide.value?.original_filename || activeSlide.value?.filename || 'Anime Gallery')
 const slideshowStyle = computed(() => ({
-  '--home-slideshow-image': `url("${activeImageSrc.value}")`,
+  '--home-slideshow-image': `url("${activeImageLoaded.value ? activeDisplayImageSrc.value : fallbackImage}")`,
   '--home-progress-duration': `${slideInterval}ms`
 }))
 
@@ -34,6 +39,46 @@ function imageSrc(image) {
 
 function thumbnailSrc(image) {
   return storageUrl(image?.thumbnail_path || image?.preview_path || image?.file_path) || fallbackImage
+}
+
+function withRetryParam(source, retry) {
+  const separator = source.includes('?') ? '&' : '?'
+  return `${source}${separator}agms_home_retry=${retry}&t=${Date.now()}`
+}
+
+function handleActiveImageLoad() {
+  activeImageRetryCount.value = 0
+  activeImageLoaded.value = true
+}
+
+function handleActiveImageError() {
+  activeImageLoaded.value = false
+  if (!activeImageSrc.value || activeImageRetryCount.value >= maxActiveImageRetries) {
+    activeDisplayImageSrc.value = fallbackImage
+    activeImageLoaded.value = true
+    return
+  }
+  activeImageRetryCount.value += 1
+  window.setTimeout(() => {
+    activeDisplayImageSrc.value = withRetryParam(activeImageSrc.value, activeImageRetryCount.value)
+  }, 260)
+}
+
+function preloadHomeImage(source) {
+  if (typeof window === 'undefined' || !source || source === fallbackImage) return
+  const image = new window.Image()
+  image.decoding = 'async'
+  image.src = source
+}
+
+function preloadNearbySlides() {
+  if (!slides.value.length) return
+  const indexes = [activeIndex.value, activeIndex.value + 1, activeIndex.value - 1, activeIndex.value + 2]
+  const sources = indexes
+    .map((index) => slides.value[(index + slides.value.length) % slides.value.length])
+    .map((slide) => imageSrc(slide))
+    .filter(Boolean)
+  Array.from(new Set(sources)).forEach(preloadHomeImage)
 }
 
 function clearSlideTimer() {
@@ -131,11 +176,19 @@ async function loadSlides() {
       activeIndex.value = 0
       return
     }
-    const data = await galleryApi.images({
+    let data = await galleryApi.images({
       page: 1,
       page_size: 12,
+      orientation: 'landscape',
       sort: 'random'
     })
+    if (!data.items?.length) {
+      data = await galleryApi.images({
+        page: 1,
+        page_size: 12,
+        sort: 'random'
+      })
+    }
     slides.value = data.items || []
     activeIndex.value = 0
   } catch (error) {
@@ -148,6 +201,22 @@ async function loadSlides() {
 
 onMounted(loadSlides)
 onBeforeUnmount(clearSlideTimer)
+
+watch(
+  activeImageSrc,
+  (source) => {
+    activeDisplayImageSrc.value = source || fallbackImage
+    activeImageRetryCount.value = 0
+    activeImageLoaded.value = false
+    preloadNearbySlides()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [slides.value.length, activeIndex.value],
+  () => preloadNearbySlides()
+)
 </script>
 
 <template>
@@ -169,8 +238,17 @@ onBeforeUnmount(clearSlideTimer)
 
       <div class="home-slideshow__visual">
         <div class="home-slide-shadow" aria-hidden="true"></div>
-        <div class="home-slide-frame" :class="{ 'home-slide-frame--empty': !activeSlide }">
-          <img :key="activeSlide?.id || 'fallback'" :src="activeImageSrc" :alt="activeTitle" />
+        <div class="home-slide-frame" :class="{ 'home-slide-frame--empty': !activeSlide, 'is-image-loaded': activeImageLoaded }">
+          <img
+            :key="`${activeSlide?.id || 'fallback'}-${activeDisplayImageSrc}`"
+            :src="activeDisplayImageSrc"
+            :alt="activeTitle"
+            loading="eager"
+            decoding="async"
+            fetchpriority="high"
+            @load="handleActiveImageLoad"
+            @error="handleActiveImageError"
+          />
         </div>
 
         <div class="home-slideshow__controls" v-show="slides.length > 1">
@@ -225,7 +303,13 @@ onBeforeUnmount(clearSlideTimer)
           @dragstart.prevent
           @click.stop="handleThumbClick(index)"
         >
-          <img :src="thumbnailSrc(slide)" :alt="slide.original_filename || slide.filename || '图片'" draggable="false" />
+          <img
+            :src="thumbnailSrc(slide)"
+            :alt="slide.original_filename || slide.filename || '图片'"
+            loading="lazy"
+            decoding="async"
+            draggable="false"
+          />
         </button>
       </div>
       <button

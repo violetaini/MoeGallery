@@ -132,6 +132,7 @@ def list_images(
     work_id: int | None = None,
     character_id: int | None = None,
     rating: str | None = Query(None, pattern="^(safe|sensitive|hidden)$"),
+    orientation: str | None = Query(None, pattern="^(landscape|portrait|square)$"),
     q: str | None = None,
     sort: str = Query("latest", pattern="^(latest|random|favorites|resolution)$"),
     public_only: bool = True,
@@ -166,6 +167,8 @@ def list_images(
         stmt = stmt.join(Image.characters).where(Character.id == character_id)
     if rating:
         stmt = stmt.where(Image.rating == rating)
+    if orientation:
+        stmt = stmt.where(Image.orientation == orientation)
     if q:
         needle = f"%{q.strip()}%"
         stmt = stmt.where(

@@ -4,6 +4,7 @@ import { Link, Star, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { galleryApi } from '../api/gallery'
 import ResponsiveImage from './ResponsiveImage.vue'
+import { orientationLabel } from '../constants/orientations'
 import { ratingLabel, ratingTagType } from '../constants/ratings'
 import { isImageFavorited, setImageFavorited } from '../utils/favorites'
 
@@ -69,6 +70,7 @@ async function toggleFavorite() {
       <h2>{{ title }}</h2>
       <div class="chip-row">
         <el-tag>{{ image.width }} x {{ image.height }}</el-tag>
+        <el-tag>{{ orientationLabel(image.orientation) }}</el-tag>
         <el-tag type="success">{{ Math.round(image.file_size / 1024) }} KB</el-tag>
         <el-tag :type="ratingTagType(image.rating)">{{ ratingLabel(image.rating) }}</el-tag>
         <el-tag v-if="image.dynamic_range === 'hdr'" type="warning">HDR</el-tag>

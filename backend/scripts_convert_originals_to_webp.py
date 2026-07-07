@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import SessionLocal
 from app.models import Image
+from app.services.image_service import image_orientation
 from app.utils.image_process import InvalidImageError, WEBP_EXTENSION, WEBP_MIME_TYPE, inspect_image, save_webp_image
 
 
@@ -58,6 +59,7 @@ def convert_image(image: Image, apply: bool, keep_source: bool) -> str:
     image.color_profile = inspection.color_profile
     image.width = inspection.width
     image.height = inspection.height
+    image.orientation = image_orientation(inspection.width, inspection.height)
     if inspection.is_animated:
         return "animated"
     if inspection.dynamic_range == "hdr":

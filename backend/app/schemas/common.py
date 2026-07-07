@@ -17,6 +17,7 @@ class ImageSummary(OrmModel):
     mime_type: str | None = None
     width: int
     height: int
+    orientation: str
     rating: str
     favorite_count: int
     dynamic_range: str

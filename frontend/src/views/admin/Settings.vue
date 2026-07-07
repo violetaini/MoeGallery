@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Loading, Refresh } from '@element-plus/icons-vue'
 import { adminAvatarUrlFromImage, clearAuthSession, setAuthSession, storageUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
+import { orientationLabel, orientationOptions } from '../../constants/orientations'
 import { imageUploadAccept } from '../../constants/uploadFormats'
 import {
   getImageManageViewMode,
@@ -41,6 +42,7 @@ const homeSlideshowPickerPageSize = 24
 const homeSlideshowImageQuery = ref('')
 const homeSlideshowWorkId = ref()
 const homeSlideshowCharacterId = ref()
+const homeSlideshowOrientation = ref('landscape')
 const homeSlideshowWorkOptions = ref([])
 const homeSlideshowCharacterOptions = ref([])
 const homeSlideshowWorkLoading = ref(false)
@@ -324,6 +326,7 @@ async function loadHomeSlideshowImageOptions(page = homeSlideshowPickerPage.valu
     if (q) params.q = q
     if (homeSlideshowWorkId.value) params.work_id = homeSlideshowWorkId.value
     if (homeSlideshowCharacterId.value) params.character_id = homeSlideshowCharacterId.value
+    if (homeSlideshowOrientation.value) params.orientation = homeSlideshowOrientation.value
     const data = await galleryApi.images(params)
     if (seq === homeSlideshowImageSearchSeq) {
       homeSlideshowPickerImages.value = data.items || []
@@ -411,6 +414,7 @@ function resetHomeSlideshowPickerFilters() {
   homeSlideshowImageQuery.value = ''
   homeSlideshowWorkId.value = undefined
   homeSlideshowCharacterId.value = undefined
+  homeSlideshowOrientation.value = 'landscape'
   loadHomeSlideshowWorkOptions()
   loadHomeSlideshowCharacterOptions()
   loadHomeSlideshowImageOptions(1)
@@ -742,9 +746,18 @@ onMounted(async () => {
                     :value="character.id"
                   />
                 </el-select>
+                <el-select
+                  v-model="homeSlideshowOrientation"
+                  class="home-slideshow-picker-filter"
+                  clearable
+                  placeholder="按方向筛选"
+                  @change="searchHomeSlideshowImages"
+                >
+                  <el-option v-for="orientation in orientationOptions" :key="orientation.value" :label="orientation.label" :value="orientation.value" />
+                </el-select>
                 <el-button type="primary" :loading="homeSlideshowImageLoading" @click="searchHomeSlideshowImages">搜索</el-button>
                 <el-button
-                  :disabled="!homeSlideshowImageQuery && !homeSlideshowWorkId && !homeSlideshowCharacterId"
+                  :disabled="!homeSlideshowImageQuery && !homeSlideshowWorkId && !homeSlideshowCharacterId && homeSlideshowOrientation === 'landscape'"
                   @click="resetHomeSlideshowPickerFilters"
                 >
                   重置
@@ -767,7 +780,7 @@ onMounted(async () => {
                   <span class="home-slideshow-picker-card__meta">
                     <strong>#{{ image.id }}</strong>
                     <span>{{ imageDisplayName(image) }}</span>
-                    <small>{{ image.width }} x {{ image.height }}</small>
+                    <small>{{ image.width }} x {{ image.height }} · {{ orientationLabel(image.orientation) }}</small>
                   </span>
                 </button>
                 <el-empty

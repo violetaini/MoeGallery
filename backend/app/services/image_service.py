@@ -8,6 +8,14 @@ from app.utils.hash import average_hash_bytes, sha256_bytes
 from app.utils.image_process import InvalidImageError, inspect_image, render_webp_preview_bytes, validate_upload_filename
 
 
+def image_orientation(width: int, height: int) -> str:
+    if width > height:
+        return "landscape"
+    if height > width:
+        return "portrait"
+    return "square"
+
+
 class ImageService:
     def __init__(self, db: Session):
         self.db = db
@@ -54,6 +62,7 @@ class ImageService:
             thumbnail_path=paths["thumbnail_path"],
             width=inspection.width,
             height=inspection.height,
+            orientation=image_orientation(inspection.width, inspection.height),
             file_size=paths["file_size"],
             mime_type=paths["mime_type"],
             is_animated=inspection.is_animated,

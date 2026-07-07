@@ -6,6 +6,7 @@ import { storageUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import AdminImageEditOverlay from '../../components/AdminImageEditOverlay.vue'
 import AdminImageWall from '../../components/AdminImageWall.vue'
+import { orientationLabel, orientationOptions } from '../../constants/orientations'
 import { ratingOptions } from '../../constants/ratings'
 import { getImageManageViewMode, normalizeImageManageViewMode, setImageManageViewMode } from '../../utils/adminPreferences'
 import { displayId } from '../../utils/displayId'
@@ -28,7 +29,8 @@ const pageSizeOptions = [20, 50, 100]
 const filters = reactive({
   work_id: undefined,
   character_id: undefined,
-  rating: undefined
+  rating: undefined,
+  orientation: undefined
 })
 const batchForm = reactive({
   artist_name: '',
@@ -161,6 +163,7 @@ function resetFilters() {
   filters.work_id = undefined
   filters.character_id = undefined
   filters.rating = undefined
+  filters.orientation = undefined
   reloadFromFirstPage()
 }
 
@@ -280,6 +283,9 @@ onMounted(async () => {
       <el-select v-model="filters.rating" clearable placeholder="分级" style="width: 190px" @change="reloadFromFirstPage">
         <el-option v-for="rating in ratingOptions" :key="rating.value" :label="rating.label" :value="rating.value" />
       </el-select>
+      <el-select v-model="filters.orientation" clearable placeholder="方向" style="width: 150px" @change="reloadFromFirstPage">
+        <el-option v-for="orientation in orientationOptions" :key="orientation.value" :label="orientation.label" :value="orientation.value" />
+      </el-select>
       <el-button @click="reloadFromFirstPage">搜索</el-button>
       <el-button @click="resetFilters">重置</el-button>
       <el-button v-if="isWaterfallView" @click="selectCurrentPage">全选本页</el-button>
@@ -331,7 +337,7 @@ onMounted(async () => {
       <el-table-column label="文件" min-width="190">
         <template #default="{ row }">
           <strong>{{ row.original_filename || row.filename }}</strong>
-          <div class="muted">{{ row.width }} x {{ row.height }}</div>
+          <div class="muted">{{ row.width }} x {{ row.height }} · {{ orientationLabel(row.orientation) }}</div>
         </template>
       </el-table-column>
       <el-table-column label="作品" min-width="160">

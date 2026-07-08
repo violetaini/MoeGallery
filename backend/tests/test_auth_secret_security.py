@@ -247,6 +247,34 @@ class CookieSessionTests(unittest.TestCase):
         health = self.client.get("/api/system/health", headers={"Authorization": f"Bearer {api_key}"})
         self.assertEqual(health.status_code, 200)
 
+    def test_settings_show_and_reset_api_keys(self):
+        old_api_key = generate_api_key()
+        settings.api_keys = f"ops:{old_api_key}"
+        login = self.client.post(
+            "/api/auth/login",
+            json={"username": settings.admin_username, "password": settings.admin_password},
+        )
+        self.assertEqual(login.status_code, 200)
+
+        settings_response = self.client.get("/api/settings")
+        self.assertEqual(settings_response.status_code, 200)
+        self.assertEqual(settings_response.json()["operations_api_keys"], [{"name": "ops", "key": old_api_key}])
+
+        csrf = self.client.cookies.get("agms_admin_csrf")
+        reset = self.client.post("/api/settings/api-keys/reset", headers={"X-CSRF-Token": csrf})
+        self.assertEqual(reset.status_code, 200)
+        api_keys = reset.json()["operations_api_keys"]
+        self.assertEqual(len(api_keys), 1)
+        self.assertEqual(api_keys[0]["name"], "default")
+        new_api_key = api_keys[0]["key"]
+        self.assertNotEqual(new_api_key, old_api_key)
+
+        fresh_client = TestClient(app)
+        old_key_response = fresh_client.get("/api/auth/me", headers={"Authorization": f"Bearer {old_api_key}"})
+        self.assertEqual(old_key_response.status_code, 401)
+        new_key_response = fresh_client.get("/api/auth/me", headers={"Authorization": f"Bearer {new_api_key}"})
+        self.assertEqual(new_key_response.status_code, 200)
+
     def test_invalid_api_key_is_rejected(self):
         settings.api_keys = f"ops:{generate_api_key()}"
 

@@ -42,6 +42,7 @@ let loadSeq = 0
 let preloadSeq = 0
 let preloadTargetPage = null
 let preloadPromise = null
+let preloadTimer = null
 let loadingMore = false
 const assetPreloadConcurrency = 6
 const assetPreloadRetries = 1
@@ -178,6 +179,10 @@ async function preloadImageAssets(items = [], seq = preloadSeq) {
 }
 
 function clearPreload() {
+  if (preloadTimer) {
+    window.clearTimeout(preloadTimer)
+    preloadTimer = null
+  }
   preloadSeq += 1
   preloadTargetPage = null
   preloadPromise = null
@@ -237,6 +242,18 @@ async function preloadNextPage() {
   }
 }
 
+function schedulePreloadNextPage(delay = 0) {
+  if (typeof window === 'undefined') {
+    void preloadNextPage()
+    return
+  }
+  if (preloadTimer) window.clearTimeout(preloadTimer)
+  preloadTimer = window.setTimeout(() => {
+    preloadTimer = null
+    void preloadNextPage()
+  }, delay)
+}
+
 async function loadImages(reset = false) {
   if (loading.value) return
   const seq = ++loadSeq
@@ -262,7 +279,7 @@ async function loadImages(reset = false) {
     }
   }
   if (shouldPreload && seq === loadSeq) {
-    preloadNextPage()
+    schedulePreloadNextPage(reset ? 520 : 120)
   }
 }
 
@@ -286,7 +303,7 @@ async function loadMore() {
       clearPreload()
       await nextTick()
       observeLoadMoreSentinel()
-      preloadNextPage()
+      schedulePreloadNextPage(120)
       return
     }
 
@@ -311,8 +328,7 @@ onMounted(async () => {
   filters.character_id = route.query.character_id ? Number(route.query.character_id) : undefined
   filters.rating = route.query.rating || undefined
   filters.orientation = route.query.orientation || undefined
-  await Promise.all([loadPublicSettings(), loadFilters()])
-  await loadImages(true)
+  await Promise.all([loadPublicSettings(), loadFilters(), loadImages(true)])
 })
 
 onBeforeUnmount(() => {

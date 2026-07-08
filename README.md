@@ -192,9 +192,7 @@ npm run build
 Install systemd and Nginx examples:
 
 ```bash
-sudo cp /opt/anime-gallery/scripts/anime-gallery.service /etc/systemd/system/anime-gallery.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now anime-gallery
+sudo bash /opt/anime-gallery/scripts/install_systemd.sh
 
 sudo cp /opt/anime-gallery/scripts/nginx-anime-gallery.conf /etc/nginx/sites-available/anime-gallery.conf
 sudo ln -s /etc/nginx/sites-available/anime-gallery.conf /etc/nginx/sites-enabled/anime-gallery.conf
@@ -244,7 +242,7 @@ sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r backend/requirements.txt
 ```
 
-Then install the systemd service and Nginx config as shown above, open `/install`, and complete database, administrator, and secret initialization in the web installer. Existing deployments should back up `.env`, `storage/`, and the database before replacing application files.
+Then install the systemd service and Nginx config as shown above, open `/install`, and complete database, administrator, and secret initialization in the web installer. The systemd installer also installs the updater unit and writes the default `AGMS_UPDATE_TRIGGER_COMMAND` when it is missing. Existing deployments should back up `.env`, `storage/`, and the database before replacing application files.
 
 ## Upgrading
 
@@ -268,14 +266,15 @@ Backups are stored in `/opt/anime-gallery/backups/upgrade-YYYYmmdd-HHMMSS/`. For
 
 The Admin Update Center can check GitHub Releases, download the `.tar.gz` archive, verify `SHA256SUMS.txt`, and create a real upgrade task.
 
-For production, trigger upgrades through the independent systemd updater service so the main FastAPI process does not update and restart itself:
+Real upgrades from the panel require the independent systemd updater service. Without `AGMS_UPDATE_TRIGGER_COMMAND`, the panel still allows download verification, but it disables real upgrades so the main FastAPI process cannot update and restart itself.
+
+The recommended installer configures this by default:
 
 ```bash
-sudo cp /opt/anime-gallery/scripts/anime-gallery-updater@.service /etc/systemd/system/
-sudo systemctl daemon-reload
+sudo bash /opt/anime-gallery/scripts/install_systemd.sh
 ```
 
-Then configure `.env`:
+Equivalent manual `.env` values:
 
 ```env
 AGMS_UPDATE_TRIGGER_COMMAND=sudo -n systemctl start anime-gallery-updater@{task_id}.service
@@ -283,7 +282,7 @@ AGMS_UPDATE_SERVICE_NAME=anime-gallery
 AGMS_UPDATE_HEALTH_URL=http://127.0.0.1:8000/api/health
 ```
 
-The web service user must be allowed to start that updater unit without a password. Without `AGMS_UPDATE_TRIGGER_COMMAND`, the backend starts a local child process, which is suitable for local previews and download verification but is not recommended for production upgrades.
+The web service user must be allowed to start that updater unit without a password. `install_systemd.sh` writes a narrow sudoers rule for the updater unit by default.
 
 ## Release Automation
 

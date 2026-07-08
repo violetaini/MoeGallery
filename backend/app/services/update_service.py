@@ -79,28 +79,25 @@ def updater_status() -> dict:
     if not backup_script_exists:
         issues.append("缺少 scripts/backup_before_upgrade.sh")
     if not trigger_command:
-        warnings.append("未配置独立 updater 服务，正式更新不建议在生产环境使用")
+        warnings.append("未配置独立 updater 服务，正式更新已禁用")
     if os.name == "nt":
         warnings.append("当前是 Windows 环境，只支持下载校验，不支持正式替换运行中的服务")
 
     dry_run_available = runner_exists
-    production_ready = bool(trigger_command and runner_exists and upgrade_script_exists and backup_script_exists)
-    local_upgrade_available = bool(
-        not trigger_command
-        and os.name != "nt"
+    production_ready = bool(
+        os.name != "nt"
+        and trigger_command
         and runner_exists
         and upgrade_script_exists
         and backup_script_exists
     )
-    available = production_ready or local_upgrade_available
+    local_upgrade_available = False
+    available = production_ready
     if production_ready:
         message = "独立 updater 服务已配置"
         severity = "ok"
-    elif local_upgrade_available:
-        message = "本地 updater 可用，但生产建议改用独立服务"
-        severity = "warning"
     elif dry_run_available:
-        message = "只能下载校验，正式更新未就绪"
+        message = "只能下载校验，正式更新需要独立 updater 服务"
         severity = "warning"
     else:
         message = "更新执行器不可用"

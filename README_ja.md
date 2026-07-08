@@ -192,9 +192,7 @@ npm run build
 systemd と Nginx の例をインストールします。
 
 ```bash
-sudo cp /opt/anime-gallery/scripts/anime-gallery.service /etc/systemd/system/anime-gallery.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now anime-gallery
+sudo bash /opt/anime-gallery/scripts/install_systemd.sh
 
 sudo cp /opt/anime-gallery/scripts/nginx-anime-gallery.conf /etc/nginx/sites-available/anime-gallery.conf
 sudo ln -s /etc/nginx/sites-available/anime-gallery.conf /etc/nginx/sites-enabled/anime-gallery.conf
@@ -244,7 +242,7 @@ sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r backend/requirements.txt
 ```
 
-その後、上記の手順で systemd サービスと Nginx 設定を有効化し、`/install` を開いてデータベース、管理者、秘密鍵の初期化を Web インストーラーで完了します。既存環境を更新する場合は、事前に `.env`、`storage/`、データベースをバックアップしてください。
+その後、上記の手順で systemd サービスと Nginx 設定を有効化し、`/install` を開いてデータベース、管理者、秘密鍵の初期化を Web インストーラーで完了します。systemd インストーラーは updater サービスも同時にインストールし、未設定の場合は既定の `AGMS_UPDATE_TRIGGER_COMMAND` を書き込みます。既存環境を更新する場合は、事前に `.env`、`storage/`、データベースをバックアップしてください。
 
 ## アップグレード
 
@@ -268,14 +266,15 @@ sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
 
 管理画面の「更新センター」は GitHub Release を確認し、`.tar.gz` アーカイブをダウンロードし、`SHA256SUMS.txt` を検証して、正式な更新タスクを作成できます。
 
-本番環境では、メインの FastAPI プロセスが自分自身を更新して再起動しないよう、独立した systemd updater サービスから更新を実行する構成を推奨します。
+管理画面からの正式な更新には、独立した systemd updater サービスが必須です。`AGMS_UPDATE_TRIGGER_COMMAND` が未設定の場合、ダウンロード検証だけを許可し、正式更新は無効化されます。これによりメインの FastAPI プロセスが自分自身を置き換えて再起動することを防ぎます。
+
+推奨インストーラーは既定で設定します。
 
 ```bash
-sudo cp /opt/anime-gallery/scripts/anime-gallery-updater@.service /etc/systemd/system/
-sudo systemctl daemon-reload
+sudo bash /opt/anime-gallery/scripts/install_systemd.sh
 ```
 
-そのうえで `.env` に設定します。
+同等の手動 `.env` 設定は次の通りです。
 
 ```env
 AGMS_UPDATE_TRIGGER_COMMAND=sudo -n systemctl start anime-gallery-updater@{task_id}.service
@@ -283,7 +282,7 @@ AGMS_UPDATE_SERVICE_NAME=anime-gallery
 AGMS_UPDATE_HEALTH_URL=http://127.0.0.1:8000/api/health
 ```
 
-Web サービスの実行ユーザーには、この updater unit をパスワードなしで起動する権限が必要です。`AGMS_UPDATE_TRIGGER_COMMAND` が未設定の場合、バックエンドはローカル子プロセスで更新タスクを開始します。これはローカルプレビューやダウンロード検証向けで、本番の正式更新には推奨しません。
+Web サービスの実行ユーザーには、この updater unit をパスワードなしで起動する権限が必要です。`install_systemd.sh` は updater unit の起動だけを許可する sudoers ルールを既定で書き込みます。
 
 ## Release 自動化
 

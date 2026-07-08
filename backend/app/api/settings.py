@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin
 from app.database import get_db
 from app.models import AppSetting, Image
+from app.config import generate_api_key, parse_api_keys, settings
 from app.schemas.settings import AdminSettingsRead, AdminSettingsUpdate, PublicSettingsRead
 from app.services.app_setting_service import (
     GITHUB_RELEASE_PROXY_URL_KEY,
@@ -20,6 +21,7 @@ from app.services.app_setting_service import (
 )
 from app.services.admin_account_service import get_admin_account, update_admin_account
 from app.services.auth_session_service import clear_admin_session_cookie, rotate_auth_secret
+from app.services.install_service import write_env
 from app.services.upload_task_service import start_upload_worker
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -169,6 +171,7 @@ def _read_settings(db: Session) -> dict[str, object]:
         "admin_username": account.username,
         "admin_avatar_image_id": account.avatar_image_id,
         "admin_avatar_image": account.avatar_image,
+        "operations_api_keys": [{"name": name, "key": key} for name, key in parse_api_keys(settings.api_keys)],
         **_read_public_settings(db),
         "home_slideshow_image_ids": slideshow_image_ids,
         "home_slideshow_images": slideshow_images,
@@ -258,3 +261,14 @@ def rotate_admin_auth_secret(
     db.commit()
     clear_admin_session_cookie(response)
     return result
+
+
+@router.post("/api-keys/reset", response_model=AdminSettingsRead)
+def reset_operations_api_keys(
+    db: Annotated[Session, Depends(get_db)],
+    _admin: Annotated[dict, Depends(require_admin)],
+):
+    next_api_keys = f"default:{generate_api_key()}"
+    write_env({"AGMS_API_KEYS": next_api_keys})
+    settings.api_keys = next_api_keys
+    return _read_settings(db)

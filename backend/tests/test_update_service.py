@@ -131,6 +131,15 @@ class UpdateServiceTests(unittest.TestCase):
                 update_service.create_update_task(None, dry_run=False)
         self.assertIn("正式更新未就绪", str(raised.exception))
 
+    def test_updater_status_disables_real_upgrade_without_trigger_command(self):
+        status = update_service.updater_status()
+
+        self.assertTrue(status["dry_run_available"])
+        self.assertFalse(status["available"])
+        self.assertFalse(status["production_ready"])
+        self.assertFalse(status["local_upgrade_available"])
+        self.assertIn("正式更新已禁用", "；".join(status["warnings"]))
+
 
 class UpdateApiTests(unittest.TestCase):
     def setUp(self):

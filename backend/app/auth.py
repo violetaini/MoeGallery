@@ -179,8 +179,19 @@ def optional_admin(
         api_key_admin = verify_api_key(credentials.credentials)
         if api_key_admin:
             return api_key_admin
+        data = verify_access_token(credentials.credentials)
+        session = (
+            db.query(AdminSession)
+            .filter(AdminSession.token_hash == session_token_hash(credentials.credentials))
+            .first()
+        )
+        if not _session_is_active(session):
+            raise _invalid_token()
+        session.last_seen_at = datetime.utcnow()
+        db.commit()
+        return {**data, "session_id": session.id}
 
-    token = _extract_token(credentials, session_cookie)
+    token = session_cookie
     if not token:
         return None
     try:

@@ -192,9 +192,7 @@ npm run build
 安裝 systemd 和 Nginx 範例：
 
 ```bash
-sudo cp /opt/anime-gallery/scripts/anime-gallery.service /etc/systemd/system/anime-gallery.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now anime-gallery
+sudo bash /opt/anime-gallery/scripts/install_systemd.sh
 
 sudo cp /opt/anime-gallery/scripts/nginx-anime-gallery.conf /etc/nginx/sites-available/anime-gallery.conf
 sudo ln -s /etc/nginx/sites-available/anime-gallery.conf /etc/nginx/sites-enabled/anime-gallery.conf
@@ -244,7 +242,7 @@ sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r backend/requirements.txt
 ```
 
-然後按上面的方式安裝 systemd 服務和 Nginx 配置，打開 `/install`，在網頁安裝器裡完成資料庫、管理員和密鑰初始化。已有部署升級前應先備份 `.env`、`storage/` 和資料庫。
+然後按上面的方式安裝 systemd 服務和 Nginx 配置，打開 `/install`，在網頁安裝器裡完成資料庫、管理員和密鑰初始化。systemd 安裝腳本會同時安裝 updater 服務，並在缺少配置時寫入預設 `AGMS_UPDATE_TRIGGER_COMMAND`。已有部署升級前應先備份 `.env`、`storage/` 和資料庫。
 
 ## 升級
 
@@ -268,14 +266,15 @@ sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
 
 後台「更新中心」可以檢查 GitHub Release、下載 `.tar.gz` 更新包、校驗 `SHA256SUMS.txt`，並建立正式更新任務。
 
-生產環境建議讓面板透過獨立 systemd updater 服務啟動更新，避免主 FastAPI 進程在替換自身文件和重啟服務時中斷任務：
+面板正式更新必須透過獨立 systemd updater 服務執行。沒有配置 `AGMS_UPDATE_TRIGGER_COMMAND` 時，後台仍允許下載校驗，但會禁用正式更新，避免主 FastAPI 進程替換自身文件和重啟自身。
+
+推薦安裝腳本會預設配置：
 
 ```bash
-sudo cp /opt/anime-gallery/scripts/anime-gallery-updater@.service /etc/systemd/system/
-sudo systemctl daemon-reload
+sudo bash /opt/anime-gallery/scripts/install_systemd.sh
 ```
 
-然後在 `.env` 中配置觸發命令：
+等價的手動 `.env` 配置為：
 
 ```env
 AGMS_UPDATE_TRIGGER_COMMAND=sudo -n systemctl start anime-gallery-updater@{task_id}.service
@@ -283,7 +282,7 @@ AGMS_UPDATE_SERVICE_NAME=anime-gallery
 AGMS_UPDATE_HEALTH_URL=http://127.0.0.1:8000/api/health
 ```
 
-執行 Web 服務的使用者需要被允許無密碼啟動這個 updater unit。未配置 `AGMS_UPDATE_TRIGGER_COMMAND` 時，後台會用本地子進程執行更新任務；這適合本地預覽和下載校驗，不建議作為生產正式更新方案。
+執行 Web 服務的使用者需要被允許無密碼啟動這個 updater unit。`install_systemd.sh` 預設會寫入只允許啟動 updater unit 的 sudoers 規則。
 
 ## 自動 Release
 

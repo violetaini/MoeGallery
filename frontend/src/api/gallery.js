@@ -132,6 +132,9 @@ export const galleryApi = {
   rotateAuthSecret() {
     return api.post('/settings/auth-secret/rotate').then((r) => r.data)
   },
+  resetApiKeys() {
+    return api.post('/settings/api-keys/reset').then((r) => r.data)
+  },
   systemHealth() {
     return api.get('/system/health').then((r) => r.data)
   },

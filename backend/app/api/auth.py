@@ -173,6 +173,7 @@ def login(
 def logout(
     response: Response,
     db: Annotated[Session, Depends(get_db)],
+    _admin: Annotated[dict, Depends(require_admin)],
     session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
 ):
     revoke_session(db, token=session_cookie)

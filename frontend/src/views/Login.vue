@@ -56,7 +56,10 @@ async function submit() {
             @keyup.enter="submit"
           />
         </el-form-item>
-        <el-button type="primary" size="large" :loading="loading" style="width: 100%" @click="submit">登录</el-button>
+        <div class="login-actions">
+          <el-button type="primary" size="large" :loading="loading" @click="submit">登录</el-button>
+          <el-button size="large" plain @click="router.push('/')">返回前台</el-button>
+        </div>
       </el-form>
     </section>
   </main>

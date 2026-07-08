@@ -19,6 +19,9 @@ const router = useRouter()
 const uploadWorkerCount = ref(12)
 const uploadClaimBatchSize = ref(1)
 const githubProxyUrl = ref('')
+const operationsApiKeys = ref([])
+const apiKeysVisible = ref(false)
+const resettingApiKeys = ref(false)
 const adminUsername = ref('')
 const adminPassword = ref('')
 const adminAvatarImage = ref(null)
@@ -260,6 +263,10 @@ function syncAccount(data) {
   setAuthSession({ username: adminUsername.value, avatar_image: adminAvatarImage.value })
 }
 
+function syncOperationsApiKeys(data) {
+  operationsApiKeys.value = Array.isArray(data.operations_api_keys) ? data.operations_api_keys : []
+}
+
 function syncHomeSlideshowImages(data) {
   homeSlideshowImageIds.value = Array.isArray(data.home_slideshow_image_ids) ? data.home_slideshow_image_ids : []
   homeSlideshowImages.value = Array.isArray(data.home_slideshow_images) ? data.home_slideshow_images : []
@@ -471,6 +478,7 @@ async function loadAdminSettings() {
     uploadWorkerCount.value = data.upload_worker_count || 12
     uploadClaimBatchSize.value = data.upload_claim_batch_size || 1
     githubProxyUrl.value = data.github_proxy_url || ''
+    syncOperationsApiKeys(data)
     syncAccount(data)
     setImageManageViewMode(imageManageViewMode.value)
   } catch (error) {
@@ -506,6 +514,7 @@ async function saveAdminPreferences() {
     uploadWorkerCount.value = data.upload_worker_count
     uploadClaimBatchSize.value = data.upload_claim_batch_size
     githubProxyUrl.value = data.github_proxy_url || ''
+    syncOperationsApiKeys(data)
     syncAccount(data)
     setImageManageViewMode(imageManageViewMode.value)
     ElMessage.success('后台偏好已保存')
@@ -608,6 +617,39 @@ async function rotateLoginSecret() {
     ElMessage.error(error?.response?.data?.detail || '轮换登录密钥失败')
   } finally {
     rotatingSecret.value = false
+  }
+}
+
+async function copyApiKey(key) {
+  try {
+    await navigator.clipboard.writeText(key)
+    ElMessage.success('API Key 已复制')
+  } catch (error) {
+    ElMessage.error('复制失败，请手动选中复制')
+  }
+}
+
+async function resetOperationsApiKeys() {
+  await ElMessageBox.confirm(
+    '重置后旧 API Key 会立即失效，依赖旧 Key 的脚本、监控和自动化任务都需要同步更新。确认继续？',
+    '重置 API Key',
+    {
+      type: 'warning',
+      confirmButtonText: '确认重置',
+      cancelButtonText: '取消',
+      closeOnClickModal: false
+    }
+  )
+  resettingApiKeys.value = true
+  try {
+    const data = await galleryApi.resetApiKeys()
+    syncOperationsApiKeys(data)
+    apiKeysVisible.value = true
+    ElMessage.success('API Key 已重置')
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '重置 API Key 失败')
+  } finally {
+    resettingApiKeys.value = false
   }
 }
 
@@ -913,6 +955,38 @@ onMounted(async () => {
               maxlength="500"
               placeholder="例如：https://gh-proxy.example.com/"
             />
+          </div>
+
+          <div class="admin-preference-section api-key-settings">
+            <div class="admin-preference-header">
+              <div class="admin-preference-copy">
+                <strong>运维 API Key</strong>
+                <span>用于脚本、监控和自动化任务调用后台 API；重置后旧 Key 立即失效。</span>
+              </div>
+              <div class="api-key-actions">
+                <el-button size="small" @click="apiKeysVisible = !apiKeysVisible">
+                  {{ apiKeysVisible ? '隐藏密钥' : '显示密钥' }}
+                </el-button>
+                <el-button size="small" plain :loading="resettingApiKeys" @click="resetOperationsApiKeys">
+                  重置 API Key
+                </el-button>
+              </div>
+            </div>
+            <div v-if="operationsApiKeys.length" class="api-key-list">
+              <div v-for="item in operationsApiKeys" :key="item.name" class="api-key-row">
+                <span class="api-key-row__name">{{ item.name }}</span>
+                <el-input
+                  :model-value="item.key"
+                  :type="apiKeysVisible ? 'text' : 'password'"
+                  readonly
+                  spellcheck="false"
+                />
+                <el-button size="small" :disabled="!apiKeysVisible" @click="copyApiKey(item.key)">复制</el-button>
+              </div>
+            </div>
+            <div v-else class="api-key-empty">
+              当前未配置 API Key，点击重置会生成一个新的默认 Key。
+            </div>
           </div>
         </div>
       </section>

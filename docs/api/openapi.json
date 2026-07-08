@@ -3987,7 +3987,7 @@
             }
           }
         },
-        "description": "返回管理员偏好、前台首页图片绑定、上传队列参数和 GitHub 更新检查代理。"
+        "description": "返回管理员偏好、前台首页图片绑定、上传队列参数、GitHub 更新检查代理和运维 API Key。"
       },
       "put": {
         "tags": [
@@ -4191,6 +4191,87 @@
         "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。"
       }
     },
+    "/api/settings/api-keys/reset": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "重置运维 API Key",
+        "operationId": "reset_operations_api_keys_api_settings_api_keys_reset_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "生成新的默认 `AGMS_API_KEYS`，写入 `.env`，并使旧 API Key 立即失效。"
+      }
+    },
     "/api/system/health": {
       "get": {
         "tags": [
@@ -4375,6 +4456,13 @@
                 "type": "null"
               }
             ]
+          },
+          "operations_api_keys": {
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyRead"
+            },
+            "type": "array",
+            "title": "Operations Api Keys"
           },
           "home_slideshow_image_ids": {
             "items": {
@@ -4692,6 +4780,24 @@
         },
         "type": "object",
         "title": "AdminSettingsUpdate"
+      },
+      "ApiKeyRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "key"
+        ],
+        "title": "ApiKeyRead"
       },
       "AuthUser": {
         "properties": {
@@ -8252,7 +8358,7 @@
     },
     {
       "name": "settings",
-      "description": "后台偏好、前台首页设置和登录密钥轮换。"
+      "description": "后台偏好、前台首页设置、登录密钥轮换和运维 API Key 管理。"
     },
     {
       "name": "system",

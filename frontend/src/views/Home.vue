@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeft, ArrowRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { storageUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
@@ -15,6 +16,7 @@ const railRef = ref(null)
 const activeDisplayImageSrc = ref(fallbackImage)
 const activeImageLoaded = ref(false)
 const activeImageRetryCount = ref(0)
+const exiting = ref(false)
 const slideInterval = 5600
 const maxActiveImageRetries = 2
 let slideTimer = null
@@ -65,14 +67,14 @@ function handleActiveImageError() {
 }
 
 function preloadHomeImage(source) {
-  if (typeof window === 'undefined' || !source || source === fallbackImage) return
+  if (exiting.value || typeof window === 'undefined' || !source || source === fallbackImage) return
   const image = new window.Image()
   image.decoding = 'async'
   image.src = source
 }
 
 function preloadNearbySlides() {
-  if (!slides.value.length) return
+  if (exiting.value || !slides.value.length) return
   const indexes = [activeIndex.value, activeIndex.value + 1, activeIndex.value - 1, activeIndex.value + 2]
   const sources = indexes
     .map((index) => slides.value[(index + slides.value.length) % slides.value.length])
@@ -202,6 +204,12 @@ async function loadSlides() {
 onMounted(loadSlides)
 onBeforeUnmount(clearSlideTimer)
 
+onBeforeRouteLeave(() => {
+  exiting.value = true
+  paused.value = true
+  clearSlideTimer()
+})
+
 watch(
   activeImageSrc,
   (source) => {
@@ -222,7 +230,7 @@ watch(
 <template>
   <section
     class="home-slideshow"
-    :class="{ 'is-paused': paused, 'is-loading': loading, 'is-empty': !slides.length }"
+    :class="{ 'is-paused': paused, 'is-loading': loading, 'is-empty': !slides.length, 'is-exiting': exiting }"
     :style="slideshowStyle"
   >
     <div class="home-slideshow__backdrop"></div>

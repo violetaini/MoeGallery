@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, Setting } from '@element-plus/icons-vue'
 import { useThemeStore } from '../stores/theme'
@@ -7,6 +7,8 @@ import { useThemeStore } from '../stores/theme'
 const route = useRoute()
 const router = useRouter()
 const theme = useThemeStore()
+
+const isHomeLayoutActive = computed(() => route.name === 'home')
 
 onMounted(() => theme.apply())
 
@@ -17,7 +19,7 @@ function submitSearch(value) {
 </script>
 
 <template>
-  <div class="app-shell public-shell" :class="{ 'public-shell--home': route.name === 'home' }">
+  <div class="app-shell public-shell" :class="{ 'public-shell--home': isHomeLayoutActive }">
     <header class="top-nav">
       <RouterLink class="brand" to="/">
         <img class="brand-avatar" src="/avatar.webp" alt="Anime Gallery" />
@@ -44,13 +46,11 @@ function submitSearch(value) {
         <el-button class="nav-entry-button" :icon="Setting" @click="$router.push('/admin')">后台入口</el-button>
       </div>
     </header>
-    <main class="page-wrap" :class="{ 'page-wrap--home': route.name === 'home' }">
+    <main class="page-wrap" :class="{ 'page-wrap--home': isHomeLayoutActive }">
       <RouterView v-slot="{ Component, route: viewRoute }">
-        <Transition name="page-shell" mode="out-in">
-          <div :key="viewRoute.fullPath" class="route-view" :class="{ 'route-view--home': viewRoute.name === 'home' }">
-            <component :is="Component" />
-          </div>
-        </Transition>
+        <div :key="viewRoute.fullPath" class="route-view" :class="{ 'route-view--home': viewRoute.name === 'home' }">
+          <component :is="Component" />
+        </div>
       </RouterView>
     </main>
   </div>

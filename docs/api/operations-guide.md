@@ -31,7 +31,7 @@ Configure one or more keys in `.env`:
 AGMS_API_KEYS=ops-main:agms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,backup:agms_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
 ```
 
-Only the key value after `:` is sent in the `Authorization` header. Keep keys server-side, rotate them if exposed, and do not put them in frontend code.
+Only the key value after `:` is sent in the `Authorization` header. Keep keys server-side, rotate them if exposed, and do not put them in frontend code. The backend settings page can display the current operations API key and reset it to a new strong default key.
 
 ## Protected Docs
 

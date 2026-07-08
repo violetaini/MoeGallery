@@ -3,6 +3,11 @@ from pydantic import BaseModel, Field
 from app.schemas.common import ImageSummary
 
 
+class ApiKeyRead(BaseModel):
+    name: str
+    key: str
+
+
 class AdminSettingsRead(BaseModel):
     image_manage_view_mode: str = Field(default="classic", pattern="^(classic|waterfall)$")
     upload_worker_count: int = Field(default=12, ge=1, le=96)
@@ -11,6 +16,7 @@ class AdminSettingsRead(BaseModel):
     admin_username: str
     admin_avatar_image_id: int | None = None
     admin_avatar_image: ImageSummary | None = None
+    operations_api_keys: list[ApiKeyRead] = Field(default_factory=list)
     home_slideshow_image_ids: list[int] = Field(default_factory=list)
     home_slideshow_images: list[ImageSummary] = Field(default_factory=list)
     home_hero_image_id: int | None = None

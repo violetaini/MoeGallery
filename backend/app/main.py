@@ -1,12 +1,12 @@
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.api import auth, characters, images, imports, install, search, settings as api_settings, stats, storage, system, tags, upload_tasks, updates, works
-from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, require_admin
+from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, require_admin, verify_access_token, verify_api_key
 from app.config import settings
 from app.openapi import configure_openapi
 from app.services.storage_service import ensure_storage_dirs
@@ -32,6 +32,30 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if request.url.scheme == "https":
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
+
+
+class AuthorizationHeaderMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        authorization = request.headers.get("authorization", "").strip()
+        if authorization:
+            scheme, separator, token = authorization.partition(" ")
+            token = token.strip()
+            if scheme.lower() != "bearer" or not separator or not token:
+                return JSONResponse(
+                    {"detail": "Invalid authorization header"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            if not verify_api_key(token):
+                try:
+                    verify_access_token(token)
+                except HTTPException:
+                    return JSONResponse(
+                        {"detail": "Invalid or expired token"},
+                        status_code=401,
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+        return await call_next(request)
 
 
 class CsrfMiddleware(BaseHTTPMiddleware):
@@ -60,6 +84,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(AuthorizationHeaderMiddleware)
 app.add_middleware(CsrfMiddleware)
 
 ensure_storage_dirs()

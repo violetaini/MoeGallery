@@ -224,6 +224,7 @@ mkdir -p "$APP_DIR"
 rsync -a --delete \
   --exclude='.env' \
   --exclude='installed.lock' \
+  --exclude='frontend/dist/.user.ini' \
   --exclude='storage/' \
   --exclude='logs/' \
   --exclude='backups/' \

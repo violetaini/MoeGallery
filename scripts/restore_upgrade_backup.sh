@@ -60,9 +60,43 @@ if [[ ! -f "$BACKUP_DIR/app-files.tar.gz" ]]; then
 fi
 
 echo "Restoring application files from $BACKUP_DIR"
-rm -rf "$APP_DIR/backend" "$APP_DIR/frontend/dist" "$APP_DIR/scripts" "$APP_DIR/docs"
-mkdir -p "$APP_DIR/frontend"
-tar -xzf "$BACKUP_DIR/app-files.tar.gz" -C "$APP_DIR"
+WORK_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+tar -xzf "$BACKUP_DIR/app-files.tar.gz" -C "$WORK_DIR"
+
+mkdir -p "$APP_DIR/backend" "$APP_DIR/frontend" "$APP_DIR/scripts"
+if [[ -d "$WORK_DIR/backend" ]]; then
+  rsync -a --delete \
+    --exclude='anime_gallery.db*' \
+    --exclude='*.db' \
+    --exclude='*.db-*' \
+    --exclude='*.sqlite' \
+    --exclude='*.sqlite-*' \
+    "$WORK_DIR/backend/" "$APP_DIR/backend/"
+fi
+if [[ -d "$WORK_DIR/frontend" ]]; then
+  rsync -a --delete \
+    --exclude='dist/.user.ini' \
+    "$WORK_DIR/frontend/" "$APP_DIR/frontend/"
+fi
+if [[ -d "$WORK_DIR/scripts" ]]; then
+  rsync -a --delete "$WORK_DIR/scripts/" "$APP_DIR/scripts/"
+fi
+if [[ -d "$WORK_DIR/docs" ]]; then
+  mkdir -p "$APP_DIR/docs"
+  rsync -a --delete "$WORK_DIR/docs/" "$APP_DIR/docs/"
+else
+  rm -rf "$APP_DIR/docs"
+fi
+
+for file in install.sh .env.example LICENSE README.md README_zh.md README_zh-TW.md README_ja.md VERSION RELEASE_NOTES.md; do
+  if [[ -e "$WORK_DIR/$file" ]]; then
+    cp -a "$WORK_DIR/$file" "$APP_DIR/$file"
+  fi
+done
 
 if [[ -f "$BACKUP_DIR/env/.env" ]]; then
   cp -a "$BACKUP_DIR/env/.env" "$APP_DIR/.env"

@@ -133,7 +133,9 @@ bash "$APP_DIR/scripts/create_linux_dirs.sh" \
 
 # The dedicated account owns release files so the in-process launcher can
 # install a verified release without a privileged updater service.
-chown -R "$WEB_USER:$WEB_GROUP" "$APP_DIR"
+find "$APP_DIR" \
+  -path "$APP_DIR/frontend/dist/.user.ini" -prune -o \
+  -exec chown "$WEB_USER:$WEB_GROUP" {} +
 chmod 755 "$APP_DIR"
 chmod 700 "$APP_DIR/backups"
 if [[ -f "$APP_DIR/.env" ]]; then

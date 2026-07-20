@@ -181,6 +181,7 @@ elif database_url.startswith(("mysql", "mariadb")):
         "--single-transaction",
         "--routines",
         "--triggers",
+        "--no-tablespaces",
         "--default-character-set=utf8mb4",
         "-h",
         host,

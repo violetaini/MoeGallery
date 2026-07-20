@@ -201,7 +201,9 @@ run rsync -a --delete \
   --exclude='*.sqlite-*' \
   "$STAGE_DIR/backend/" "$APP_DIR/backend/"
 
-run rsync -a --delete "$STAGE_DIR/frontend/dist/" "$APP_DIR/frontend/dist/"
+run rsync -a --delete \
+  --exclude='.user.ini' \
+  "$STAGE_DIR/frontend/dist/" "$APP_DIR/frontend/dist/"
 run rsync -a --delete "$STAGE_DIR/scripts/" "$APP_DIR/scripts/"
 
 if [[ -d "$STAGE_DIR/docs" ]]; then

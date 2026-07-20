@@ -12,29 +12,29 @@ const tasks = ref([])
 const selectedTaskId = ref('')
 let pollingTimer = null
 
-const runningStatuses = new Set(['queued', 'starting', 'downloading', 'verifying', 'backup', 'upgrading', 'restarting'])
+const runningStatuses = new Set(['queued', 'starting', 'downloading', 'verifying', 'prepared', 'backup', 'upgrading', 'restarting'])
 const latestRelease = computed(() => updateInfo.value?.latest_release || {})
 const latestVersion = computed(() => latestRelease.value.version || '未知')
 const currentVersion = computed(() => updateInfo.value?.current_version || '未知')
 const updateAvailable = computed(() => Boolean(updateInfo.value?.update_available))
-const updaterStatus = computed(() => updateInfo.value?.updater_status || {})
-const updaterModeText = computed(() => {
-  if (!updaterStatus.value.dry_run_available) return '不可用'
-  if (!updaterStatus.value.available) return '仅校验'
-  return updateInfo.value?.updater_mode === 'command' ? '独立服务' : '本地任务'
+const updateExecutionStatus = computed(() => updateInfo.value?.update_execution_status || {})
+const updateExecutionModeText = computed(() => {
+  if (!updateExecutionStatus.value.dry_run_available) return '不可用'
+  if (!updateExecutionStatus.value.available) return '仅校验'
+  return updateInfo.value?.update_execution_mode === 'launcher' ? '内置更新' : '本地任务'
 })
-const updaterSeverityType = computed(() => {
-  if (updaterStatus.value.severity === 'ok') return 'success'
-  if (updaterStatus.value.severity === 'danger') return 'danger'
+const updateExecutionSeverityType = computed(() => {
+  if (updateExecutionStatus.value.severity === 'ok') return 'success'
+  if (updateExecutionStatus.value.severity === 'danger') return 'danger'
   return 'warning'
 })
-const updaterHint = computed(() => {
+const updateExecutionHint = computed(() => {
   if (!updateInfo.value) return '等待检查更新环境'
-  const details = [...(updaterStatus.value.issues || []), ...(updaterStatus.value.warnings || [])]
-  return details[0] || updaterStatus.value.message || '更新环境正常'
+  const details = [...(updateExecutionStatus.value.issues || []), ...(updateExecutionStatus.value.warnings || [])]
+  return details[0] || updateExecutionStatus.value.message || '更新环境正常'
 })
-const canDryRun = computed(() => Boolean(latestRelease.value.available && updaterStatus.value.dry_run_available && !runningTask.value))
-const canUpgrade = computed(() => Boolean(updateAvailable.value && updaterStatus.value.available && !runningTask.value))
+const canDryRun = computed(() => Boolean(latestRelease.value.available && updateExecutionStatus.value.dry_run_available && !runningTask.value))
+const canUpgrade = computed(() => Boolean(updateAvailable.value && updateExecutionStatus.value.available && !runningTask.value))
 const statusText = computed(() => {
   if (!updateInfo.value) return '未检查'
   if (!latestRelease.value.available) return '检查失败'
@@ -50,6 +50,7 @@ function statusLabel(status) {
     starting: '启动中',
     downloading: '下载中',
     verifying: '校验中',
+    prepared: '等待安装',
     backup: '备份中',
     upgrading: '安装中',
     restarting: '重启中',
@@ -111,12 +112,12 @@ async function createTask(dryRun) {
     ElMessage.info('当前已经是最新版本')
     return
   }
-  if (dryRun && !updaterStatus.value.dry_run_available) {
-    ElMessage.warning(updaterHint.value)
+  if (dryRun && !updateExecutionStatus.value.dry_run_available) {
+    ElMessage.warning(updateExecutionHint.value)
     return
   }
-  if (!dryRun && !updaterStatus.value.available) {
-    ElMessage.warning(`正式更新未就绪：${updaterHint.value}`)
+  if (!dryRun && !updateExecutionStatus.value.available) {
+    ElMessage.warning(`正式更新未就绪：${updateExecutionHint.value}`)
     return
   }
   if (!dryRun) {
@@ -187,19 +188,19 @@ onBeforeUnmount(() => {
       </div>
       <div class="update-summary-card">
         <span>更新执行</span>
-        <strong>{{ updaterModeText }}</strong>
-        <small>{{ updaterStatus.message || '等待检查' }}</small>
+        <strong>{{ updateExecutionModeText }}</strong>
+        <small>{{ updateExecutionStatus.message || '等待检查' }}</small>
       </div>
     </section>
 
     <el-alert
       v-if="updateInfo"
       class="update-env-alert"
-      :type="updaterSeverityType"
+      :type="updateExecutionSeverityType"
       :closable="false"
       show-icon
-      :title="updaterStatus.message || '更新环境检查完成'"
-      :description="updaterHint"
+      :title="updateExecutionStatus.message || '更新环境检查完成'"
+      :description="updateExecutionHint"
     />
 
     <section class="update-action-panel">

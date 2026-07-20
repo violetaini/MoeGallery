@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/opt/anime-gallery"
+APP_DIR="/opt/moegallery"
 BACKUP_ROOT=""
 ENV_FILE=""
 SKIP_DATABASE=0
@@ -12,7 +12,7 @@ usage() {
 Usage: backup_before_upgrade.sh [options]
 
 Options:
-  --app-dir DIR        Application directory. Default: /opt/anime-gallery
+  --app-dir DIR        Application directory. Default: /opt/moegallery
   --backup-root DIR    Backup root. Default: <app-dir>/backups
   --env-file FILE      Environment file. Default: <app-dir>/.env
   --skip-database      Back up only files, not the configured database
@@ -75,7 +75,7 @@ copy_if_exists "$APP_DIR/installed.lock" "$BACKUP_DIR/install/installed.lock"
 copy_if_exists "$APP_DIR/VERSION" "$BACKUP_DIR/install/VERSION"
 
 app_items=()
-for item in backend frontend scripts docs .env.example LICENSE README.md README_zh.md README_zh-TW.md README_ja.md VERSION RELEASE_NOTES.md; do
+for item in backend frontend scripts docs install.sh .env.example LICENSE README.md README_zh.md README_zh-TW.md README_ja.md VERSION RELEASE_NOTES.md; do
   if [[ -e "$APP_DIR/$item" ]]; then
     app_items+=("$item")
   fi
@@ -87,6 +87,10 @@ if [[ ${#app_items[@]} -gt 0 ]]; then
     --exclude='*.pyc' \
     --exclude='*.pyo' \
     --exclude='backend/anime_gallery.db*' \
+    --exclude='backend/*.db' \
+    --exclude='backend/*.db-*' \
+    --exclude='backend/*.sqlite' \
+    --exclude='backend/*.sqlite-*' \
     --exclude='frontend/node_modules' \
     --exclude='frontend/dist/.vite' \
     -czf "$BACKUP_DIR/app-files.tar.gz" \

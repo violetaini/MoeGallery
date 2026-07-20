@@ -4,11 +4,10 @@
 
 # **MoeGallery**
 
-[![Version](https://img.shields.io/badge/Version-0.1.0-7c3aed?style=for-the-badge)](frontend/package.json)
+[![Release](https://img.shields.io/github/v/release/violetaini/MoeGallery?style=for-the-badge)](https://github.com/violetaini/MoeGallery/releases/latest)
 [![Frontend](https://img.shields.io/badge/Frontend-Vue%203%20%2B%20Vite-42b883?style=for-the-badge)](frontend/package.json)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLAlchemy-009688?style=for-the-badge)](backend/requirements.txt)
 [![Database](https://img.shields.io/badge/Database-MySQL%20%2F%20SQLite-2563eb?style=for-the-badge)](.env.example)
-[![HDR](https://img.shields.io/badge/HDR-JXR%20%2B%20AVIF-f97316?style=for-the-badge)](backend/app/utils/image_process.py)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 
 </div>
@@ -23,320 +22,124 @@
 <p align="center">
   <a href="https://anime.chitanda.net/">線上站點</a> |
   <a href="https://anime.chitanda.net/api-docs">API 文件</a> |
-  <a href="https://github.com/violetaini/MoeGallery">GitHub</a>
+  <a href="https://github.com/violetaini/MoeGallery/releases">Release</a>
 </p>
 
-<p align="center">
-  <code>anime-gallery</code>
-  <code>image-gallery</code>
-  <code>media-library</code>
-  <code>vue</code>
-  <code>vite</code>
-  <code>fastapi</code>
-  <code>mysql</code>
-  <code>sqlite</code>
-  <code>webp</code>
-  <code>avif</code>
-  <code>hdr</code>
-</p>
+MoeGallery 是一個自託管的二次元圖片媒體庫，包含訪客畫廊與管理後台，可維護圖片、作品、角色、分級、元資料、圖片處理任務與 API。
 
-## 關於
+## 快速安裝
 
-MoeGallery 是一個面向二次元圖片收藏與整理的自託管媒體庫，用於管理插畫、截圖、作品、角色、分級與圖片元資料。它提供面向訪客的前台畫廊，也提供用於上傳、綁定、編輯、匯入和維護的後台面板。
+建議安裝器適用於使用 systemd 的 Linux，並直接安裝已建置的 Release。部署時不需要 Node.js。
 
-專案定位接近「圖片版本 Jellyfin」：前台負責圖庫瀏覽、作品頁、角色頁、分級、首頁幻燈片和圖片詳情浮層；後台負責上傳、元資料、儲存、重複檢測、圖片轉碼、後台任務、登入鑑權和 API 文件。
+```bash
+curl -fsSLO https://github.com/violetaini/MoeGallery/releases/latest/download/install.sh
+sudo bash install.sh
+```
 
-## 功能
+安裝程式只詢問監聽方式：
 
-- 全螢幕視覺首頁，幻燈片圖片可在後台指定，未指定時從圖庫隨機選擇。
-- 圖片庫支援瀑布流、搜尋、按作品/角色/分級篩選，以及按最新、隨機、收藏數、解析度排序。
-- 圖片點擊後在目前頁面開啟詳情浮層，同時保留獨立圖片詳情路由。
-- 作品頁和角色頁支援媒體庫風格背景、封面、頭像、分頁區域和後台編輯頁。
-- 固定分級系統：`safe`、`sensitive`、`hidden`。
-- 後台圖片管理支援經典表格和瀑布畫廊兩種模式。
-- 批次上傳支援預覽、分頁、重複預檢、任務佇列、狀態輪詢，以及上傳前單張移除。
-- 批次匯入支援 CSV、JSON、XLSX、XLSM 範本。
-- 後台偏好可維護管理員資料、頭像、密碼、圖片管理顯示模式、上傳 worker 參數和首頁/列表背景圖。
-- 系統健康面板檢查資料庫、儲存一致性、上傳佇列、ffmpeg、JXR 解碼、AVIF 編碼和 HDR metadata patch 能力。
-- 後台安全包含 HttpOnly Cookie 會話、CSRF 校驗、登入防爆破、維運 API Key、安裝鎖和強隨機 `AGMS_AUTH_SECRET`。
+- `127.0.0.1`：僅本機存取或自行設定反向代理，建議使用。
+- `0.0.0.0`：直接透過公網或區域網路存取。
+
+預設連接埠為 `8111`。服務啟動後開啟：
+
+```text
+http://伺服器IP:8111/install
+```
+
+網頁安裝器會完成資料庫選擇、管理員帳號、資料庫遷移、登入密鑰、API Key、儲存目錄與安裝鎖初始化。
+
+| 資料庫 | 操作 |
+| --- | --- |
+| SQLite | 選擇 SQLite 後繼續，資料庫檔案位置由 MoeGallery 決定。 |
+| MySQL / MariaDB | 先建立空資料庫及專用帳號，再填入連線資訊。 |
+
+無人值守並直接監聽公網：
+
+```bash
+sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
+```
+
+MoeGallery 不建立網域、TLS 憑證、防火牆規則或反向代理站點。完整選項與手動部署請參閱[部署說明](docs/deployment.md)。
+
+## 安裝內容
+
+- 預設安裝到 `/opt/moegallery`。
+- 只建立一個 `moegallery.service` systemd 服務。
+- 建立專用的非 root 使用者 `moegallery`。
+- 內建啟動器負責啟動 FastAPI 並協調面板更新。
+- 後端在同一連接埠直接提供已建置的前端。
+
+專案不再安裝獨立 updater 服務，也不再寫入 updater sudoers 規則。
+
+## 主要功能
+
+- 可由後台指定圖片的全螢幕首頁幻燈片。
+- 瀑布流圖庫，支援搜尋、作品/角色/分級篩選、排序、自動載入與預載。
+- 圖片詳情浮層及獨立詳情路由。
+- 媒體庫風格的作品頁與角色頁，支援背景、封面、頭像和分頁。
+- 固定 `safe`、`sensitive`、`hidden` 三種分級。
+- 經典表格與瀑布畫廊兩種後台管理模式，並支援批次操作。
+- 批次上傳、重複預檢、處理佇列、失敗重試與元資料綁定。
+- CSV、JSON、XLSX、XLSM 批次匯入範本。
+- SQLite 與 MySQL/MariaDB 部署選擇。
+- HttpOnly 管理員工作階段、CSRF 驗證、登入限流、API Key 與自動產生的強密鑰。
+- 面板 Release 檢查、更新包校驗、資料庫備份、遷移、健康檢查及失敗自動復原。
 
 ## 圖片管線
 
-| 來源 | 入庫策略 | 預覽策略 |
+| 來源 | 原圖入庫 | 瀏覽器預覽 |
 | --- | --- | --- |
-| 普通靜態圖片 | 原圖轉 WebP | 產生 WebP preview 和 thumbnail |
-| GIF / 動圖 | 保留原格式 | 產生靜態 WebP preview 和 thumbnail |
-| JXR / HDR 圖片 | JXR 轉 HDR AVIF，寫入 `nclx / mdcv / clli` | 產生 SDR WebP preview 和 thumbnail |
-| 非 8-bit 圖片 | 保留 HDR / 高位元深度原圖 | 產生 SDR WebP preview 和 thumbnail |
-
-允許上傳的常見副檔名包括：
+| 一般靜態圖片 | 轉為 WebP | WebP 預覽圖與縮圖 |
+| GIF / 動圖 | 保留動畫格式 | 靜態 WebP 預覽圖與縮圖 |
+| JXR / HDR | 轉為帶有 `nclx / mdcv / clli` 的 HDR AVIF | SDR WebP 預覽圖與縮圖 |
+| 其他高位元深度圖片 | 保留相容的 HDR 原圖 | SDR WebP 預覽圖與縮圖 |
 
 ```text
 .jpg .jpeg .png .webp .gif .bmp .tif .tiff .heif .heic .avif .jxr
 ```
 
-後端會同時校驗檔案副檔名和實際解碼能力。不在白名單內、無法解碼或偽裝成圖片的檔案會被拒絕。
+後端會同時驗證副檔名與實際解碼能力，偽裝或無法解碼的檔案會被拒絕。
 
-## 路由
+## 更新與備份
 
-```text
-/                         首頁幻燈片
-/gallery                  圖片庫
-/images/:id               圖片詳情
-/works                    作品列表
-/works/:id                作品詳情
-/characters               角色列表
-/characters/:id           角色詳情
-/tags                     分級頁
-/search                   搜尋頁
-/admin                    後台面板
-/install                  首次安裝精靈
-/api-docs                 後台 API 文件
+安裝完成後透過**後台 > 更新中心**更新。內建啟動器會先在線下載並校驗 Release，安裝與遷移時短暫停止 Web 子行程，重新啟動後執行健康檢查；失敗時會復原更新前的程式與資料庫備份。
+
+```bash
+sudo -u moegallery bash /opt/moegallery/scripts/backup_before_upgrade.sh \
+  --app-dir /opt/moegallery
 ```
 
-## 技術棧
+SQLite 使用 SQLite backup API；MySQL/MariaDB 使用 `mysqldump --single-transaction`。
 
-| 層級 | 技術 |
-| --- | --- |
-| 前端 | Vue 3, Vite, Pinia, Vue Router, Element Plus |
-| 後端 | FastAPI, SQLAlchemy, Alembic, Pydantic |
-| 資料庫 | 本機開發使用 SQLite，生產環境使用 MySQL/MariaDB |
-| 圖片處理 | Pillow, pillow-heif, imagecodecs, ffmpeg |
-| 部署 | systemd, Nginx, 寶塔/Linux 裸機 |
+## 文件
 
-## 環境需求
-
-- Python 3.12 或更新版本
-- Node.js 20 或更新版本
-- 生產環境使用 MySQL 8.x / MariaDB 11.x，本機開發可用 SQLite
-- 支援 AVIF/AV1 編碼的 ffmpeg
+- [Deployment guide](docs/deployment.md)
+- [部署說明（簡體中文）](docs/deployment_zh.md)
+- [API 維運指南](docs/api/operations-guide.md)
+- 管理員登入後的互動式 API 文件：`/api-docs`
 
 ## 本機開發
 
-後端：
+需要 Python 3.11 或更新版本，以及 Node.js 20 或更新版本。
 
 ```bash
-cd backend
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/alembic upgrade head
-.venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+./.venv/bin/pip install -r backend/requirements.txt
+cd backend && ../.venv/bin/uvicorn app.main:app --reload --port 8000
 
-前端：
-
-```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Vite 開發伺服器預設執行於 `http://127.0.0.1:5173/`。
-
-## 配置
-
-複製 `.env.example` 為 `.env`，按部署環境調整配置。
-
-```text
-AGMS_DATABASE_URL                  SQLite 或 MySQL SQLAlchemy 連線字串
-AGMS_STORAGE_PATH                  原圖、預覽圖、縮圖和任務檔案的儲存根目錄
-AGMS_ADMIN_USERNAME                初始備援管理員使用者名稱
-AGMS_ADMIN_PASSWORD                初始備援管理員密碼
-AGMS_AUTH_SECRET                   會話簽章強密鑰，由安裝器產生
-AGMS_AUTH_TOKEN_TTL_SECONDS        管理員會話有效期
-AGMS_COOKIE_SECURE                 HTTPS 後建議設為 true
-AGMS_MAX_UPLOAD_SIZE               最大上傳大小
-AGMS_PREVIEW_MAX_SIZE              預覽圖最長邊
-AGMS_THUMBNAIL_MAX_SIZE            縮圖最長邊
-AGMS_CORS_ORIGINS                  允許的瀏覽器來源
-```
-
-`AGMS_AUTH_SECRET` 不是 API Key。它用於後端簽發和校驗管理員會話，必須保密。安裝器會自動產生；如果繞過安裝器，請手動產生強隨機值：
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-## 首次安裝
-
-當 `installed.lock` 不存在，且目標資料庫沒有有效 Alembic 版本時，前端會進入 `/install`。
-
-安裝器支援初始化 SQLite 或 MySQL：
-
-- SQLite：資料庫路徑由程式決定。
-- MySQL：填寫主機、連接埠、資料庫名、使用者名稱和密碼。
-- 儲存：使用專案 `storage/` 目錄。
-- 管理員：設定第一個管理員帳號和密碼。
-- 密鑰：自動產生並寫入 `.env`。
-
-安裝成功後，程式會寫入 `.env`、執行遷移、初始化管理員帳號、建立 `installed.lock`，必要時提示重啟後端。
-
-## 部署
-
-建立目錄、安裝後端依賴並建置前端：
-
-```bash
-sudo mkdir -p /opt/anime-gallery
-sudo rsync -a ./ /opt/anime-gallery/
-sudo bash /opt/anime-gallery/scripts/create_linux_dirs.sh
-
-cd /opt/anime-gallery
-sudo python3 -m venv venv
-sudo /opt/anime-gallery/venv/bin/pip install -r backend/requirements.txt
-
-cd /opt/anime-gallery/frontend
-npm install
-npm run build
-```
-
-安裝 systemd 和 Nginx 範例：
-
-```bash
-sudo bash /opt/anime-gallery/scripts/install_systemd.sh
-
-sudo cp /opt/anime-gallery/scripts/nginx-anime-gallery.conf /etc/nginx/sites-available/anime-gallery.conf
-sudo ln -s /etc/nginx/sites-available/anime-gallery.conf /etc/nginx/sites-enabled/anime-gallery.conf
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-把 Nginx 範例中的 `gallery.example.com` 改成自己的網域，生產環境啟用 HTTPS。
-
-乾淨部署時，打開瀏覽器訪問 `/install`。安裝頁會配置 SQLite 或 MySQL、寫入 `.env`、執行遷移、初始化管理員帳號、產生 `AGMS_AUTH_SECRET`，並建立 `installed.lock`。
-
-如果安裝頁選擇 MySQL，先建立空資料庫和專用帳號：
-
-```sql
-CREATE DATABASE anime_gallery
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
-GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
-FLUSH PRIVILEGES;
-```
-
-然後在安裝頁填寫 MySQL 主機、連接埠、資料庫名、使用者名稱和密碼。安裝頁提示需要重啟時，重啟後端服務即可。
-
-只有明確跳過安裝器，或升級已有部署時，才需要手動編輯 `.env` 和手動執行 Alembic 遷移。
-
-## Release 包部署
-
-GitHub Releases 會提供預建部署包：
-
-```text
-MoeGallery-vX.Y.Z.zip
-MoeGallery-vX.Y.Z.tar.gz
-SHA256SUMS.txt
-```
-
-壓縮包包含後端原始碼、Alembic 遷移、已建置的 `frontend/dist`、部署腳本、文件、`.env.example`，以及空的 `storage/` 和 `logs/` 目錄。壓縮包不會包含 `.env`、資料庫檔案、上傳圖片、日誌、虛擬環境、`node_modules` 或私鑰。
-
-部署 Release 包：
-
-```bash
-sudo mkdir -p /opt/anime-gallery
-sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=1
-
-cd /opt/anime-gallery
-sudo python3 -m venv venv
-sudo ./venv/bin/pip install -r backend/requirements.txt
-```
-
-然後按上面的方式安裝 systemd 服務和 Nginx 配置，打開 `/install`，在網頁安裝器裡完成資料庫、管理員和密鑰初始化。systemd 安裝腳本會同時安裝 updater 服務，並在缺少配置時寫入預設 `AGMS_UPDATE_TRIGGER_COMMAND`。已有部署升級前應先備份 `.env`、`storage/` 和資料庫。
-
-## 升級
-
-已有部署可以使用包內升級腳本：
-
-```bash
-sudo bash /opt/anime-gallery/scripts/upgrade_release.sh /tmp/MoeGallery-vX.Y.Z.tar.gz
-```
-
-腳本會建立帶時間戳的備份、停止服務、只替換程式檔案、保留 `.env`、`installed.lock`、`storage/` 和資料庫檔案、更新 Python 依賴、執行 Alembic 遷移、重啟服務，並檢查 `/api/health`。
-
-只備份不升級：
-
-```bash
-sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
-```
-
-備份會保存到 `/opt/anime-gallery/backups/upgrade-YYYYmmdd-HHMMSS/`。MySQL 使用 `mysqldump --single-transaction`，SQLite 使用 sqlite backup API。
-
-## 面板更新
-
-後台「更新中心」可以檢查 GitHub Release、下載 `.tar.gz` 更新包、校驗 `SHA256SUMS.txt`，並建立正式更新任務。
-
-面板正式更新必須透過獨立 systemd updater 服務執行。沒有配置 `AGMS_UPDATE_TRIGGER_COMMAND` 時，後台仍允許下載校驗，但會禁用正式更新，避免主 FastAPI 進程替換自身文件和重啟自身。
-
-推薦安裝腳本會預設配置：
-
-```bash
-sudo bash /opt/anime-gallery/scripts/install_systemd.sh
-```
-
-等價的手動 `.env` 配置為：
-
-```env
-AGMS_UPDATE_TRIGGER_COMMAND=sudo -n systemctl start anime-gallery-updater@{task_id}.service
-AGMS_UPDATE_SERVICE_NAME=anime-gallery
-AGMS_UPDATE_HEALTH_URL=http://127.0.0.1:8000/api/health
-```
-
-執行 Web 服務的使用者需要被允許無密碼啟動這個 updater unit。`install_systemd.sh` 預設會寫入只允許啟動 updater unit 的 sudoers 規則。
-
-## 自動 Release
-
-倉庫已透過 `.github/workflows/release.yml` 支援自動發布 GitHub Releases。
-
-透過 tag 發布：
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-也可以在 GitHub Actions 頁面手動執行 `Release` workflow，填寫 `v0.1.0` 這樣的版本號。
-
-workflow 會安裝 Node.js 和 Python、檢查後端語法、建置前端、執行 `scripts/package_release.py` 打包，並把 `.zip`、`.tar.gz` 和 `SHA256SUMS.txt` 作為獨立資產發布到 GitHub Release。
-
-## 更新檢查代理
-
-後台「系統健康」的程式版本卡片會讀取本地 `VERSION`，並訪問 GitHub Release API 檢查最新版本。伺服器無法直連 GitHub 時，可在「系統設定 / GitHub 更新檢查」裡配置代理 URL。同一個代理也會用於面板更新時下載 Release 資產，包括 `.tar.gz` 更新包和 `SHA256SUMS.txt`。
-
-- 留空：直接訪問 `https://api.github.com/repos/violetaini/MoeGallery/releases/latest`。
-- 普通前綴：例如 `https://gh-proxy.example.com/`，程式會請求 `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest`。
-- 模板 URL：支援 `{url}` 和 `{raw_url}` 佔位符，分別代表 URL 編碼後的目標地址和原始目標地址。
-
-## ESA/CDN 後的真實客戶端 IP
-
-如果站點套了阿里雲 ESA/CDN，需要把邊緣節點提供的真實客戶端 IP 傳給後端。範例 Nginx 配置優先使用 `ali-real-client-ip`，相容 `ali-cdn-real-ip` 和 `true-client-ip`，最後回退到 `$remote_addr`。
-
-後端也會識別這些標頭，並且只信任來自本機/內網反向代理的轉發標頭。生產環境建議透過安全組、防火牆或回源鑑權限制源站直連，避免外部偽造真實 IP 標頭。
-
-## API
-
-OpenAPI 文件地址：
-
-```text
-/api-docs
-/api-docs/openapi.json
-/openapi.json
-```
-
-API 文件需要管理員認證。維運自動化可以使用管理員會話 Cookie 或已配置的 operations API key。
-
-## 安全說明
-
-- 後台寫操作需要有效的 HttpOnly 會話 Cookie。
-- 帶會話 Cookie 的非安全請求必須包含 CSRF token header。
-- 登入失敗會同時按客戶端 IP 和使用者名稱限流。
-- API Key 只用於維運自動化，不應暴露給瀏覽器。
-- `/storage/*` 透過後端受控路由輸出，私有/隱藏檔案不能直接按路徑匿名取得。
-- 如果後端使用多 worker 或多實例，登入限流計數應遷移到 Redis 等共享儲存。
-- 不要把 `.env`、資料庫備份、上傳媒體和私鑰提交到公開倉庫。
+## 安全
+
+- 不要將 `.env`、`installed.lock`、資料庫、上傳圖片、備份或私鑰提交到 Git。
+- 透過不受信任的網路開放管理員登入前，請自行設定 HTTPS。
+- MySQL 應使用專用帳號，不要使用資料庫管理員帳號。
+- 保持 Release SHA256 校驗，只設定可信任的 GitHub 代理。
 
 ## 授權
 
-本專案原始碼基於 [MIT License](LICENSE) 開源。
-
-上傳圖片、角色作品圖、匯入元資料和使用者提供的媒體內容不會自動包含在本倉庫授權範圍內。
+MoeGallery 使用 [MIT License](LICENSE)。

@@ -1,15 +1,18 @@
 [Unit]
-Description=Anime Gallery Backend
-After=network.target
+Description=MoeGallery
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-WorkingDirectory=/opt/anime-gallery/backend
-EnvironmentFile=-/opt/anime-gallery/.env
-ExecStart=/opt/anime-gallery/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Type=simple
+WorkingDirectory=/opt/moegallery
+ExecStart=/opt/moegallery/venv/bin/python /opt/moegallery/scripts/moegallery_launcher.py --app-dir /opt/moegallery --host 127.0.0.1 --port 8111
 Restart=always
 RestartSec=3
-User=www-data
-Group=www-data
+TimeoutStopSec=45
+UMask=0027
+User=moegallery
+Group=moegallery
 
 [Install]
 WantedBy=multi-user.target

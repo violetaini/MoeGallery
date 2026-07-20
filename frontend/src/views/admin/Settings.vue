@@ -661,9 +661,9 @@ onMounted(async () => {
 <template>
   <div class="admin-card">
     <el-descriptions :column="1" border>
-      <el-descriptions-item label="后端监听">127.0.0.1:8000</el-descriptions-item>
-      <el-descriptions-item label="前端构建目录">/opt/anime-gallery/frontend/dist</el-descriptions-item>
-      <el-descriptions-item label="默认存储目录">/opt/anime-gallery/storage</el-descriptions-item>
+      <el-descriptions-item label="默认监听">127.0.0.1:8111</el-descriptions-item>
+      <el-descriptions-item label="前端构建目录">/opt/moegallery/frontend/dist</el-descriptions-item>
+      <el-descriptions-item label="默认存储目录">/opt/moegallery/storage</el-descriptions-item>
       <el-descriptions-item label="文件容量">{{ imageFileCapacity }}</el-descriptions-item>
       <el-descriptions-item label="配置前缀">AGMS_</el-descriptions-item>
       <el-descriptions-item label="后台鉴权">账号密码登录 + HttpOnly Cookie 会话。</el-descriptions-item>

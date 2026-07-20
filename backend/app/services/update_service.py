@@ -1,8 +1,9 @@
 import json
 import os
-import shlex
 import subprocess
 import sys
+import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -12,7 +13,16 @@ from sqlalchemy.orm import Session
 from app.config import ROOT_DIR, settings
 from app.services.release_service import current_app_version, latest_release_info, parse_semver
 
-UPDATE_STATUS_RUNNING = {"queued", "starting", "downloading", "verifying", "backup", "upgrading", "restarting"}
+UPDATE_STATUS_RUNNING = {
+    "queued",
+    "starting",
+    "downloading",
+    "verifying",
+    "prepared",
+    "backup",
+    "upgrading",
+    "restarting",
+}
 
 
 def updates_root() -> Path:
@@ -54,50 +64,65 @@ def _update_available(current_version: str, latest_version: str) -> bool:
     return bool(current and latest and latest > current)
 
 
-def updater_mode() -> str:
-    if settings.update_trigger_command.strip():
-        return "command"
-    return "local"
+def _launcher_managed() -> bool:
+    if os.environ.get("AGMS_LAUNCHER_MANAGED") != "1":
+        return False
+    configured_app_dir = os.environ.get("AGMS_LAUNCHER_APP_DIR", "").strip()
+    if not configured_app_dir:
+        return True
+    try:
+        return Path(configured_app_dir).resolve() == ROOT_DIR.resolve()
+    except OSError:
+        return False
 
 
-def updater_status() -> dict:
+def _formal_update_platform_supported() -> bool:
+    return os.name != "nt"
+
+
+def update_execution_status() -> dict:
     runner = ROOT_DIR / "scripts" / "update_runner.py"
     upgrade_script = ROOT_DIR / "scripts" / "upgrade_release.sh"
     backup_script = ROOT_DIR / "scripts" / "backup_before_upgrade.sh"
-    trigger_command = settings.update_trigger_command.strip()
-    mode = "command" if trigger_command else "local"
+    restore_script = ROOT_DIR / "scripts" / "restore_upgrade_backup.sh"
+    launcher_managed = _launcher_managed()
+    mode = "launcher" if launcher_managed else "local"
     issues: list[str] = []
     warnings: list[str] = []
 
     runner_exists = runner.exists()
     upgrade_script_exists = upgrade_script.exists()
     backup_script_exists = backup_script.exists()
+    restore_script_exists = restore_script.exists()
     if not runner_exists:
         issues.append("缺少 scripts/update_runner.py")
     if not upgrade_script_exists:
         issues.append("缺少 scripts/upgrade_release.sh")
     if not backup_script_exists:
         issues.append("缺少 scripts/backup_before_upgrade.sh")
-    if not trigger_command:
-        warnings.append("未配置独立 updater 服务，正式更新已禁用")
-    if os.name == "nt":
+    if not restore_script_exists:
+        issues.append("缺少 scripts/restore_upgrade_backup.sh")
+    if not launcher_managed:
+        warnings.append("当前未通过 MoeGallery 启动器运行，只支持下载校验")
+    if not _formal_update_platform_supported():
         warnings.append("当前是 Windows 环境，只支持下载校验，不支持正式替换运行中的服务")
 
     dry_run_available = runner_exists
     production_ready = bool(
-        os.name != "nt"
-        and trigger_command
+        _formal_update_platform_supported()
+        and launcher_managed
         and runner_exists
         and upgrade_script_exists
         and backup_script_exists
+        and restore_script_exists
     )
-    local_upgrade_available = False
+    local_upgrade_available = production_ready
     available = production_ready
     if production_ready:
-        message = "独立 updater 服务已配置"
+        message = "内置更新已就绪"
         severity = "ok"
     elif dry_run_available:
-        message = "只能下载校验，正式更新需要独立 updater 服务"
+        message = "当前启动方式只支持下载校验"
         severity = "warning"
     else:
         message = "更新执行器不可用"
@@ -112,10 +137,8 @@ def updater_status() -> dict:
         "runner_exists": runner_exists,
         "upgrade_script_exists": upgrade_script_exists,
         "backup_script_exists": backup_script_exists,
-        "trigger_configured": bool(trigger_command),
-        "trigger_command": trigger_command,
-        "service_name": settings.update_service_name,
-        "health_url": settings.update_health_url,
+        "restore_script_exists": restore_script_exists,
+        "launcher_managed": launcher_managed,
         "os": os.name,
         "severity": severity,
         "message": message,
@@ -124,14 +147,10 @@ def updater_status() -> dict:
     }
 
 
-def updater_available() -> bool:
-    return bool(updater_status()["available"])
-
-
 def check_for_updates(db: Session) -> dict:
     current_version = current_app_version()
     latest_release = latest_release_info(db)
-    status = updater_status()
+    status = update_execution_status()
     return {
         "current_version": current_version,
         "latest_release": latest_release,
@@ -139,9 +158,9 @@ def check_for_updates(db: Session) -> dict:
             current_version,
             latest_release.get("version") if latest_release.get("available") else "",
         ),
-        "updater_available": status["available"],
-        "updater_mode": status["mode"],
-        "updater_status": status,
+        "update_execution_available": status["available"],
+        "update_execution_mode": status["mode"],
+        "update_execution_status": status,
     }
 
 
@@ -176,9 +195,25 @@ def _write_task(task: dict) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "task.json"
     task["updated_at"] = _utc_now()
-    temp_path = path.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(task, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temp_path.replace(path)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(json.dumps(task, ensure_ascii=False, indent=2) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        for attempt in range(10):
+            try:
+                os.replace(temp_name, path)
+                break
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
+    finally:
+        try:
+            Path(temp_name).unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _new_task(
@@ -202,8 +237,6 @@ def _new_task(
         "checksum_url": checksum_asset.get("browser_download_url") or "",
         "archive_name": archive_name,
         "app_dir": str(ROOT_DIR),
-        "service_name": settings.update_service_name,
-        "health_url": settings.update_health_url,
         "dry_run": dry_run,
         "progress": 0,
         "message": "等待更新任务启动",
@@ -218,7 +251,7 @@ def _new_task(
 def create_update_task(db: Session, version: str | None = None, dry_run: bool = False, force: bool = False) -> dict:
     if running_task():
         raise ValueError("已有更新任务正在执行")
-    status = updater_status()
+    status = update_execution_status()
     if dry_run and not status["dry_run_available"]:
         raise ValueError("更新下载校验不可用：缺少 scripts/update_runner.py")
     if not dry_run and not status["available"]:
@@ -261,22 +294,15 @@ def create_update_task(db: Session, version: str | None = None, dry_run: bool = 
     return read_task(task["id"])
 
 
-def _format_trigger_command(template: str, task_id: str, path: Path) -> list[str]:
-    values = {
-        "task_id": task_id,
-        "task_file": str(path),
-        "app_dir": str(ROOT_DIR),
-    }
-    rendered = template.format(**values)
-    return shlex.split(rendered, posix=os.name != "nt")
-
-
 def trigger_update_task(task_id: str) -> None:
     path = task_file(task_id)
-    if settings.update_trigger_command.strip():
-        command = _format_trigger_command(settings.update_trigger_command, task_id, path)
-        subprocess.run(command, cwd=ROOT_DIR, check=True, timeout=15)
+    if _launcher_managed():
+        # The stable launcher polls queued task files and keeps the web process
+        # alive during download and checksum verification.
         return
+    task = read_task(task_id)
+    if not task.get("dry_run"):
+        raise RuntimeError("正式更新需要通过 MoeGallery 启动器运行")
     runner = ROOT_DIR / "scripts" / "update_runner.py"
     if not runner.exists():
         raise FileNotFoundError("scripts/update_runner.py")

@@ -1,13 +1,16 @@
+from pathlib import PurePosixPath
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import HTMLResponse, JSONResponse
+from starlette.staticfiles import StaticFiles
 
 from app.api import auth, characters, images, imports, install, search, settings as api_settings, stats, storage, system, tags, upload_tasks, updates, works
 from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, require_admin, verify_access_token, verify_api_key
-from app.config import settings
+from app.config import ROOT_DIR, settings
 from app.openapi import configure_openapi
 from app.services.storage_service import ensure_storage_dirs
 
@@ -149,3 +152,39 @@ def protected_openapi(_admin: Annotated[dict, Depends(require_admin)]):
 @app.get(f"{settings.api_prefix}/health")
 def health():
     return {"status": "ok", "name": settings.app_name}
+
+
+@app.api_route(
+    f"{settings.api_prefix}/{{unmatched_path:path}}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    include_in_schema=False,
+)
+def unmatched_api_route(unmatched_path: str):
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+
+class SPAStaticFiles(StaticFiles):
+    @staticmethod
+    def should_fallback(path, scope) -> bool:
+        first_segment = str(path).lstrip("/").split("/", 1)[0]
+        if first_segment in {"api", "api-docs", "openapi.json", "storage"}:
+            return False
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        accept = headers.get(b"accept", b"").decode("latin-1")
+        return scope.get("method") in {"GET", "HEAD"} and "text/html" in accept and not PurePosixPath(path).suffix
+
+    async def get_response(self, path, scope):
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404 or not self.should_fallback(path, scope):
+                raise
+            response = await super().get_response("index.html", scope)
+        if response.status_code == 404 and self.should_fallback(path, scope):
+            return await super().get_response("index.html", scope)
+        return response
+
+
+frontend_dist = ROOT_DIR / "frontend" / "dist"
+if (frontend_dist / "index.html").exists():
+    app.mount("/", SPAStaticFiles(directory=frontend_dist, html=True), name="frontend")

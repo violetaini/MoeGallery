@@ -137,9 +137,6 @@ class Settings(BaseSettings):
     thumbnail_max_size: int = 480
     upload_worker_count: int = 12
     upload_claim_batch_size: int = 1
-    update_trigger_command: str = ""
-    update_service_name: str = "anime-gallery"
-    update_health_url: str = "http://127.0.0.1:8000/api/health"
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

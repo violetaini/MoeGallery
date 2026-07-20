@@ -12,7 +12,7 @@ const loading = ref(false)
 const checking = ref(false)
 const status = ref(null)
 const form = reactive({
-  database_type: 'mysql',
+  database_type: 'sqlite',
   mysql_host: '127.0.0.1',
   mysql_port: 3306,
   mysql_database: 'anime_gallery',
@@ -57,6 +57,27 @@ function buildPayload() {
   return payload
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+}
+
+async function waitForManagedRestart() {
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    await delay(1000)
+    try {
+      const nextStatus = await galleryApi.installStatus()
+      if (nextStatus.installed && !nextStatus.restart_required) {
+        clearInstallStatusCache()
+        await router.replace('/login')
+        return true
+      }
+    } catch {
+      // A short connection failure is expected while the launcher restarts FastAPI.
+    }
+  }
+  return false
+}
+
 async function submit() {
   if (isPreviewMode.value) {
     ElMessage.info('当前为预览模式，不会执行初始化')
@@ -71,7 +92,10 @@ async function submit() {
   try {
     const result = await galleryApi.install(buildPayload())
     if (result.restart_required) {
-      ElMessage.success('初始化完成，请重启后端服务后登录')
+      ElMessage.success('初始化完成，服务正在自动重启')
+      if (!await waitForManagedRestart()) {
+        ElMessage.warning('服务尚未恢复，请稍后刷新页面；非标准启动方式需要手动重启')
+      }
     } else {
       ElMessage.success('初始化完成')
       clearInstallStatusCache()

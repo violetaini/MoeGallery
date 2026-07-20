@@ -74,6 +74,16 @@
         ],
         "summary": "退出当前管理员会话",
         "operationId": "logout_api_auth_logout_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
         "parameters": [
           {
             "name": "agms_admin_session",
@@ -133,17 +143,7 @@
             }
           }
         },
-        "description": "撤销当前 Cookie 会话并清理管理员 Cookie。",
-        "security": [
-          {
-            "OperationsApiKey": []
-          },
-          {
-            "AdminSessionCookie": [],
-            "CsrfTokenCookie": [],
-            "CsrfTokenHeader": []
-          }
-        ]
+        "description": "撤销当前 Cookie 会话并清理管理员 Cookie。"
       }
     },
     "/api/auth/me": {
@@ -1935,8 +1935,8 @@
                         "proxied": false
                       },
                       "update_available": true,
-                      "updater_available": true,
-                      "updater_mode": "command"
+                      "update_execution_available": true,
+                      "update_execution_mode": "launcher"
                     }
                   }
                 }
@@ -6898,18 +6898,18 @@
             "type": "boolean",
             "title": "Update Available"
           },
-          "updater_available": {
+          "update_execution_available": {
             "type": "boolean",
-            "title": "Updater Available"
+            "title": "Update Execution Available"
           },
-          "updater_mode": {
+          "update_execution_mode": {
             "type": "string",
-            "title": "Updater Mode"
+            "title": "Update Execution Mode"
           },
-          "updater_status": {
+          "update_execution_status": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Updater Status"
+            "title": "Update Execution Status"
           }
         },
         "type": "object",
@@ -6917,8 +6917,8 @@
           "current_version",
           "latest_release",
           "update_available",
-          "updater_available",
-          "updater_mode"
+          "update_execution_available",
+          "update_execution_mode"
         ],
         "title": "UpdateCheckResponse"
       },

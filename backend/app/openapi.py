@@ -332,8 +332,8 @@ RESPONSE_EXAMPLES = {
             "current_version": "v0.1.2",
             "latest_release": {"available": True, "version": "v0.1.3", "proxied": False},
             "update_available": True,
-            "updater_available": True,
-            "updater_mode": "command",
+            "update_execution_available": True,
+            "update_execution_mode": "launcher",
         },
     },
 }

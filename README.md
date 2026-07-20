@@ -4,11 +4,10 @@
 
 # **MoeGallery**
 
-[![Version](https://img.shields.io/badge/Version-0.1.0-7c3aed?style=for-the-badge)](frontend/package.json)
+[![Release](https://img.shields.io/github/v/release/violetaini/MoeGallery?style=for-the-badge)](https://github.com/violetaini/MoeGallery/releases/latest)
 [![Frontend](https://img.shields.io/badge/Frontend-Vue%203%20%2B%20Vite-42b883?style=for-the-badge)](frontend/package.json)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLAlchemy-009688?style=for-the-badge)](backend/requirements.txt)
 [![Database](https://img.shields.io/badge/Database-MySQL%20%2F%20SQLite-2563eb?style=for-the-badge)](.env.example)
-[![HDR](https://img.shields.io/badge/HDR-JXR%20%2B%20AVIF-f97316?style=for-the-badge)](backend/app/utils/image_process.py)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 
 </div>
@@ -23,320 +22,148 @@
 <p align="center">
   <a href="https://anime.chitanda.net/">Live Site</a> |
   <a href="https://anime.chitanda.net/api-docs">API Docs</a> |
-  <a href="https://github.com/violetaini/MoeGallery">GitHub</a>
+  <a href="https://github.com/violetaini/MoeGallery/releases">Releases</a>
 </p>
 
-<p align="center">
-  <code>anime-gallery</code>
-  <code>image-gallery</code>
-  <code>media-library</code>
-  <code>vue</code>
-  <code>vite</code>
-  <code>fastapi</code>
-  <code>mysql</code>
-  <code>sqlite</code>
-  <code>webp</code>
-  <code>avif</code>
-  <code>hdr</code>
-</p>
+MoeGallery is a self-hosted anime image media library. It combines a public gallery with an administration panel for uploads, works, characters, ratings, metadata, image processing, and API access.
 
-## About
+## Quick Start
 
-MoeGallery is a self-hosted anime image media library for organizing illustrations, screenshots, characters, works, ratings, and image metadata. It provides a public gallery experience for browsing and a private admin panel for uploading, binding, editing, importing, and maintaining the media library.
+The recommended installer supports Linux with systemd and installs a prebuilt Release. Node.js is not required for deployment.
 
-The project is designed as a Jellyfin-like media library for images: the frontend focuses on gallery browsing, work pages, character pages, ratings, slideshow visuals, and detail overlays; the backend handles uploads, metadata, storage, duplicate checks, image conversion, background jobs, authentication, and API documentation.
+```bash
+curl -fsSLO https://github.com/violetaini/MoeGallery/releases/latest/download/install.sh
+sudo bash install.sh
+```
+
+The installer asks for only the listen mode:
+
+- `127.0.0.1`: local access or your own reverse proxy, recommended.
+- `0.0.0.0`: direct public or LAN access.
+
+The default port is `8111`. When the service is ready, open:
+
+```text
+http://SERVER_IP:8111/install
+```
+
+The web installer then handles the database, administrator account, migrations, session secret, API Key, storage directories, and install lock.
+
+| Database | Setup |
+| --- | --- |
+| SQLite | Select SQLite and continue. MoeGallery chooses the file location. |
+| MySQL / MariaDB | Create an empty database and dedicated account first, then enter the connection details. |
+
+For an unattended public bind:
+
+```bash
+sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
+```
+
+MoeGallery does not create domains, TLS certificates, firewall rules, or reverse-proxy sites. See the [deployment guide](docs/deployment.md) for bind modes, service commands, MySQL preparation, manual installation, and migration from older installations.
+
+## What Gets Installed
+
+- Application files in `/opt/moegallery` by default.
+- One `moegallery.service` systemd unit.
+- A dedicated non-root `moegallery` account.
+- A built-in launcher that starts FastAPI and coordinates panel updates.
+- The prebuilt frontend, served directly by FastAPI on the same port.
+
+There is no separate updater service and no updater sudoers rule.
 
 ## Features
 
 - Fullscreen visual home page with configurable slideshow images.
-- Public image gallery with waterfall layout, search, filters by work/character/rating, and sorting by latest, random, favorites, or resolution.
-- Image detail overlay on top of the gallery, with direct detail routes still available.
-- Work and character pages with media-library style backdrops, posters, avatars, paginated sections, and admin editing pages.
-- Fixed rating system: `safe`, `sensitive`, and `hidden`.
-- Admin image management with classic table mode and gallery waterfall mode.
-- Batch upload with previews, pagination, duplicate pre-checks, queue processing, status polling, and per-file removal before upload.
-- Batch metadata import from CSV, JSON, XLSX, and XLSM templates.
-- Admin preferences for profile, avatar, password, image-management display mode, upload worker parameters, and home/list background images.
-- System health panel for database, storage consistency, upload queue, ffmpeg, JXR decoding, AVIF encoding, and HDR metadata patching.
-- Admin security with HttpOnly cookie sessions, CSRF validation, login brute-force protection, operations API keys, install lock, and strong `AGMS_AUTH_SECRET` handling.
+- Waterfall gallery with search, work, character and rating filters, sorting, automatic loading, and prefetching.
+- Image detail overlay plus direct detail routes.
+- Media-library style work and character pages with backdrops, posters, avatars, and pagination.
+- Fixed `safe`, `sensitive`, and `hidden` ratings.
+- Classic and waterfall administration modes with batch operations.
+- Batch upload with previews, duplicate pre-checks, processing queues, retry, and metadata binding.
+- CSV, JSON, XLSX, and XLSM metadata import templates.
+- SQLite and MySQL/MariaDB deployment choices.
+- HttpOnly administrator sessions, CSRF validation, login rate limiting, API Keys, and strong generated secrets.
+- In-panel Release checks, verified updates, database backups, migrations, health checks, and automatic rollback.
 
-## Media Pipeline
+## Image Pipeline
 
-| Source | Storage strategy | Preview strategy |
+| Source | Original storage | Browser preview |
 | --- | --- | --- |
-| Normal static images | Convert original to WebP | Generate WebP preview and thumbnail |
-| GIF / animated images | Preserve original format | Generate static WebP preview and thumbnail |
-| JXR / HDR images | Convert JXR to HDR AVIF with `nclx / mdcv / clli` | Generate SDR WebP preview and thumbnail |
-| Non-8-bit images | Preserve HDR / high-bit-depth original | Generate SDR WebP preview and thumbnail |
+| Normal static image | Convert to WebP | WebP preview and thumbnail |
+| GIF or animated image | Preserve animation | Static WebP preview and thumbnail |
+| JXR / HDR image | HDR AVIF with `nclx / mdcv / clli` | SDR WebP preview and thumbnail |
+| Other high-bit-depth image | Preserve compatible HDR source | SDR WebP preview and thumbnail |
 
-Supported upload suffixes include:
+Accepted upload suffixes include:
 
 ```text
 .jpg .jpeg .png .webp .gif .bmp .tif .tiff .heif .heic .avif .jxr
 ```
 
-The backend validates both filename suffixes and actual decoder support. Files outside the whitelist, files that cannot be decoded, and disguised non-image uploads are rejected.
+The backend validates both the suffix and actual decoder support. Disguised or undecodable files are rejected.
 
-## Routes
+## Updates And Backups
 
-```text
-/                         Home slideshow
-/gallery                  Image gallery
-/images/:id               Image detail
-/works                    Work list
-/works/:id                Work detail
-/characters               Character list
-/characters/:id           Character detail
-/tags                     Rating page
-/search                   Search page
-/admin                    Admin panel
-/install                  First-install wizard
-/api-docs                 Admin API documentation
+Installed instances update from **Admin > Update Center**. The built-in launcher downloads and verifies the Release while the site stays online, briefly stops the web child process for installation and migration, then performs a health check. A failed health check restores the pre-update application and database backup.
+
+Manual backup:
+
+```bash
+sudo -u moegallery bash /opt/moegallery/scripts/backup_before_upgrade.sh \
+  --app-dir /opt/moegallery
 ```
 
-## Tech Stack
+SQLite uses the SQLite backup API. MySQL/MariaDB uses `mysqldump --single-transaction` and therefore requires MySQL client tools.
 
-| Layer | Stack |
-| --- | --- |
-| Frontend | Vue 3, Vite, Pinia, Vue Router, Element Plus |
-| Backend | FastAPI, SQLAlchemy, Alembic, Pydantic |
-| Database | SQLite for local development, MySQL/MariaDB for production |
-| Image processing | Pillow, pillow-heif, imagecodecs, ffmpeg |
-| Deployment | systemd, Nginx, BaoTa/Linux bare metal |
+## Documentation
 
-## Requirements
-
-- Python 3.12 or newer
-- Node.js 20 or newer
-- MySQL 8.x / MariaDB 11.x for production, or SQLite for local development
-- ffmpeg with AVIF/AV1 encoding support
+- [Deployment](docs/deployment.md)
+- [部署说明（简体中文）](docs/deployment_zh.md)
+- [API operations guide](docs/api/operations-guide.md)
+- Interactive API documentation: `/api-docs` after administrator login
+- OpenAPI document: `docs/api/openapi.json`
 
 ## Development
 
-Backend:
+Development requires Python 3.11 or newer and Node.js 20 or newer.
 
 ```bash
-cd backend
+# Backend
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/alembic upgrade head
-.venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+./.venv/bin/pip install -r backend/requirements.txt
+cd backend
+../.venv/bin/uvicorn app.main:app --reload --port 8000
 
-Frontend:
-
-```bash
+# Frontend, in another terminal
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-The Vite development server runs on `http://127.0.0.1:5173/` by default.
+The frontend development server runs on `http://127.0.0.1:5173` and proxies API and storage requests to port `8000`.
 
-## Configuration
-
-Copy `.env.example` to `.env` and adjust the deployment values.
+## Main Routes
 
 ```text
-AGMS_DATABASE_URL                  SQLite or MySQL SQLAlchemy URL
-AGMS_STORAGE_PATH                  Storage root for originals, previews, thumbnails, and task files
-AGMS_ADMIN_USERNAME                Initial fallback admin username
-AGMS_ADMIN_PASSWORD                Initial fallback admin password
-AGMS_AUTH_SECRET                   Strong session signing secret, generated by installer
-AGMS_AUTH_TOKEN_TTL_SECONDS        Admin session lifetime
-AGMS_COOKIE_SECURE                 Set true behind HTTPS
-AGMS_MAX_UPLOAD_SIZE               Maximum upload size in bytes
-AGMS_PREVIEW_MAX_SIZE              Preview longest side
-AGMS_THUMBNAIL_MAX_SIZE            Thumbnail longest side
-AGMS_CORS_ORIGINS                  Allowed browser origins
+/                Home slideshow
+/gallery         Image gallery
+/works           Works
+/characters      Characters
+/tags            Ratings
+/admin            Administration panel
+/install          First-install wizard
+/api-docs         Administrator API documentation
 ```
 
-`AGMS_AUTH_SECRET` is not an API key. It signs and verifies backend admin sessions and must stay private. The installer generates it automatically. If you bypass the installer, generate a strong value manually:
+## Security
 
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-## First Install
-
-When `installed.lock` is missing and the target database has no valid Alembic version, the frontend enters `/install`.
-
-The installer can initialize either SQLite or MySQL:
-
-- SQLite: the database path is chosen by the application.
-- MySQL: enter host, port, database name, username, and password.
-- Storage: uses the project `storage/` directory.
-- Admin: set the first administrator username and password.
-- Secret: generated automatically and written to `.env`.
-
-After a successful install, the app writes `.env`, runs migrations, initializes the admin account, creates `installed.lock`, and asks for a backend restart if required.
-
-## Deployment
-
-Create directories, install backend dependencies, and build the frontend:
-
-```bash
-sudo mkdir -p /opt/anime-gallery
-sudo rsync -a ./ /opt/anime-gallery/
-sudo bash /opt/anime-gallery/scripts/create_linux_dirs.sh
-
-cd /opt/anime-gallery
-sudo python3 -m venv venv
-sudo /opt/anime-gallery/venv/bin/pip install -r backend/requirements.txt
-
-cd /opt/anime-gallery/frontend
-npm install
-npm run build
-```
-
-Install systemd and Nginx examples:
-
-```bash
-sudo bash /opt/anime-gallery/scripts/install_systemd.sh
-
-sudo cp /opt/anime-gallery/scripts/nginx-anime-gallery.conf /etc/nginx/sites-available/anime-gallery.conf
-sudo ln -s /etc/nginx/sites-available/anime-gallery.conf /etc/nginx/sites-enabled/anime-gallery.conf
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Change `gallery.example.com` in the Nginx example to your own domain and enable HTTPS in production.
-
-For a clean deployment, open `/install` in the browser. The installer configures SQLite or MySQL, writes `.env`, runs migrations, initializes the admin account, generates `AGMS_AUTH_SECRET`, and creates `installed.lock`.
-
-If you choose MySQL in the installer, create an empty database and a dedicated account first:
-
-```sql
-CREATE DATABASE anime_gallery
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-CREATE USER 'anime_gallery'@'127.0.0.1' IDENTIFIED BY 'change-this-db-password';
-GRANT ALL PRIVILEGES ON anime_gallery.* TO 'anime_gallery'@'127.0.0.1';
-FLUSH PRIVILEGES;
-```
-
-Enter the MySQL host, port, database name, username, and password on the install page. Restart the backend after the installer reports that a restart is required.
-
-Manual `.env` editing and manual Alembic migration are only needed if you intentionally bypass the installer or upgrade an existing deployment.
-
-## Release Package Deployment
-
-GitHub Releases contain prebuilt deployment archives:
-
-```text
-MoeGallery-vX.Y.Z.zip
-MoeGallery-vX.Y.Z.tar.gz
-SHA256SUMS.txt
-```
-
-The archives include backend source, Alembic migrations, prebuilt `frontend/dist`, deployment scripts, documentation, `.env.example`, and empty `storage/` and `logs/` directories. They do not include `.env`, database files, uploaded images, logs, virtualenvs, `node_modules`, or private keys.
-
-Deploy a release archive:
-
-```bash
-sudo mkdir -p /opt/anime-gallery
-sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/anime-gallery --strip-components=1
-
-cd /opt/anime-gallery
-sudo python3 -m venv venv
-sudo ./venv/bin/pip install -r backend/requirements.txt
-```
-
-Then install the systemd service and Nginx config as shown above, open `/install`, and complete database, administrator, and secret initialization in the web installer. The systemd installer also installs the updater unit and writes the default `AGMS_UPDATE_TRIGGER_COMMAND` when it is missing. Existing deployments should back up `.env`, `storage/`, and the database before replacing application files.
-
-## Upgrading
-
-Use the bundled upgrade script for an existing deployment:
-
-```bash
-sudo bash /opt/anime-gallery/scripts/upgrade_release.sh /tmp/MoeGallery-vX.Y.Z.tar.gz
-```
-
-The script creates a timestamped backup, stops the service, replaces only application files, keeps `.env`, `installed.lock`, `storage/`, and database files, updates Python dependencies, runs Alembic migrations, restarts the service, and checks `/api/health`.
-
-Create only a backup without upgrading:
-
-```bash
-sudo bash /opt/anime-gallery/scripts/backup_before_upgrade.sh
-```
-
-Backups are stored in `/opt/anime-gallery/backups/upgrade-YYYYmmdd-HHMMSS/`. For MySQL, the backup script uses `mysqldump --single-transaction`; for SQLite, it uses the sqlite backup API.
-
-## Panel Updates
-
-The Admin Update Center can check GitHub Releases, download the `.tar.gz` archive, verify `SHA256SUMS.txt`, and create a real upgrade task.
-
-Real upgrades from the panel require the independent systemd updater service. Without `AGMS_UPDATE_TRIGGER_COMMAND`, the panel still allows download verification, but it disables real upgrades so the main FastAPI process cannot update and restart itself.
-
-The recommended installer configures this by default:
-
-```bash
-sudo bash /opt/anime-gallery/scripts/install_systemd.sh
-```
-
-Equivalent manual `.env` values:
-
-```env
-AGMS_UPDATE_TRIGGER_COMMAND=sudo -n systemctl start anime-gallery-updater@{task_id}.service
-AGMS_UPDATE_SERVICE_NAME=anime-gallery
-AGMS_UPDATE_HEALTH_URL=http://127.0.0.1:8000/api/health
-```
-
-The web service user must be allowed to start that updater unit without a password. `install_systemd.sh` writes a narrow sudoers rule for the updater unit by default.
-
-## Release Automation
-
-This repository publishes GitHub Releases automatically through `.github/workflows/release.yml`.
-
-Create a release from a tag:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Or open GitHub Actions, run the `Release` workflow manually, and enter a version such as `v0.1.0`.
-
-The workflow installs Node.js and Python, checks backend syntax, builds the frontend, runs `scripts/package_release.py`, and publishes the `.zip`, `.tar.gz`, and `SHA256SUMS.txt` files as independent GitHub Release assets.
-
-## Update Check Proxy
-
-The system health version card reads the local `VERSION` file and calls the GitHub Release API to check the latest release. If the server cannot reach GitHub directly, configure a proxy URL in Admin Settings / GitHub Update Check. The same proxy is also applied to release asset downloads used by panel updates, including the `.tar.gz` archive and `SHA256SUMS.txt`.
-
-- Empty value: call `https://api.github.com/repos/violetaini/MoeGallery/releases/latest` directly.
-- Prefix proxy: for example `https://gh-proxy.example.com/` becomes `https://gh-proxy.example.com/https://api.github.com/repos/violetaini/MoeGallery/releases/latest`.
-- Template proxy: `{url}` uses the URL-encoded target URL, and `{raw_url}` uses the original target URL.
-
-## Real Client IP Behind ESA/CDN
-
-If the site is behind Alibaba Cloud ESA/CDN, pass the real client IP from the edge to the backend. The example Nginx config prefers `ali-real-client-ip`, also accepts `ali-cdn-real-ip` and `true-client-ip`, then falls back to `$remote_addr`.
-
-The backend also understands those headers and only trusts forwarded headers from loopback/private reverse proxies. For production, restrict direct origin access with security groups/firewall rules or origin authentication headers so external clients cannot spoof real-IP headers.
-
-## API
-
-The OpenAPI documentation is available at:
-
-```text
-/api-docs
-/api-docs/openapi.json
-/openapi.json
-```
-
-API documentation is protected by admin authentication. Operations can use either the admin session cookie or a configured operations API key.
-
-## Security Notes
-
-- Admin writes require a valid HttpOnly session cookie.
-- Unsafe requests with a session cookie must include the CSRF token header.
-- Login failures are rate-limited by both client IP and username.
-- API keys are for operations automation only and must not be exposed to browsers.
-- `/storage/*` is served through the backend so private/hidden files cannot be fetched directly by path.
-- If the backend runs multiple workers or multiple instances, move login rate-limit counters to Redis or another shared store.
-- Keep `.env`, database dumps, uploaded media, and private keys out of the public repository.
+- Keep `.env`, `installed.lock`, databases, uploaded files, backups, and private keys out of Git.
+- Use HTTPS before exposing administrator login over an untrusted network.
+- Use a dedicated MySQL account instead of a database administrator account.
+- Keep Release checksum verification enabled and configure a trusted GitHub proxy only when needed.
+- Report security issues privately instead of publishing credentials or exploit details.
 
 ## License
 
-This project is open source under the [MIT License](LICENSE).
-
-The source code is licensed under MIT. Uploaded images, character artwork, imported metadata, and user-provided media are not automatically covered by this repository license.
+MoeGallery is released under the [MIT License](LICENSE).

@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import time
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
@@ -49,9 +51,25 @@ def load_task(path: Path) -> dict:
 def save_task(path: Path, task: dict) -> None:
     task["updated_at"] = utc_now()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(task, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temp_path.replace(path)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(json.dumps(task, ensure_ascii=False, indent=2) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        for attempt in range(10):
+            try:
+                os.replace(temp_name, path)
+                break
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
+    finally:
+        try:
+            Path(temp_name).unlink()
+        except FileNotFoundError:
+            pass
 
 
 def append_log(path: Path, task: dict, message: str) -> None:
@@ -109,7 +127,14 @@ def verify_checksum(archive_path: Path, checksum_path: Path, archive_name: str) 
         raise RuntimeError(f"SHA256 mismatch for {archive_name}: expected {expected}, got {actual}")
 
 
-def run_upgrade(app_dir: Path, task_path: Path, task: dict, archive_path: Path) -> None:
+def run_upgrade(
+    app_dir: Path,
+    task_path: Path,
+    task: dict,
+    archive_path: Path,
+    *,
+    managed_by_launcher: bool,
+) -> None:
     if os.name == "nt":
         raise RuntimeError("Windows local preview only supports dry-run verification; run production upgrades on Linux")
     upgrade_script = app_dir / "scripts" / "upgrade_release.sh"
@@ -120,12 +145,25 @@ def run_upgrade(app_dir: Path, task_path: Path, task: dict, archive_path: Path) 
         str(upgrade_script),
         "--app-dir",
         str(app_dir),
-        "--service",
-        str(task.get("service_name") or "anime-gallery"),
-        "--health-url",
-        str(task.get("health_url") or "http://127.0.0.1:8000/api/health"),
-        str(archive_path),
     ]
+    if managed_by_launcher:
+        command.extend(
+            [
+                "--no-service-control",
+                "--result-file",
+                str(task_path.parent / "upgrade-result.json"),
+            ]
+        )
+    else:
+        command.extend(
+            [
+                "--service",
+                str(task.get("service_name") or "moegallery"),
+                "--health-url",
+                str(task.get("health_url") or "http://127.0.0.1:8111/api/health"),
+            ]
+        )
+    command.append(str(archive_path))
     append_log(task_path, task, "执行升级脚本")
     process = subprocess.Popen(
         command,
@@ -144,14 +182,18 @@ def run_upgrade(app_dir: Path, task_path: Path, task: dict, archive_path: Path) 
         raise RuntimeError(f"upgrade_release.sh exited with code {return_code}")
 
 
-def run(task_path: Path, app_dir: Path) -> int:
+def prepared_files(task_path: Path, task: dict) -> tuple[Path, Path]:
+    work_dir = task_path.parent / "downloads"
+    archive_name = task.get("archive_name") or Path(urllib.parse.urlparse(task["archive_url"]).path).name
+    return work_dir / archive_name, work_dir / "SHA256SUMS.txt"
+
+
+def prepare(task_path: Path, app_dir: Path) -> int:
     task = load_task(task_path)
     try:
         set_status(task_path, task, "starting", 5, "更新任务启动")
-        work_dir = task_path.parent / "downloads"
-        archive_name = task.get("archive_name") or Path(urllib.parse.urlparse(task["archive_url"]).path).name
-        archive_path = work_dir / archive_name
-        checksum_path = work_dir / "SHA256SUMS.txt"
+        archive_path, checksum_path = prepared_files(task_path, task)
+        archive_name = archive_path.name
 
         set_status(task_path, task, "downloading", 20, "下载更新包")
         download(task["archive_url"], archive_path)
@@ -165,25 +207,61 @@ def run(task_path: Path, app_dir: Path) -> int:
             set_status(task_path, task, "success", 100, "下载和校验完成，未执行安装")
             return 0
 
-        set_status(task_path, task, "upgrading", 75, "开始安装更新")
-        run_upgrade(app_dir, task_path, task, archive_path)
-        set_status(task_path, task, "success", 100, "更新完成")
+        set_status(task_path, task, "prepared", 60, "更新包已校验，等待内置启动器安装")
         return 0
     except Exception as exc:  # noqa: BLE001 - updater must persist failures for the panel.
         set_status(task_path, task, "failed", int(task.get("progress") or 0), f"更新失败：{exc}")
         return 1
 
 
+def apply(task_path: Path, app_dir: Path, *, managed_by_launcher: bool) -> int:
+    task = load_task(task_path)
+    try:
+        archive_path, checksum_path = prepared_files(task_path, task)
+        if not archive_path.exists() or not checksum_path.exists():
+            raise RuntimeError("已校验的更新包不存在，请重新创建更新任务")
+        verify_checksum(checksum_path=checksum_path, archive_path=archive_path, archive_name=archive_path.name)
+        set_status(task_path, task, "upgrading", 75, "开始安装更新")
+        run_upgrade(
+            app_dir,
+            task_path,
+            task,
+            archive_path,
+            managed_by_launcher=managed_by_launcher,
+        )
+        if managed_by_launcher:
+            set_status(task_path, task, "restarting", 92, "程序文件已更新，正在重新启动服务")
+        else:
+            set_status(task_path, task, "success", 100, "更新完成")
+        return 0
+    except Exception as exc:  # noqa: BLE001 - update errors must be visible after restart.
+        set_status(task_path, task, "failed", int(task.get("progress") or 0), f"更新失败：{exc}")
+        return 1
+
+
+def run(task_path: Path, app_dir: Path, phase: str) -> int:
+    if phase == "prepare":
+        return prepare(task_path, app_dir)
+    if phase == "apply":
+        return apply(task_path, app_dir, managed_by_launcher=True)
+    result = prepare(task_path, app_dir)
+    task = load_task(task_path)
+    if result != 0 or task.get("dry_run") or task.get("status") == "failed":
+        return result
+    return apply(task_path, app_dir, managed_by_launcher=False)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a MoeGallery update task.")
-    parser.add_argument("--app-dir", default="/opt/anime-gallery")
+    parser.add_argument("--app-dir", default="/opt/moegallery")
     parser.add_argument("--task-id", required=True)
     parser.add_argument("--task-file", default="")
+    parser.add_argument("--phase", choices=["prepare", "apply", "all"], default="all")
     args = parser.parse_args()
 
     app_dir = Path(args.app_dir).resolve()
     task_path = resolve_task_file(app_dir, args.task_id, args.task_file or None)
-    return run(task_path, app_dir)
+    return run(task_path, app_dir, args.phase)
 
 
 if __name__ == "__main__":

@@ -23,9 +23,9 @@ class UpdateCheckResponse(BaseModel):
     current_version: str
     latest_release: LatestRelease
     update_available: bool
-    updater_available: bool
-    updater_mode: str
-    updater_status: dict = Field(default_factory=dict)
+    update_execution_available: bool
+    update_execution_mode: str
+    update_execution_status: dict = Field(default_factory=dict)
 
 
 class UpdateTaskCreate(BaseModel):

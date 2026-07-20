@@ -1,33 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/opt/anime-gallery"
-SERVICE_NAME="anime-gallery"
-WEB_USER="www-data"
-WEB_GROUP="www-data"
+APP_DIR="/opt/moegallery"
+SERVICE_NAME="moegallery"
+WEB_USER="moegallery"
+WEB_GROUP="moegallery"
 HOST="127.0.0.1"
-PORT="8000"
-WRITE_ENV="1"
-INSTALL_SUDOERS="1"
+PORT="8111"
+CREATE_USER="1"
 START_SERVICE="1"
 
 usage() {
   cat <<'EOF'
-Install MoeGallery systemd units.
+Install the single MoeGallery systemd service.
 
 Usage:
   sudo bash scripts/install_systemd.sh [options]
 
 Options:
-  --app-dir PATH          Application directory. Default: /opt/anime-gallery
-  --service NAME          Main systemd service name. Default: anime-gallery
-  --user USER             Web service user. Default: www-data
-  --group GROUP           Web service group. Default: www-data
-  --host HOST             Backend bind host. Default: 127.0.0.1
-  --port PORT             Backend bind port. Default: 8000
-  --no-env                Do not add updater defaults to .env
-  --no-sudoers            Do not install passwordless updater sudoers rule
-  --no-start              Install units but do not enable/start the main service
+  --app-dir PATH          Application directory. Default: /opt/moegallery
+  --service NAME          systemd service name. Default: moegallery
+  --user USER             Service user. Default: moegallery
+  --group GROUP           Service group. Default: moegallery
+  --host HOST             127.0.0.1 or 0.0.0.0. Default: 127.0.0.1
+  --port PORT             Backend and frontend port. Default: 8111
+  --no-create-user        Require the service user and group to exist
+  --no-start              Install the unit without enabling or starting it
   -h, --help              Show this help
 EOF
 }
@@ -58,12 +56,8 @@ while [[ $# -gt 0 ]]; do
       PORT="${2:?missing value for --port}"
       shift 2
       ;;
-    --no-env)
-      WRITE_ENV="0"
-      shift
-      ;;
-    --no-sudoers)
-      INSTALL_SUDOERS="0"
+    --no-create-user)
+      CREATE_USER="0"
       shift
       ;;
     --no-start)
@@ -82,106 +76,111 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${EUID}" -ne 0 ]]; then
+if [[ "$EUID" -ne 0 ]]; then
   echo "install_systemd.sh must be run as root" >&2
   exit 1
+fi
+if [[ "$HOST" != "127.0.0.1" && "$HOST" != "0.0.0.0" ]]; then
+  echo "--host must be 127.0.0.1 or 0.0.0.0" >&2
+  exit 2
+fi
+if [[ ! "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
+  echo "--port must be between 1 and 65535" >&2
+  exit 2
 fi
 
 SYSTEMCTL="$(command -v systemctl || true)"
 if [[ -z "$SYSTEMCTL" ]]; then
-  echo "systemctl not found; this installer only supports systemd hosts" >&2
+  echo "systemctl not found; use the launcher directly on non-systemd hosts" >&2
   exit 1
 fi
 
 APP_DIR="${APP_DIR%/}"
-UPDATER_UNIT="${SERVICE_NAME}-updater@.service"
-UPDATER_TRIGGER="sudo -n ${SYSTEMCTL} start ${SERVICE_NAME}-updater@{task_id}.service"
-HEALTH_URL="http://${HOST}:${PORT}/api/health"
+if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then
+  echo "Python virtual environment is missing: $APP_DIR/venv/bin/python" >&2
+  exit 1
+fi
+if [[ ! -f "$APP_DIR/scripts/moegallery_launcher.py" ]]; then
+  echo "Built-in launcher is missing: $APP_DIR/scripts/moegallery_launcher.py" >&2
+  exit 1
+fi
 
-install -d -o "$WEB_USER" -g "$WEB_GROUP" "$APP_DIR/storage/original"
-install -d -o "$WEB_USER" -g "$WEB_GROUP" "$APP_DIR/storage/preview"
-install -d -o "$WEB_USER" -g "$WEB_GROUP" "$APP_DIR/storage/thumbnail"
-install -d -o "$WEB_USER" -g "$WEB_GROUP" "$APP_DIR/storage/tasks"
-install -d -o "$WEB_USER" -g "$WEB_GROUP" "$APP_DIR/storage/updates"
-install -d -o "$WEB_USER" -g "$WEB_GROUP" "$APP_DIR/logs"
+if "$SYSTEMCTL" is-active --quiet "${SERVICE_NAME}.service"; then
+  "$SYSTEMCTL" stop "${SERVICE_NAME}.service"
+fi
 
-cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
+if [[ "$CREATE_USER" == "1" ]]; then
+  if ! getent group "$WEB_GROUP" >/dev/null 2>&1; then
+    groupadd --system "$WEB_GROUP"
+  fi
+  if ! id "$WEB_USER" >/dev/null 2>&1; then
+    useradd --system --gid "$WEB_GROUP" --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$WEB_USER"
+  fi
+fi
+if ! id "$WEB_USER" >/dev/null 2>&1; then
+  echo "Service user does not exist: $WEB_USER" >&2
+  exit 1
+fi
+if ! getent group "$WEB_GROUP" >/dev/null 2>&1; then
+  echo "Service group does not exist: $WEB_GROUP" >&2
+  exit 1
+fi
+
+bash "$APP_DIR/scripts/create_linux_dirs.sh" \
+  --app-dir "$APP_DIR" \
+  --owner "$WEB_USER" \
+  --group "$WEB_GROUP"
+
+# The dedicated account owns release files so the in-process launcher can
+# install a verified release without a privileged updater service.
+chown -R "$WEB_USER:$WEB_GROUP" "$APP_DIR"
+chmod 755 "$APP_DIR"
+chmod 700 "$APP_DIR/backups"
+if [[ -f "$APP_DIR/.env" ]]; then
+  chmod 600 "$APP_DIR/.env"
+fi
+
+UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+UNIT_TEMP="${UNIT_PATH}.tmp.$$"
+cat >"$UNIT_TEMP" <<EOF
 [Unit]
-Description=MoeGallery Backend
-After=network.target
-
-[Service]
-WorkingDirectory=${APP_DIR}/backend
-EnvironmentFile=-${APP_DIR}/.env
-ExecStart=${APP_DIR}/venv/bin/uvicorn app.main:app --host ${HOST} --port ${PORT}
-Restart=always
-RestartSec=3
-User=${WEB_USER}
-Group=${WEB_GROUP}
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-cat >"/etc/systemd/system/${UPDATER_UNIT}" <<EOF
-[Unit]
-Description=MoeGallery updater task %i
+Description=MoeGallery
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
-User=root
-Group=root
+Type=simple
+User=${WEB_USER}
+Group=${WEB_GROUP}
 WorkingDirectory=${APP_DIR}
-EnvironmentFile=-${APP_DIR}/.env
-ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/scripts/update_runner.py --app-dir ${APP_DIR} --task-id %i
+ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/scripts/moegallery_launcher.py --app-dir ${APP_DIR} --host ${HOST} --port ${PORT}
+Restart=always
+RestartSec=3
+TimeoutStopSec=45
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
 EOF
+chmod 644 "$UNIT_TEMP"
+mv -f "$UNIT_TEMP" "$UNIT_PATH"
 
-ensure_env_line() {
-  local key="$1"
-  local value="$2"
-  local env_path="${APP_DIR}/.env"
-  install -d "$(dirname "$env_path")"
-  touch "$env_path"
-  if grep -qE "^${key}=" "$env_path"; then
-    return 0
-  fi
-  printf '%s=%s\n' "$key" "$value" >>"$env_path"
-}
-
-if [[ "$WRITE_ENV" == "1" ]]; then
-  ensure_env_line "AGMS_UPDATE_TRIGGER_COMMAND" "$UPDATER_TRIGGER"
-  ensure_env_line "AGMS_UPDATE_SERVICE_NAME" "$SERVICE_NAME"
-  ensure_env_line "AGMS_UPDATE_HEALTH_URL" "$HEALTH_URL"
-  chown "$WEB_USER:$WEB_GROUP" "${APP_DIR}/.env"
-  chmod 600 "${APP_DIR}/.env"
-fi
-
-if [[ "$INSTALL_SUDOERS" == "1" ]]; then
-  SUDOERS_PATH="/etc/sudoers.d/${SERVICE_NAME}-updater"
-  cat >"$SUDOERS_PATH" <<EOF
-${WEB_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL} start ${SERVICE_NAME}-updater@*.service
-EOF
-  chmod 440 "$SUDOERS_PATH"
-  if command -v visudo >/dev/null 2>&1; then
-    visudo -cf "$SUDOERS_PATH" >/dev/null
-  fi
-fi
+# Remove the legacy privileged updater. Existing installations are migrated
+# when this script is run after upgrading to the new launcher release.
+for legacy_service in "${SERVICE_NAME}-updater@.service" "anime-gallery-updater@.service"; do
+  "$SYSTEMCTL" disable --now "$legacy_service" >/dev/null 2>&1 || true
+  rm -f "/etc/systemd/system/$legacy_service"
+done
+rm -f "/etc/sudoers.d/${SERVICE_NAME}-updater" "/etc/sudoers.d/anime-gallery-updater"
 
 "$SYSTEMCTL" daemon-reload
 if [[ "$START_SERVICE" == "1" ]]; then
-  "$SYSTEMCTL" enable --now "${SERVICE_NAME}.service"
+  "$SYSTEMCTL" enable "${SERVICE_NAME}.service"
+  "$SYSTEMCTL" start "${SERVICE_NAME}.service"
 fi
 
 cat <<EOF
-Installed:
-  ${SERVICE_NAME}.service
-  ${UPDATER_UNIT}
-
-Updater trigger:
-  ${UPDATER_TRIGGER}
+Installed ${SERVICE_NAME}.service
+Listen: ${HOST}:${PORT}
+Updater service: removed (updates are coordinated by the MoeGallery launcher)
 EOF

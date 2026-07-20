@@ -36,7 +36,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Check backend syntax
-        run: python -m compileall backend/app
+        run: |
+          python -m compileall backend/app backend/alembic scripts
+          bash -n install.sh scripts/*.sh
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -70,7 +72,7 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         shell: bash
         run: |
-          files=(dist-release/*.zip dist-release/*.tar.gz dist-release/SHA256SUMS.txt)
+          files=(dist-release/*.zip dist-release/*.tar.gz dist-release/SHA256SUMS.txt install.sh)
           if gh release view "$VERSION" >/dev/null 2>&1; then
             gh release upload "$VERSION" "${files[@]}" --clobber
           else

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -198,6 +199,26 @@ def write_install_lock(database_type: str, database_url: str) -> None:
     INSTALL_LOCK_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def request_managed_restart() -> None:
+    if os.environ.get("AGMS_LAUNCHER_MANAGED") != "1":
+        return
+    runtime_dir = settings.storage_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    request_path = runtime_dir / "restart.request"
+    request_path.write_text(
+        json.dumps(
+            {
+                "requested_at": datetime.now(timezone.utc).isoformat(),
+                "not_before": time.time() + 3,
+                "reason": "first-install",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def perform_install(
     *,
     database_type: str,
@@ -222,8 +243,12 @@ def perform_install(
     write_env(updates)
     ensure_storage_dirs()
     write_install_lock(database_type, database_url)
+    # The current process has already loaded its database, session secret and
+    # API keys. A restart is required even when SQLite keeps the same URL.
+    restart_needed = True
+    request_managed_restart()
     return {
         "installed": True,
         "database_type": database_type,
-        "restart_required": database_url_hash(database_url) != database_url_hash(settings.database_url),
+        "restart_required": restart_needed,
     }

@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -52,13 +53,22 @@ class UpdateServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="agms-update-test-")
         self.original_storage_path = settings.storage_path
-        self.original_update_trigger_command = settings.update_trigger_command
+        self.original_launcher_managed = os.environ.get("AGMS_LAUNCHER_MANAGED")
+        self.original_launcher_app_dir = os.environ.get("AGMS_LAUNCHER_APP_DIR")
         settings.storage_path = Path(self.temp_dir.name) / "storage"
-        settings.update_trigger_command = ""
+        os.environ.pop("AGMS_LAUNCHER_MANAGED", None)
+        os.environ.pop("AGMS_LAUNCHER_APP_DIR", None)
 
     def tearDown(self):
         settings.storage_path = self.original_storage_path
-        settings.update_trigger_command = self.original_update_trigger_command
+        if self.original_launcher_managed is None:
+            os.environ.pop("AGMS_LAUNCHER_MANAGED", None)
+        else:
+            os.environ["AGMS_LAUNCHER_MANAGED"] = self.original_launcher_managed
+        if self.original_launcher_app_dir is None:
+            os.environ.pop("AGMS_LAUNCHER_APP_DIR", None)
+        else:
+            os.environ["AGMS_LAUNCHER_APP_DIR"] = self.original_launcher_app_dir
         self.temp_dir.cleanup()
 
     def _fake_release(self):
@@ -84,7 +94,7 @@ class UpdateServiceTests(unittest.TestCase):
         with (
             patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
             patch("app.services.update_service.latest_release_info", return_value=self._fake_release()),
-            patch("app.services.update_service.updater_status", return_value={
+            patch("app.services.update_service.update_execution_status", return_value={
                 "available": True,
                 "dry_run_available": True,
                 "issues": [],
@@ -103,7 +113,7 @@ class UpdateServiceTests(unittest.TestCase):
         with (
             patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
             patch("app.services.update_service.latest_release_info", return_value=self._fake_release()),
-            patch("app.services.update_service.updater_status", return_value={
+            patch("app.services.update_service.update_execution_status", return_value={
                 "available": True,
                 "dry_run_available": True,
                 "issues": [],
@@ -119,11 +129,11 @@ class UpdateServiceTests(unittest.TestCase):
         with (
             patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
             patch("app.services.update_service.latest_release_info", return_value=self._fake_release()),
-            patch("app.services.update_service.updater_status", return_value={
+            patch("app.services.update_service.update_execution_status", return_value={
                 "available": False,
                 "dry_run_available": True,
                 "issues": [],
-                "warnings": ["未配置独立 updater 服务"],
+                "warnings": ["当前未通过 MoeGallery 启动器运行"],
                 "message": "只能下载校验",
             }),
         ):
@@ -131,14 +141,32 @@ class UpdateServiceTests(unittest.TestCase):
                 update_service.create_update_task(None, dry_run=False)
         self.assertIn("正式更新未就绪", str(raised.exception))
 
-    def test_updater_status_disables_real_upgrade_without_trigger_command(self):
-        status = update_service.updater_status()
+    def test_update_execution_status_disables_real_upgrade_without_launcher(self):
+        status = update_service.update_execution_status()
 
         self.assertTrue(status["dry_run_available"])
         self.assertFalse(status["available"])
         self.assertFalse(status["production_ready"])
         self.assertFalse(status["local_upgrade_available"])
-        self.assertIn("正式更新已禁用", "；".join(status["warnings"]))
+        self.assertIn("只支持下载校验", "；".join(status["warnings"]))
+
+    def test_update_execution_status_enables_builtin_update_under_launcher(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "AGMS_LAUNCHER_MANAGED": "1",
+                    "AGMS_LAUNCHER_APP_DIR": str(BACKEND_DIR.parent),
+                },
+            ),
+            patch("app.services.update_service._formal_update_platform_supported", return_value=True),
+        ):
+            status = update_service.update_execution_status()
+
+        self.assertTrue(status["available"])
+        self.assertTrue(status["production_ready"])
+        self.assertEqual(status["mode"], "launcher")
+        self.assertEqual(status["message"], "内置更新已就绪")
 
 
 class UpdateApiTests(unittest.TestCase):
@@ -172,9 +200,9 @@ class UpdateApiTests(unittest.TestCase):
                     "message": "ok",
                 },
                 "update_available": True,
-                "updater_available": True,
-                "updater_mode": "command",
-                "updater_status": {"available": True, "dry_run_available": True, "message": "独立 updater 服务已配置"},
+                "update_execution_available": True,
+                "update_execution_mode": "launcher",
+                "update_execution_status": {"available": True, "dry_run_available": True, "message": "内置更新已就绪"},
             },
         ):
             response = self.client.get("/api/updates/check")

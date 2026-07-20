@@ -1,6 +1,6 @@
 [Unit]
 Description=MoeGallery
-After=network-online.target
+After=network-online.target mysql.service mysqld.service mariadb.service
 Wants=network-online.target
 
 [Service]
@@ -11,6 +11,7 @@ Restart=always
 RestartSec=3
 TimeoutStopSec=45
 UMask=0027
+NoNewPrivileges=true
 User=moegallery
 Group=moegallery
 

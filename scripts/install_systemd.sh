@@ -145,7 +145,7 @@ UNIT_TEMP="${UNIT_PATH}.tmp.$$"
 cat >"$UNIT_TEMP" <<EOF
 [Unit]
 Description=MoeGallery
-After=network-online.target
+After=network-online.target mysql.service mysqld.service mariadb.service
 Wants=network-online.target
 
 [Service]
@@ -158,6 +158,7 @@ Restart=always
 RestartSec=3
 TimeoutStopSec=45
 UMask=0027
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

@@ -25,87 +25,90 @@
   <a href="https://github.com/violetaini/MoeGallery/releases">Releases</a>
 </p>
 
-MoeGallery is a self-hosted anime image media library. It combines a public gallery with an administration panel for uploads, works, characters, ratings, metadata, image processing, and API access.
+MoeGallery is a self-hosted media library for organizing and showcasing anime images. It includes a public gallery and an admin panel for managing images, titles, characters, content ratings, and related metadata, with batch import, image processing, and API access built in.
 
 ## Quick Start
 
-The recommended installer supports Linux with systemd and installs a prebuilt Release. Node.js is not required for deployment.
+The installer supports systemd-based Linux distributions and downloads a prebuilt release package. Node.js is not required on the deployment server.
 
 ```bash
 curl -fsSLO https://github.com/violetaini/MoeGallery/releases/latest/download/install.sh
 sudo bash install.sh
 ```
 
-The installer asks for only the listen mode:
+On its first run, the installer asks which address the service should listen on:
 
-- `127.0.0.1`: local access or your own reverse proxy, recommended.
-- `0.0.0.0`: direct public or LAN access.
+- `127.0.0.1`: accepts connections from the server itself only. This is the recommended option when using Nginx, aaPanel, or another reverse proxy.
+- `0.0.0.0`: listens on every network interface, allowing access through the server's LAN or public IP address.
 
-The default port is `8111`. When the service is ready, open:
+The default port is `8111`. When installation finishes, the script prints the first-time setup URL. With the default listen address, open the following URL on the server itself:
 
 ```text
-http://SERVER_IP:8111/install
+http://127.0.0.1:8111/install
 ```
 
-The web installer then handles the database, administrator account, migrations, session secret, API Key, storage directories, and install lock.
+To open the setup page from another computer, configure a reverse proxy or an SSH tunnel first. If you selected `0.0.0.0`, you can instead open `http://SERVER_IP:8111/install` directly.
+
+The setup wizard lets you choose a database and create the admin account. It also generates a session-signing secret and an initial API key, runs database migrations, initializes the storage directories, and records that installation is complete.
 
 | Database | Setup |
 | --- | --- |
-| SQLite | Select SQLite and continue. MoeGallery chooses the file location. |
-| MySQL / MariaDB | Create an empty database and dedicated account first, then enter the connection details. |
+| SQLite | Select SQLite and continue. The database file is stored in the default application directory; no path is required. |
+| MySQL / MariaDB | Create an empty database and a dedicated application account, then enter the connection details in the setup wizard. |
 
-For an unattended public bind:
+To install non-interactively and listen on every network interface:
 
 ```bash
 sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
 ```
 
-MoeGallery does not create domains, TLS certificates, firewall rules, or reverse-proxy sites. See the [deployment guide](docs/deployment.md) for bind modes, service commands, MySQL preparation, manual installation, and migration from older installations.
+The installer deploys MoeGallery itself; it does not configure domains, TLS certificates, firewalls, CDNs, or reverse proxies. See the [deployment guide](docs/deployment.md) for listen addresses, service management, MySQL preparation, manual installation, and migration from older versions.
 
 ## What Gets Installed
 
-- Application files in `/opt/moegallery` by default.
-- One `moegallery.service` systemd unit.
-- A dedicated non-root `moegallery` account.
-- A built-in launcher that starts FastAPI and coordinates panel updates.
-- The prebuilt frontend, served directly by FastAPI on the same port.
+- Application files under `/opt/moegallery` by default.
+- A single systemd service named `moegallery.service`.
+- A dedicated `moegallery` service account with no login shell or root privileges. It runs the application and owns the MoeGallery application directory; it is unrelated to the web admin account. Use `--user` to run the service under an existing system account instead.
+- A built-in launcher that starts FastAPI and coordinates updates, health checks, and rollback.
+- The prebuilt frontend, served by FastAPI on the same port as the API.
 
-There is no separate updater service and no updater sudoers rule.
+Updates are handled by the main service, so no separate updater service or passwordless sudo rule is installed.
 
 ## Features
 
-- Fullscreen visual home page with configurable slideshow images.
-- Waterfall gallery with search, work, character and rating filters, sorting, automatic loading, and prefetching.
-- Image detail overlay plus direct detail routes.
-- Media-library style work and character pages with backdrops, posters, avatars, and pagination.
-- Fixed `safe`, `sensitive`, and `hidden` ratings.
-- Classic and waterfall administration modes with batch operations.
-- Batch upload with previews, duplicate pre-checks, processing queues, retry, and metadata binding.
-- CSV, JSON, XLSX, and XLSM metadata import templates.
-- SQLite and MySQL/MariaDB deployment choices.
-- HttpOnly administrator sessions, CSRF validation, login rate limiting, API Keys, and strong generated secrets.
-- In-panel Release checks, verified updates, database backups, migrations, health checks, and automatic rollback.
+- A fullscreen slideshow home page whose images can be selected from the admin panel; when none are selected, images are chosen randomly from the library.
+- A masonry gallery with search, sorting, and filters for titles, characters, and content ratings.
+- Automatic loading at the end of the page, with upcoming images prefetched in advance.
+- An in-page image detail overlay, while retaining a direct URL for every image.
+- Media-library-style title and character pages with backdrops, posters, avatars, and pagination.
+- Three fixed content ratings: `safe`, `sensitive`, and `hidden`.
+- Classic table and masonry views in the admin panel, both with batch operations.
+- Batch uploads with file previews, duplicate detection, processing queues, retries, and metadata assignment.
+- CSV, JSON, XLSX, and XLSM templates for bulk metadata imports.
+- SQLite or MySQL/MariaDB selection during first-time setup.
+- HttpOnly admin sessions, CSRF validation, login rate limiting, API keys, and a cryptographically strong session secret generated during setup.
+- Checks for new GitHub releases, verified updates, database backups, migrations, health checks, and automatic rollback from the admin panel.
 
-## Image Pipeline
+## Image Processing
 
-| Source | Original storage | Browser preview |
+| Upload type | Stored format | Browser delivery |
 | --- | --- | --- |
-| Normal static image | Convert to WebP | WebP preview and thumbnail |
-| GIF or animated image | Preserve animation | Static WebP preview and thumbnail |
-| JXR / HDR image | HDR AVIF with `nclx / mdcv / clli` | SDR WebP preview and thumbnail |
-| Other high-bit-depth image | Preserve compatible HDR source | SDR WebP preview and thumbnail |
+| Standard static image | Converted to WebP | WebP preview and thumbnail |
+| GIF or other animated image | Original animation format retained | Static WebP preview and thumbnail |
+| JXR or HDR image | Converted to HDR AVIF with `nclx / mdcv / clli` metadata | SDR WebP preview and thumbnail on standard pages |
+| Other high-bit-depth image | HDR source retained when its format is supported | SDR WebP preview and thumbnail on standard pages |
 
-Accepted upload suffixes include:
+Supported file extensions include:
 
 ```text
 .jpg .jpeg .png .webp .gif .bmp .tif .tiff .heif .heic .avif .jxr
 ```
 
-The backend validates both the suffix and actual decoder support. Disguised or undecodable files are rejected.
+Uploads are not accepted based on the file extension alone. The server also attempts to decode each image and rejects disguised or unsupported files.
 
-## Updates And Backups
+## Updates and Backups
 
-Installed instances update from **Admin > Update Center**. The built-in launcher downloads and verifies the Release while the site stays online, briefly stops the web child process for installation and migration, then performs a health check. A failed health check restores the pre-update application and database backup.
+After installation, upgrades can be started from **Admin > Update Center**. The site remains available while the release package is downloaded and verified. The web service stops briefly only while files are replaced and database migrations run. After starting the new version, MoeGallery checks `/api/health`; if that check fails, it restores the previous application and database before restarting the old version.
 
 Manual backup:
 
@@ -114,19 +117,19 @@ sudo -u moegallery bash /opt/moegallery/scripts/backup_before_upgrade.sh \
   --app-dir /opt/moegallery
 ```
 
-SQLite uses the SQLite backup API. MySQL/MariaDB uses `mysqldump --single-transaction` and therefore requires MySQL client tools.
+SQLite backups use the SQLite Backup API to create a consistent snapshot. MySQL/MariaDB backups use `mysqldump --single-transaction --no-tablespaces`, so MySQL client tools must be installed on the server.
 
 ## Documentation
 
 - [Deployment](docs/deployment.md)
-- [部署说明（简体中文）](docs/deployment_zh.md)
+- [Deployment guide (Simplified Chinese)](docs/deployment_zh.md)
 - [API operations guide](docs/api/operations-guide.md)
-- Interactive API documentation: `/api-docs` after administrator login
+- Interactive API documentation: `/api-docs` after signing in as an administrator
 - OpenAPI document: `docs/api/openapi.json`
 
 ## Development
 
-Development requires Python 3.11 or newer and Node.js 20 or newer.
+Local development requires Python 3.11 or later and Node.js 20 or later.
 
 ```bash
 # Backend
@@ -141,7 +144,7 @@ npm ci
 npm run dev
 ```
 
-The frontend development server runs on `http://127.0.0.1:5173` and proxies API and storage requests to port `8000`.
+The frontend development server runs at `http://127.0.0.1:5173` and proxies API and storage requests to the backend on local port `8000`.
 
 ## Main Routes
 
@@ -152,16 +155,16 @@ The frontend development server runs on `http://127.0.0.1:5173` and proxies API 
 /characters      Characters
 /tags            Ratings
 /admin            Administration panel
-/install          First-install wizard
-/api-docs         Administrator API documentation
+/install          First-time setup wizard
+/api-docs         Admin API documentation
 ```
 
 ## Security
 
 - Keep `.env`, `installed.lock`, databases, uploaded files, backups, and private keys out of Git.
-- Use HTTPS before exposing administrator login over an untrusted network.
-- Use a dedicated MySQL account instead of a database administrator account.
-- Keep Release checksum verification enabled and configure a trusted GitHub proxy only when needed.
+- Configure HTTPS before exposing the admin login over a public or otherwise untrusted network.
+- Create a dedicated MySQL account for MoeGallery; do not use the MySQL root account or another database administrator account.
+- Keep release package checksum verification enabled. If a GitHub proxy is required, use only one you trust.
 - Report security issues privately instead of publishing credentials or exploit details.
 
 ## License

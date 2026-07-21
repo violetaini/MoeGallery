@@ -1,20 +1,20 @@
-# MoeGallery Deployment
+# MoeGallery Deployment Guide
 
-This guide covers the supported bare-metal Linux deployment. MoeGallery configures its application service and listen address only. Domains, TLS certificates, firewall policy, CDN settings, and reverse-proxy sites remain under the operator's control.
+This guide explains how to deploy MoeGallery on a Linux server that uses systemd. The installer installs the application, creates its system service, and configures the listen address. You remain responsible for domains, TLS certificates, firewalls, CDNs, and reverse proxies.
 
-## Supported Path
+## Requirements
 
 - Linux with systemd.
 - Python 3.11 or newer.
-- `127.0.0.1` or `0.0.0.0` listen address.
+- A listen address of either `127.0.0.1` or `0.0.0.0`.
 - Port `8111` by default.
-- SQLite, MySQL 8.x, or a compatible MariaDB release.
+- SQLite, MySQL 8.x, or a compatible version of MariaDB.
 
-The installer supports `apt`, `dnf`, and `yum`. FFmpeg may require an additional repository on RHEL-family systems. The application health panel reports the available decoder and encoder capabilities after installation.
+The installer detects `apt`, `dnf`, and `yum`. Some RHEL-family distributions require an additional package repository for FFmpeg. After deployment, the System Health page in the admin panel shows which image codecs are actually available on the server.
 
 ## Recommended Installation
 
-Download the installer from the latest Release and inspect it before running it as root:
+Download the installer from the latest GitHub release. Because the script runs as root, inspect it before installation:
 
 ```bash
 curl -fsSLO https://github.com/violetaini/MoeGallery/releases/latest/download/install.sh
@@ -22,15 +22,15 @@ less install.sh
 sudo bash install.sh
 ```
 
-The interactive installer asks whether to bind to `127.0.0.1` or `0.0.0.0`. It then:
+In interactive mode, you only need to choose whether the service listens on `127.0.0.1` or `0.0.0.0`. The installer then:
 
 1. Installs runtime packages.
-2. Downloads `SHA256SUMS.txt` and the Release archive.
+2. Downloads `SHA256SUMS.txt` and the release archive.
 3. Verifies the archive checksum.
 4. Installs the application and Python environment.
-5. Creates the dedicated `moegallery` account.
+5. Creates a dedicated `moegallery` service account with no login shell or root privileges.
 6. Installs and starts `moegallery.service`.
-7. Waits for `/api/health` and prints the first-install URL.
+7. Waits for the `/api/health` check to pass and prints the first-time setup URL.
 
 Useful options:
 
@@ -46,17 +46,17 @@ Useful options:
 --reinstall
 ```
 
-`--reinstall` replaces application files while preserving `.env`, `installed.lock`, `storage/`, `logs/`, `backups/`, and the virtual environment. Use the panel Update Center for normal upgrades.
+`--reinstall` reinstalls the application files while preserving `.env`, `installed.lock`, `storage/`, `logs/`, `backups/`, and the Python virtual environment. Use the Update Center in the admin panel for routine upgrades.
 
-## Listen Address
+## Listen Addresses
 
-### Local Or Reverse Proxy
+### Local Access or Reverse Proxy
 
 ```bash
 sudo bash install.sh --host 127.0.0.1 --port 8111 --non-interactive
 ```
 
-The application is available only on the server at `http://127.0.0.1:8111`. Configure BaoTa, Nginx, Caddy, Apache, an SSH tunnel, or another proxy separately.
+The application listens only on the server's loopback interface at `http://127.0.0.1:8111`. To access it from another device, configure Nginx, Caddy, Apache, a hosting panel, or another reverse proxy, or use an SSH tunnel.
 
 ### Direct Network Access
 
@@ -64,19 +64,19 @@ The application is available only on the server at `http://127.0.0.1:8111`. Conf
 sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
 ```
 
-Open `http://SERVER_IP:8111`. Direct HTTP does not encrypt administrator credentials or cookies. Configure HTTPS before using this mode over an untrusted network.
+Open `http://SERVER_IP:8111`. Plain HTTP does not encrypt admin credentials or cookies, so configure HTTPS before using this mode on a public or otherwise untrusted network.
 
-The installer does not open the selected port in the host or cloud firewall.
+The installer does not open the selected port in the server firewall or cloud security group.
 
-## First Install
+## First-Time Setup
 
-Open `/install` after the service becomes healthy.
+After the service starts and passes its health check, open the `/install` URL printed by the installation script.
 
 ### SQLite
 
-Select SQLite and continue. MoeGallery stores the database in its managed default location. Do not enter a filesystem path.
+Select SQLite and continue. The database file is stored in the default application directory, so no filesystem path is required.
 
-### MySQL Or MariaDB
+### MySQL or MariaDB
 
 Create an empty database and dedicated application account first. Example:
 
@@ -87,9 +87,9 @@ GRANT ALL PRIVILEGES ON moegallery.* TO 'moegallery'@'127.0.0.1';
 FLUSH PRIVILEGES;
 ```
 
-Enter that host, port, database, username, and password in `/install`. Database administrator credentials are not stored by MoeGallery.
+Enter the host, port, database name, username, and password in `/install`. These connection details are written to `.env`, so use an account dedicated to the MoeGallery database. Do not enter the MySQL root account or another database administrator account.
 
-The wizard generates `AGMS_AUTH_SECRET` and the initial operations API Key, runs Alembic migrations, writes `.env`, creates `installed.lock`, and requests an automatic restart from the built-in launcher.
+The setup wizard generates the `AGMS_AUTH_SECRET` session-signing secret and an initial operations API key. It then runs the database migrations, writes `.env`, creates `installed.lock`, and asks the built-in launcher to restart the application.
 
 ## Service Management
 
@@ -115,27 +115,27 @@ Default layout:
   installed.lock
 ```
 
-The `moegallery` account owns this directory because the built-in launcher installs checksum-verified Releases without root privileges.
+By default, this directory is owned by the `moegallery` service account. The account can run the application and manage MoeGallery's own files, but it has no login shell or root privileges. It is separate from the web admin account. The main installer accepts `--user` to use an existing system account; `scripts/install_systemd.sh` also accepts `--group` when a specific group is required.
 
-## Panel Updates
+## Updates from the Admin Panel
 
-MoeGallery uses one service. There is no `moegallery-updater@.service` and no updater sudoers entry.
+Updates are coordinated by the launcher built into the main service. Only `moegallery.service` is required; no separate updater service or passwordless sudo rule is installed.
 
 The update sequence is:
 
-1. The panel creates a task in `storage/updates/`.
-2. The launcher downloads the Release and checksum while the site remains online.
-3. After verification, the launcher stops only the FastAPI child process.
-4. The update tool backs up application files and the configured database.
-5. It replaces program files, installs dependencies, and runs migrations.
-6. The launcher starts the new version and checks `/api/health`.
-7. On failure, it restores the application and database backup and starts the previous version.
+1. The admin panel creates an update task in `storage/updates/`.
+2. The launcher downloads the new release and its checksum while the site remains online.
+3. After the files have been verified, the launcher stops the FastAPI child process.
+4. It backs up the current application and database.
+5. It replaces the application files, installs dependencies, and runs database migrations.
+6. It starts the new version and checks `/api/health`.
+7. If the update fails, it restores the application and database backups and starts the previous version.
 
-MySQL rollback requires both `mysqldump` and `mysql` client commands. The recommended installer installs them on Debian and Ubuntu.
+MySQL backup and recovery require the `mysqldump` and `mysql` commands. The installer adds the required client tools on Debian and Ubuntu; on other distributions, confirm that both commands are available.
 
-## Migrating A Legacy Updater Installation
+## Migrating from a v0.1.x Installation
 
-After application files have been upgraded to a Release containing `moegallery_launcher.py`, run the service installer once with the existing application path and service name:
+If the existing installation still uses the separate updater service, first upgrade its files to a release that contains `moegallery_launcher.py`. Then run the service installer once with the current application path and service name:
 
 ```bash
 sudo bash /CURRENT/APP/PATH/scripts/install_systemd.sh \
@@ -147,11 +147,11 @@ sudo bash /CURRENT/APP/PATH/scripts/install_systemd.sh \
   --port 8111
 ```
 
-This command stops the old main service, installs the launcher-based unit, changes application ownership to the dedicated account, removes the legacy updater unit and sudoers file, and starts the new service. It does not change `.env`, the database, images, or reverse-proxy configuration.
+This command stops the old service, installs a systemd service managed by the built-in launcher, updates ownership of the application directory, removes the legacy updater service and sudoers file, and restarts MoeGallery. It does not modify `.env`, the database, uploaded images, or existing reverse-proxy configuration.
 
-## Manual Release Installation
+## Manual Installation
 
-For environments that cannot run the network installer:
+If the server cannot use the network installer, install a downloaded release archive manually:
 
 ```bash
 sudo mkdir -p /opt/moegallery
@@ -164,26 +164,26 @@ sudo bash /opt/moegallery/scripts/install_systemd.sh \
   --port 8111
 ```
 
-Verify the archive against the Release `SHA256SUMS.txt` before extracting it.
+Before extracting the archive, verify it against `SHA256SUMS.txt` from the same release.
 
 ## Troubleshooting
 
-### The Port Is Not Reachable
+### The port is not reachable
 
-- Confirm the selected bind address with `systemctl cat moegallery`.
-- Confirm the service with `systemctl status moegallery`.
-- Check `curl http://127.0.0.1:8111/api/health` on the server.
-- For `0.0.0.0`, check host and cloud firewall policy.
-- For `127.0.0.1`, check the independently managed reverse proxy.
+- Use `systemctl cat moegallery` to confirm the configured listen address.
+- Use `systemctl status moegallery` to check the service state.
+- Run `curl http://127.0.0.1:8111/api/health` on the server.
+- With `0.0.0.0`, check the server firewall and cloud security group.
+- With `127.0.0.1`, check the reverse proxy or SSH tunnel.
 
-### The Update Center Only Allows Verification
+### The Update Center cannot install updates
 
-The application was started directly with Uvicorn instead of `moegallery_launcher.py`, or required update scripts are missing. Re-run `scripts/install_systemd.sh` and inspect the main service logs.
+This usually means the service is still running Uvicorn directly instead of using `moegallery_launcher.py`, or that required update scripts are missing. Run `scripts/install_systemd.sh` again, then inspect the `moegallery.service` logs.
 
-### MySQL Backup Fails
+### MySQL backup fails
 
-Install MySQL client tools and verify the dedicated application account can connect from the server. The update is not applied when the pre-update backup fails.
+Install the MySQL client tools and confirm that the dedicated database account can connect from the server. To prevent data loss, MoeGallery stops the update if the pre-update backup fails.
 
-### First Install Requests A Restart
+### First-time setup requests a restart
 
-Standard launcher installations restart automatically. A direct development Uvicorn process must be restarted manually because it has no parent launcher.
+With a standard installation, the built-in launcher restarts the application automatically. If Uvicorn is running directly in a development environment, restart the backend manually.

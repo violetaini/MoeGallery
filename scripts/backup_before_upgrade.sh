@@ -91,6 +91,8 @@ if [[ ${#app_items[@]} -gt 0 ]]; then
     --exclude='backend/*.db-*' \
     --exclude='backend/*.sqlite' \
     --exclude='backend/*.sqlite-*' \
+    --exclude='backend/*.sqlite3' \
+    --exclude='backend/*.sqlite3-*' \
     --exclude='frontend/node_modules' \
     --exclude='frontend/dist/.vite' \
     -czf "$BACKUP_DIR/app-files.tar.gz" \

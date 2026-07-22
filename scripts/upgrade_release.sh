@@ -199,12 +199,18 @@ run rsync -a --delete \
   --exclude='*.db-*' \
   --exclude='*.sqlite' \
   --exclude='*.sqlite-*' \
+  --exclude='*.sqlite3' \
+  --exclude='*.sqlite3-*' \
   "$STAGE_DIR/backend/" "$APP_DIR/backend/"
 
 run rsync -a --delete \
   --exclude='.user.ini' \
   "$STAGE_DIR/frontend/dist/" "$APP_DIR/frontend/dist/"
-run rsync -a --delete "$STAGE_DIR/scripts/" "$APP_DIR/scripts/"
+run rsync -a --delete \
+  --exclude='__pycache__/' \
+  --exclude='*.pyc' \
+  --exclude='*.pyo' \
+  "$STAGE_DIR/scripts/" "$APP_DIR/scripts/"
 
 if [[ -d "$STAGE_DIR/docs" ]]; then
   run rsync -a --delete "$STAGE_DIR/docs/" "$APP_DIR/docs/"

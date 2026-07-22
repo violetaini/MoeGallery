@@ -33,6 +33,18 @@ FLUSH PRIVILEGES;
 
 The default storage path is `../storage`.
 
+Run the backend test suite with the test-only dependencies installed:
+
+```bash
+pip install -r requirements-test.txt
+AGMS_DATABASE_URL=sqlite:////tmp/moegallery-tests.db \
+AGMS_STORAGE_PATH=/tmp/moegallery-test-storage \
+alembic upgrade head
+AGMS_DATABASE_URL=sqlite:////tmp/moegallery-tests.db \
+AGMS_STORAGE_PATH=/tmp/moegallery-test-storage \
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
 First-time deployment exposes `/install` in the frontend and `/api/install/status` plus `/api/install` in the backend. The install flow follows the same basic idea as lsky-pro: a project-root `installed.lock` marks the application as installed. For compatibility with existing deployments, a database that already contains a populated Alembic version table is also treated as installed even if the lock file is missing. The installer writes `.env`, runs Alembic migrations, initializes the administrator account, and then creates `installed.lock`.
 The setup page does not ask for a storage path. New deployments use the configured default storage directory, which is `storage` under the project root unless `AGMS_STORAGE_PATH` is deliberately set before startup.
 For MySQL/MariaDB installs, the installer prepares `alembic_version.version_num` as `VARCHAR(128)` before running migrations. This avoids MySQL's strict length check against Alembic's default `VARCHAR(32)` when a migration revision id is longer than 32 characters.

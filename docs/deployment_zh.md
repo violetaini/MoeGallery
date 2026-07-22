@@ -46,7 +46,7 @@ sudo bash install.sh
 --reinstall
 ```
 
-`--reinstall` 用于重新安装程序文件，同时保留 `.env`、`installed.lock`、`storage/`、`logs/`、`backups/` 和 Python 虚拟环境。日常升级请使用后台的更新中心。
+`--reinstall` 用于重新安装程序文件，同时保留 `.env`、`installed.lock`、SQLite 数据库、`storage/`、`logs/`、`backups/` 和 Python 虚拟环境。日常升级请使用后台的更新中心。
 
 ## 监听方式
 

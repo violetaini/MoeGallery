@@ -12,7 +12,9 @@ PACKAGE_NAME = "MoeGallery"
 
 def _ignore_backend(path: str, names: list[str]) -> set[str]:
     ignored = {"__pycache__", ".pytest_cache"}
-    ignored.update(name for name in names if name.endswith((".pyc", ".pyo", ".db", ".db-journal")))
+    database_suffixes = (".db", ".sqlite", ".sqlite3")
+    database_sidecars = tuple(f"{suffix}-{kind}" for suffix in database_suffixes for kind in ("journal", "wal", "shm"))
+    ignored.update(name for name in names if name.endswith((".pyc", ".pyo", *database_suffixes, *database_sidecars)))
     ignored.update(name for name in names if name.startswith("anime_gallery.db"))
     return ignored
 

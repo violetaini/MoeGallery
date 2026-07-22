@@ -70,11 +70,16 @@ tar -xzf "$BACKUP_DIR/app-files.tar.gz" -C "$WORK_DIR"
 mkdir -p "$APP_DIR/backend" "$APP_DIR/frontend" "$APP_DIR/scripts"
 if [[ -d "$WORK_DIR/backend" ]]; then
   rsync -a --delete \
+    --exclude='__pycache__/' \
+    --exclude='*.pyc' \
+    --exclude='*.pyo' \
     --exclude='anime_gallery.db*' \
     --exclude='*.db' \
     --exclude='*.db-*' \
     --exclude='*.sqlite' \
     --exclude='*.sqlite-*' \
+    --exclude='*.sqlite3' \
+    --exclude='*.sqlite3-*' \
     "$WORK_DIR/backend/" "$APP_DIR/backend/"
 fi
 if [[ -d "$WORK_DIR/frontend" ]]; then
@@ -83,7 +88,11 @@ if [[ -d "$WORK_DIR/frontend" ]]; then
     "$WORK_DIR/frontend/" "$APP_DIR/frontend/"
 fi
 if [[ -d "$WORK_DIR/scripts" ]]; then
-  rsync -a --delete "$WORK_DIR/scripts/" "$APP_DIR/scripts/"
+  rsync -a --delete \
+    --exclude='__pycache__/' \
+    --exclude='*.pyc' \
+    --exclude='*.pyo' \
+    "$WORK_DIR/scripts/" "$APP_DIR/scripts/"
 fi
 if [[ -d "$WORK_DIR/docs" ]]; then
   mkdir -p "$APP_DIR/docs"

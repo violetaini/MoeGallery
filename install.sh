@@ -229,6 +229,12 @@ rsync -a --delete \
   --exclude='logs/' \
   --exclude='backups/' \
   --exclude='venv/' \
+  --exclude='*.db' \
+  --exclude='*.db-*' \
+  --exclude='*.sqlite' \
+  --exclude='*.sqlite-*' \
+  --exclude='*.sqlite3' \
+  --exclude='*.sqlite3-*' \
   "$STAGE_DIR/" "$APP_DIR/"
 
 if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then

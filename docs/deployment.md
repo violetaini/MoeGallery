@@ -46,7 +46,7 @@ Useful options:
 --reinstall
 ```
 
-`--reinstall` reinstalls the application files while preserving `.env`, `installed.lock`, `storage/`, `logs/`, `backups/`, and the Python virtual environment. Use the Update Center in the admin panel for routine upgrades.
+`--reinstall` reinstalls the application files while preserving `.env`, `installed.lock`, the SQLite database, `storage/`, `logs/`, `backups/`, and the Python virtual environment. Use the Update Center in the admin panel for routine upgrades.
 
 ## Listen Addresses
 

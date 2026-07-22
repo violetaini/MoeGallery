@@ -108,6 +108,7 @@ Useful filters:
 ```text
 work_id=12
 character_id=34
+character=伊蕾娜|イレイナ|别名
 rating=safe|sensitive|hidden
 sort=latest|random|favorites|resolution
 exclude_cover_images=true
@@ -115,6 +116,61 @@ exclude_avatar_images=true
 require_work_related=true
 require_character_related=true
 ```
+
+### Get One Random Image
+
+The public random-image endpoint returns a `307` redirect to one usable image by default:
+
+```bash
+curl -L "$BASE_URL/api/images/random" -o random-image.webp
+```
+
+With no query parameters, the server detects the device from `Sec-CH-UA-Mobile` or the user agent. The initial defaults are:
+
+```text
+PC: landscape
+Mobile: portrait
+Rating: safe
+Variant: preview
+```
+
+Administrators can change these four defaults in **System Settings > Random Image API**. Explicit query parameters always override them:
+
+```bash
+curl -L \
+  "$BASE_URL/api/images/random?work_id=12&character=%E4%BC%8A%E8%95%BE%E5%A8%9C&orientation=portrait&rating=safe&variant=original" \
+  -o character-wallpaper.webp
+```
+
+The `character` parameter accepts a Chinese name, Japanese original name, or stored alias. With `curl`, `--data-urlencode` is convenient for non-ASCII names:
+
+```bash
+curl -G -L "$BASE_URL/api/images/random" \
+  --data-urlencode "character=イレイナ" \
+  --data-urlencode "orientation=portrait" \
+  -o elaina.webp
+```
+
+Supported random-image parameters:
+
+```text
+work_id=<database ID>
+character_id=<database ID>
+character=<Chinese name, Japanese name, or alias>
+orientation=landscape|portrait|square|any
+rating=safe|sensitive|any
+device=auto|pc|mobile
+variant=original|preview|thumbnail
+response=redirect|json
+```
+
+Use `response=json` when a client needs metadata instead of an immediate redirect:
+
+```bash
+curl "$BASE_URL/api/images/random?device=mobile&response=json"
+```
+
+`hidden` and private images are never returned, including when `rating=any`. Device auto-detection distinguishes PC from mobile hardware; it cannot reliably detect the current screen rotation, so landscape phones should pass `orientation=landscape` explicitly. The random endpoint itself is sent with `Cache-Control: no-store` so each request can select a new image.
 
 ### Upload Images Immediately
 

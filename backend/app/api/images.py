@@ -1,8 +1,10 @@
 import random
 from typing import Annotated
 from pathlib import PurePath
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -16,12 +18,14 @@ from app.schemas.image import (
     ImageBatchUpdate,
     ImageListResponse,
     ImageRead,
+    RandomImageResponse,
     ImageUpdate,
     ImageUploadResponse,
     ImageUploadResult,
 )
 from app.services.image_service import ImageService
-from app.services.storage_service import delete_storage_file
+from app.services.app_setting_service import get_random_api_defaults
+from app.services.storage_service import delete_storage_file, resolve_storage_file
 from app.utils.image_process import InvalidImageError, render_webp_preview_bytes, validate_upload_filename
 
 router = APIRouter(prefix="/images", tags=["images"])
@@ -48,6 +52,16 @@ def _image_options():
         selectinload(Image.works),
         selectinload(Image.characters),
         selectinload(Image.tags),
+    )
+
+
+def _character_name_filter(value: str):
+    escaped = value.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    needle = f"%{escaped}%"
+    return or_(
+        Character.name.ilike(needle, escape="\\"),
+        Character.original_name.ilike(needle, escape="\\"),
+        Character.aliases.ilike(needle, escape="\\"),
     )
 
 
@@ -123,6 +137,161 @@ def _random_images_from_stmt(db: Session, stmt, page_size: int, total: int) -> l
     return [image_by_id[image_id] for image_id in selected_ids if image_id in image_by_id]
 
 
+def _random_image_candidates(db: Session, stmt, limit: int = 32) -> list[Image]:
+    max_id = db.scalar(select(func.max(Image.id)))
+    if max_id is None:
+        return []
+
+    pivot = random.randint(1, int(max_id))
+    candidates = db.scalars(
+        stmt.where(Image.id >= pivot).order_by(Image.id.asc()).limit(limit)
+    ).unique().all()
+    if len(candidates) < limit:
+        candidates.extend(
+            db.scalars(
+                stmt.where(Image.id < pivot).order_by(Image.id.asc()).limit(limit - len(candidates))
+            ).unique().all()
+        )
+    random.shuffle(candidates)
+    return candidates
+
+
+def _detect_random_api_device(request: Request, requested_device: str) -> str:
+    if requested_device != "auto":
+        return requested_device
+
+    client_hint = request.headers.get("sec-ch-ua-mobile", "").strip()
+    if client_hint == "?1":
+        return "mobile"
+    if client_hint == "?0":
+        return "pc"
+
+    user_agent = request.headers.get("user-agent", "").lower()
+    mobile_markers = (
+        "android",
+        "iphone",
+        "ipad",
+        "ipod",
+        "mobile",
+        "windows phone",
+        "opera mini",
+        "opera mobi",
+    )
+    return "mobile" if any(marker in user_agent for marker in mobile_markers) else "pc"
+
+
+def _random_image_asset(image: Image, requested_variant: str) -> tuple[str, str]:
+    candidates = {
+        "original": ((image.file_path, "original"),),
+        "preview": (
+            (image.preview_path, "preview"),
+            (image.file_path, "original"),
+        ),
+        "thumbnail": (
+            (image.thumbnail_path, "thumbnail"),
+            (image.preview_path, "preview"),
+            (image.file_path, "original"),
+        ),
+    }
+    for path, served_variant in candidates[requested_variant]:
+        if not path:
+            continue
+        try:
+            target = resolve_storage_file(path)
+        except ValueError:
+            continue
+        if target.is_file():
+            return path, served_variant
+    raise FileNotFoundError
+
+
+@router.get(
+    "/random",
+    response_model=RandomImageResponse,
+    responses={
+        307: {"description": "重定向到随机选中的原图、预览图或缩略图。"},
+        404: {"description": "没有符合筛选条件且文件可用的公开图片。"},
+    },
+)
+def random_image(
+    request: Request,
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+    work_id: int | None = Query(None, ge=1),
+    character_id: int | None = Query(None, ge=1),
+    character: str | None = Query(None, min_length=1, max_length=255),
+    rating: str | None = Query(None, pattern="^(safe|sensitive|any)$"),
+    orientation: str | None = Query(None, pattern="^(landscape|portrait|square|any)$"),
+    device: str = Query("auto", pattern="^(auto|pc|mobile)$"),
+    variant: str | None = Query(None, pattern="^(original|preview|thumbnail)$"),
+    response_type: str = Query("redirect", alias="response", pattern="^(redirect|json)$"),
+):
+    defaults = get_random_api_defaults(db)
+    resolved_device = _detect_random_api_device(request, device)
+    orientation_default = "mobile_orientation" if resolved_device == "mobile" else "desktop_orientation"
+    applied_orientation = orientation or defaults[orientation_default]
+    applied_rating = rating or defaults["rating"]
+    requested_variant = variant or defaults["variant"]
+
+    stmt = select(Image).options(*_image_options()).where(
+        Image.is_public.is_(True),
+        Image.rating.in_(("safe", "sensitive")),
+    )
+    if work_id is not None:
+        stmt = stmt.where(Image.works.any(Work.id == work_id))
+    if character_id is not None:
+        stmt = stmt.where(Image.characters.any(Character.id == character_id))
+    if character and character.strip():
+        stmt = stmt.where(Image.characters.any(_character_name_filter(character)))
+    if applied_rating != "any":
+        stmt = stmt.where(Image.rating == applied_rating)
+    if applied_orientation != "any":
+        stmt = stmt.where(Image.orientation == applied_orientation)
+
+    selected_image = None
+    selected_path = None
+    served_variant = None
+    checked_ids: set[int] = set()
+    for _ in range(3):
+        for candidate in _random_image_candidates(db, stmt):
+            if candidate.id in checked_ids:
+                continue
+            checked_ids.add(candidate.id)
+            try:
+                selected_path, served_variant = _random_image_asset(candidate, requested_variant)
+            except FileNotFoundError:
+                continue
+            selected_image = candidate
+            break
+        if selected_image:
+            break
+
+    if not selected_image or not selected_path or not served_variant:
+        raise HTTPException(status_code=404, detail="No public image matches the random image filters")
+
+    image_url = f"/storage/{quote(selected_path, safe='/')}"
+    headers = {
+        "Cache-Control": "no-store, max-age=0",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        "Pragma": "no-cache",
+        "Vary": "User-Agent, Sec-CH-UA-Mobile",
+    }
+    if response_type == "redirect":
+        return RedirectResponse(url=image_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT, headers=headers)
+
+    for name, value in headers.items():
+        response.headers[name] = value
+    return {
+        "image": selected_image,
+        "image_url": image_url,
+        "requested_variant": requested_variant,
+        "served_variant": served_variant,
+        "resolved_device": resolved_device,
+        "applied_orientation": applied_orientation,
+        "applied_rating": applied_rating,
+    }
+
+
 @router.get("", response_model=ImageListResponse)
 def list_images(
     db: Annotated[Session, Depends(get_db)],
@@ -131,6 +300,7 @@ def list_images(
     page_size: int = Query(24, ge=1, le=100),
     work_id: int | None = None,
     character_id: int | None = None,
+    character: str | None = Query(None, min_length=1, max_length=255),
     rating: str | None = Query(None, pattern="^(safe|sensitive|hidden)$"),
     orientation: str | None = Query(None, pattern="^(landscape|portrait|square)$"),
     q: str | None = None,
@@ -165,6 +335,8 @@ def list_images(
         stmt = stmt.join(Image.works).where(Work.id == work_id)
     if character_id:
         stmt = stmt.join(Image.characters).where(Character.id == character_id)
+    if character and character.strip():
+        stmt = stmt.where(Image.characters.any(_character_name_filter(character)))
     if rating:
         stmt = stmt.where(Image.rating == rating)
     if orientation:

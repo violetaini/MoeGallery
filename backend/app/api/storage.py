@@ -46,4 +46,5 @@ def get_storage_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     media_type = image.mime_type if normalized == image.file_path else WEBP_MIME_TYPE
-    return FileResponse(target, media_type=media_type)
+    headers = {"Cross-Origin-Resource-Policy": "cross-origin"} if is_public_image else {}
+    return FileResponse(target, media_type=media_type, headers=headers)

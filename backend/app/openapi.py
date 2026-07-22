@@ -104,7 +104,11 @@ OPERATION_METADATA = {
     },
     ("GET", "/api/images"): {
         "summary": "获取图片列表",
-        "description": "默认返回前台公开画廊图片。管理员鉴权后可查询隐藏/私有图片和后台专用筛选条件。",
+        "description": "默认返回前台公开画廊图片，并支持按角色 ID、中文名、日文原名或别名筛选。管理员鉴权后可查询隐藏/私有图片和后台专用筛选条件。",
+    },
+    ("GET", "/api/images/random"): {
+        "summary": "获取一张随机图片",
+        "description": "从公开图片中按作品、角色 ID 或中文/日文角色名称、分级和方向筛选一张图片。无参数时自动识别桌面或手机设备，并使用后台配置的默认方向、分级和输出尺寸。默认返回 307 重定向；设置 `response=json` 可读取图片元数据。",
     },
     ("POST", "/api/images/upload"): {
         "summary": "立即上传一张或多张图片",
@@ -191,9 +195,9 @@ OPERATION_METADATA = {
     ("DELETE", "/api/tags/{tag_id}"): {"summary": "删除标签", "description": "删除兼容旧数据的标签记录。"},
     ("GET", "/api/search"): {"summary": "搜索媒体库", "description": "使用单个关键词搜索图片、作品和角色。"},
     ("GET", "/api/stats"): {"summary": "获取后台统计", "description": "返回后台首页统计计数。"},
-    ("GET", "/api/settings"): {"summary": "获取后台设置", "description": "返回管理员偏好、前台首页图片绑定、上传队列参数、GitHub 更新检查代理和运维 API Key。"},
+    ("GET", "/api/settings"): {"summary": "获取后台设置", "description": "返回管理员偏好、前台首页图片绑定、随机图片 API 默认值、上传队列参数、GitHub 更新检查代理和运维 API Key。"},
     ("GET", "/api/settings/public"): {"summary": "获取公开设置", "description": "返回前台首页和列表页背景图片设置。"},
-    ("PUT", "/api/settings"): {"summary": "更新后台设置", "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、上传 worker 参数和 GitHub 更新检查代理。"},
+    ("PUT", "/api/settings"): {"summary": "更新后台设置", "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、随机图片 API 默认值、上传 worker 参数和 GitHub 更新检查代理。"},
     ("POST", "/api/settings/auth-secret/rotate"): {"summary": "轮换登录密钥", "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。"},
     ("POST", "/api/settings/api-keys/reset"): {"summary": "重置运维 API Key", "description": "生成新的默认 `AGMS_API_KEYS`，写入 `.env`，并使旧 API Key 立即失效。"},
     ("GET", "/api/system/health"): {"summary": "获取系统健康状态", "description": "返回程序版本、最新 Release、数据库迁移状态、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"},
@@ -211,6 +215,7 @@ PARAMETER_DESCRIPTIONS = {
     "q": "用于模糊搜索的关键词。",
     "work_id": "作品数据库 ID。",
     "character_id": "角色数据库 ID。",
+    "character": "角色名称筛选，支持中文名、日文原名和别名，例如 `伊蕾娜` 或 `イレイナ`。",
     "tag_id": "兼容旧标签的数据库 ID。",
     "image_id": "图片数据库 ID。",
     "task_id": "任务 ID。",
@@ -219,7 +224,11 @@ PARAMETER_DESCRIPTIONS = {
     "type": "兼容旧标签的类型筛选。",
     "relative_path": "图片元数据返回的存储相对路径，例如 `preview/example.webp`。",
     ADMIN_SESSION_COOKIE: "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。",
-    "rating": "`safe`、`sensitive` 或 `hidden`。",
+    "rating": "图片分级。具体可选值以当前接口的参数定义为准。",
+    "orientation": "图片方向：`landscape`（横图）、`portrait`（竖图）、`square`（方图）；随机图片接口还支持 `any`。",
+    "device": "随机图片默认方向所用的设备类型：`auto`、`pc` 或 `mobile`。",
+    "variant": "随机图片输出尺寸：`original`、`preview` 或 `thumbnail`。衍生图缺失时会回退到可用的较大图片。",
+    "response": "随机图片响应形式：`redirect` 直接跳转到图片，`json` 返回元数据和图片地址。",
     "sort": "`latest`、`random`、`favorites` 或 `resolution`。",
     "public_only": "为 true 时排除隐藏/私有图片。",
     "exclude_work_related": "排除已绑定作品的图片。",
@@ -310,6 +319,17 @@ RESPONSE_EXAMPLES = {
     },
     ("GET", "/api/auth/me"): {
         "200": {"username": "admin", "avatar_image_id": None, "avatar_image": None},
+    },
+    ("GET", "/api/images/random"): {
+        "200": {
+            "image": {"id": 101, "orientation": "landscape", "rating": "safe"},
+            "image_url": "/storage/preview/example.webp",
+            "requested_variant": "preview",
+            "served_variant": "preview",
+            "resolved_device": "pc",
+            "applied_orientation": "landscape",
+            "applied_rating": "safe",
+        },
     },
     ("GET", "/api/upload-tasks/{task_id}"): {
         "200": {

@@ -53,6 +53,8 @@ For MySQL/MariaDB installs, the installer prepares `alembic_version.version_num`
 
 OpenAPI documentation is generated from the FastAPI app. Runtime documentation is protected:
 
+- `GET /api/images/random` returns one public random image and supports work, character, rating, orientation, device, and output-size filters.
+
 - `GET /api-docs` serves the Scalar API reference UI.
 - `GET /api-docs/openapi.json` and `GET /openapi.json` return the OpenAPI document.
 

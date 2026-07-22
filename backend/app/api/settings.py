@@ -12,9 +12,14 @@ from app.config import generate_api_key, parse_api_keys, settings
 from app.schemas.settings import AdminSettingsRead, AdminSettingsUpdate, PublicSettingsRead
 from app.services.app_setting_service import (
     GITHUB_RELEASE_PROXY_URL_KEY,
+    RANDOM_API_DEFAULT_RATING_KEY,
+    RANDOM_API_DEFAULT_VARIANT_KEY,
+    RANDOM_API_DESKTOP_ORIENTATION_KEY,
+    RANDOM_API_MOBILE_ORIENTATION_KEY,
     UPLOAD_CLAIM_BATCH_SIZE_KEY,
     UPLOAD_WORKER_COUNT_KEY,
     get_github_release_proxy_url,
+    get_random_api_defaults,
     get_upload_claim_batch_size,
     get_upload_worker_count,
     normalize_github_release_proxy_url,
@@ -157,6 +162,7 @@ def _read_public_settings(db: Session) -> dict[str, object]:
 def _read_settings(db: Session) -> dict[str, object]:
     account = get_admin_account(db)
     slideshow_image_ids, slideshow_images = _read_image_list_setting(db, HOME_SLIDESHOW_IMAGE_IDS_KEY)
+    random_api_defaults = get_random_api_defaults(db)
     return {
         "image_manage_view_mode": _normalize_image_manage_view_mode(
             _get_value(
@@ -165,6 +171,10 @@ def _read_settings(db: Session) -> dict[str, object]:
                 DEFAULT_IMAGE_MANAGE_VIEW_MODE,
             )
         ),
+        "random_api_desktop_orientation": random_api_defaults["desktop_orientation"],
+        "random_api_mobile_orientation": random_api_defaults["mobile_orientation"],
+        "random_api_default_rating": random_api_defaults["rating"],
+        "random_api_default_variant": random_api_defaults["variant"],
         "github_proxy_url": get_github_release_proxy_url(db),
         "upload_worker_count": get_upload_worker_count(db),
         "upload_claim_batch_size": get_upload_claim_batch_size(db),
@@ -202,6 +212,15 @@ def update_settings(
     data = payload.model_dump(exclude_unset=True)
     if data.get("image_manage_view_mode") is not None:
         _set_value(db, IMAGE_MANAGE_VIEW_MODE_KEY, data["image_manage_view_mode"])
+    random_api_setting_fields = {
+        "random_api_desktop_orientation": RANDOM_API_DESKTOP_ORIENTATION_KEY,
+        "random_api_mobile_orientation": RANDOM_API_MOBILE_ORIENTATION_KEY,
+        "random_api_default_rating": RANDOM_API_DEFAULT_RATING_KEY,
+        "random_api_default_variant": RANDOM_API_DEFAULT_VARIANT_KEY,
+    }
+    for field, key in random_api_setting_fields.items():
+        if data.get(field) is not None:
+            _set_value(db, key, data[field])
     if data.get("upload_worker_count") is not None:
         _set_value(db, UPLOAD_WORKER_COUNT_KEY, str(data["upload_worker_count"]))
     if data.get("upload_claim_batch_size") is not None:

@@ -70,3 +70,13 @@ class ImageUploadResponse(BaseModel):
 
 class ImageListResponse(PageResponse[ImageRead]):
     pass
+
+
+class RandomImageResponse(BaseModel):
+    image: ImageRead
+    image_url: str
+    requested_variant: str = Field(pattern="^(original|preview|thumbnail)$")
+    served_variant: str = Field(pattern="^(original|preview|thumbnail)$")
+    resolved_device: str = Field(pattern="^(pc|mobile)$")
+    applied_orientation: str = Field(pattern="^(landscape|portrait|square|any)$")
+    applied_rating: str = Field(pattern="^(safe|sensitive|any)$")

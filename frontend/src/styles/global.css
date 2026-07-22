@@ -2458,6 +2458,43 @@ a {
   gap: 14px;
 }
 
+.random-api-settings {
+  display: grid;
+  gap: 14px;
+}
+
+.random-api-settings code {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  color: #475569;
+  background: rgba(248, 250, 252, 0.9);
+  font-size: 12px;
+}
+
+.random-api-control-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.random-api-control {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.random-api-control > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.random-api-control .el-select {
+  width: 100%;
+}
+
 .github-proxy-settings {
   display: grid;
   grid-template-columns: minmax(220px, 0.45fr) minmax(320px, 1fr);
@@ -5806,6 +5843,15 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .random-api-control-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .random-api-settings .admin-preference-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .github-proxy-settings {
     grid-template-columns: 1fr;
   }
@@ -6245,6 +6291,10 @@ body {
 }
 
 @media (max-width: 480px) {
+  .random-api-control-grid {
+    grid-template-columns: 1fr;
+  }
+
   .masonry-row {
     height: min(var(--row-height), 132px);
   }

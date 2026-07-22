@@ -383,6 +383,197 @@
         "description": "在路径规范化和数据库权限检查后，返回原图、预览图或缩略图。"
       }
     },
+    "/api/images/random": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "获取一张随机图片",
+        "operationId": "random_image_api_images_random_get",
+        "parameters": [
+          {
+            "name": "work_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Id"
+            },
+            "description": "作品数据库 ID。"
+          },
+          {
+            "name": "character_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Character Id"
+            },
+            "description": "角色数据库 ID。"
+          },
+          {
+            "name": "character",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Character"
+            },
+            "description": "角色名称筛选，支持中文名、日文原名和别名，例如 `伊蕾娜` 或 `イレイナ`。"
+          },
+          {
+            "name": "rating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(safe|sensitive|any)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rating"
+            },
+            "description": "图片分级。具体可选值以当前接口的参数定义为准。"
+          },
+          {
+            "name": "orientation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(landscape|portrait|square|any)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orientation"
+            },
+            "description": "图片方向：`landscape`（横图）、`portrait`（竖图）、`square`（方图）；随机图片接口还支持 `any`。"
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(auto|pc|mobile)$",
+              "default": "auto",
+              "title": "Device"
+            },
+            "description": "随机图片默认方向所用的设备类型：`auto`、`pc` 或 `mobile`。"
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(original|preview|thumbnail)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant"
+            },
+            "description": "随机图片输出尺寸：`original`、`preview` 或 `thumbnail`。衍生图缺失时会回退到可用的较大图片。"
+          },
+          {
+            "name": "response",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(redirect|json)$",
+              "default": "redirect",
+              "title": "Response"
+            },
+            "description": "随机图片响应形式：`redirect` 直接跳转到图片，`json` 返回元数据和图片地址。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RandomImageResponse"
+                },
+                "examples": {
+                  "example": {
+                    "summary": "示例响应",
+                    "value": {
+                      "image": {
+                        "id": 101,
+                        "orientation": "landscape",
+                        "rating": "safe"
+                      },
+                      "image_url": "/storage/preview/example.webp",
+                      "requested_variant": "preview",
+                      "served_variant": "preview",
+                      "resolved_device": "pc",
+                      "applied_orientation": "landscape",
+                      "applied_rating": "safe"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "307": {
+            "description": "重定向到随机选中的原图、预览图或缩略图。"
+          },
+          "404": {
+            "description": "没有符合筛选条件且文件可用的公开图片。"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "从公开图片中按作品、角色 ID 或中文/日文角色名称、分级和方向筛选一张图片。无参数时自动识别桌面或手机设备，并使用后台配置的默认方向、分级和输出尺寸。默认返回 307 重定向；设置 `response=json` 可读取图片元数据。"
+      }
+    },
     "/api/images": {
       "get": {
         "tags": [
@@ -451,6 +642,25 @@
             "description": "角色数据库 ID。"
           },
           {
+            "name": "character",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Character"
+            },
+            "description": "角色名称筛选，支持中文名、日文原名和别名，例如 `伊蕾娜` 或 `イレイナ`。"
+          },
+          {
             "name": "rating",
             "in": "query",
             "required": false,
@@ -466,7 +676,7 @@
               ],
               "title": "Rating"
             },
-            "description": "`safe`、`sensitive` 或 `hidden`。"
+            "description": "图片分级。具体可选值以当前接口的参数定义为准。"
           },
           {
             "name": "orientation",
@@ -483,7 +693,8 @@
                 }
               ],
               "title": "Orientation"
-            }
+            },
+            "description": "图片方向：`landscape`（横图）、`portrait`（竖图）、`square`（方图）；随机图片接口还支持 `any`。"
           },
           {
             "name": "q",
@@ -631,7 +842,7 @@
             }
           }
         },
-        "description": "默认返回前台公开画廊图片。管理员鉴权后可查询隐藏/私有图片和后台专用筛选条件。"
+        "description": "默认返回前台公开画廊图片，并支持按角色 ID、中文名、日文原名或别名筛选。管理员鉴权后可查询隐藏/私有图片和后台专用筛选条件。"
       }
     },
     "/api/images/upload": {
@@ -3987,7 +4198,7 @@
             }
           }
         },
-        "description": "返回管理员偏好、前台首页图片绑定、上传队列参数、GitHub 更新检查代理和运维 API Key。"
+        "description": "返回管理员偏好、前台首页图片绑定、随机图片 API 默认值、上传队列参数、GitHub 更新检查代理和运维 API Key。"
       },
       "put": {
         "tags": [
@@ -4087,7 +4298,7 @@
             }
           }
         },
-        "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、上传 worker 参数和 GitHub 更新检查代理。"
+        "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、随机图片 API 默认值、上传 worker 参数和 GitHub 更新检查代理。"
       }
     },
     "/api/settings/public": {
@@ -4412,6 +4623,30 @@
             "title": "Image Manage View Mode",
             "default": "classic"
           },
+          "random_api_desktop_orientation": {
+            "type": "string",
+            "pattern": "^(landscape|portrait|square|any)$",
+            "title": "Random Api Desktop Orientation",
+            "default": "landscape"
+          },
+          "random_api_mobile_orientation": {
+            "type": "string",
+            "pattern": "^(landscape|portrait|square|any)$",
+            "title": "Random Api Mobile Orientation",
+            "default": "portrait"
+          },
+          "random_api_default_rating": {
+            "type": "string",
+            "pattern": "^(safe|sensitive|any)$",
+            "title": "Random Api Default Rating",
+            "default": "safe"
+          },
+          "random_api_default_variant": {
+            "type": "string",
+            "pattern": "^(original|preview|thumbnail)$",
+            "title": "Random Api Default Variant",
+            "default": "preview"
+          },
           "upload_worker_count": {
             "type": "integer",
             "maximum": 96.0,
@@ -4582,6 +4817,54 @@
               }
             ],
             "title": "Image Manage View Mode"
+          },
+          "random_api_desktop_orientation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(landscape|portrait|square|any)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Random Api Desktop Orientation"
+          },
+          "random_api_mobile_orientation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(landscape|portrait|square|any)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Random Api Mobile Orientation"
+          },
+          "random_api_default_rating": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(safe|sensitive|any)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Random Api Default Rating"
+          },
+          "random_api_default_variant": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(original|preview|thumbnail)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Random Api Default Variant"
           },
           "upload_worker_count": {
             "anyOf": [
@@ -6551,6 +6834,53 @@
         },
         "type": "object",
         "title": "PublicSettingsRead"
+      },
+      "RandomImageResponse": {
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageRead"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "requested_variant": {
+            "type": "string",
+            "pattern": "^(original|preview|thumbnail)$",
+            "title": "Requested Variant"
+          },
+          "served_variant": {
+            "type": "string",
+            "pattern": "^(original|preview|thumbnail)$",
+            "title": "Served Variant"
+          },
+          "resolved_device": {
+            "type": "string",
+            "pattern": "^(pc|mobile)$",
+            "title": "Resolved Device"
+          },
+          "applied_orientation": {
+            "type": "string",
+            "pattern": "^(landscape|portrait|square|any)$",
+            "title": "Applied Orientation"
+          },
+          "applied_rating": {
+            "type": "string",
+            "pattern": "^(safe|sensitive|any)$",
+            "title": "Applied Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image",
+          "image_url",
+          "requested_variant",
+          "served_variant",
+          "resolved_device",
+          "applied_orientation",
+          "applied_rating"
+        ],
+        "title": "RandomImageResponse"
       },
       "ReleaseAsset": {
         "properties": {

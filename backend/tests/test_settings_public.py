@@ -15,6 +15,10 @@ if str(BACKEND_DIR) not in sys.path:
 from app.api import settings as settings_api
 from app.database import Base
 from app.models import Image
+from app.services.app_setting_service import (
+    RANDOM_API_DEFAULT_RATING_KEY,
+    RANDOM_API_DESKTOP_ORIENTATION_KEY,
+)
 
 
 class PublicSettingsTests(unittest.TestCase):
@@ -80,6 +84,21 @@ class PublicSettingsTests(unittest.TestCase):
                 with self.subTest(key=key):
                     with self.assertRaises(HTTPException):
                         settings_api._set_image_setting(db, key, 999)
+
+    def test_random_api_admin_defaults_are_normalized(self):
+        with self.SessionTesting() as db:
+            defaults = settings_api._read_settings(db)
+            self.assertEqual(defaults["random_api_desktop_orientation"], "landscape")
+            self.assertEqual(defaults["random_api_mobile_orientation"], "portrait")
+            self.assertEqual(defaults["random_api_default_rating"], "safe")
+            self.assertEqual(defaults["random_api_default_variant"], "preview")
+
+            settings_api._set_value(db, RANDOM_API_DESKTOP_ORIENTATION_KEY, "portrait")
+            settings_api._set_value(db, RANDOM_API_DEFAULT_RATING_KEY, "any")
+            db.commit()
+            updated = settings_api._read_settings(db)
+            self.assertEqual(updated["random_api_desktop_orientation"], "portrait")
+            self.assertEqual(updated["random_api_default_rating"], "any")
 
 
 if __name__ == "__main__":

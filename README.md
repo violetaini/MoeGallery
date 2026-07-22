@@ -82,6 +82,7 @@ Updates are handled by the main service, so no separate updater service or passw
 - An in-page image detail overlay, while retaining a direct URL for every image.
 - Media-library-style title and character pages with backdrops, posters, avatars, and pagination.
 - Three fixed content ratings: `safe`, `sensitive`, and `hidden`.
+- A public random-image API can filter by work, character ID, Chinese/Japanese character names and aliases, rating, and orientation, with configurable desktop and mobile defaults.
 - Classic table and masonry views in the admin panel, both with batch operations.
 - Batch uploads with file previews, duplicate detection, processing queues, retries, and metadata assignment.
 - CSV, JSON, XLSX, and XLSM templates for bulk metadata imports.

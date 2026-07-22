@@ -10,6 +10,10 @@ class ApiKeyRead(BaseModel):
 
 class AdminSettingsRead(BaseModel):
     image_manage_view_mode: str = Field(default="classic", pattern="^(classic|waterfall)$")
+    random_api_desktop_orientation: str = Field(default="landscape", pattern="^(landscape|portrait|square|any)$")
+    random_api_mobile_orientation: str = Field(default="portrait", pattern="^(landscape|portrait|square|any)$")
+    random_api_default_rating: str = Field(default="safe", pattern="^(safe|sensitive|any)$")
+    random_api_default_variant: str = Field(default="preview", pattern="^(original|preview|thumbnail)$")
     upload_worker_count: int = Field(default=12, ge=1, le=96)
     upload_claim_batch_size: int = Field(default=1, ge=1, le=100)
     github_proxy_url: str = Field(default="", max_length=500)
@@ -31,6 +35,10 @@ class AdminSettingsRead(BaseModel):
 
 class AdminSettingsUpdate(BaseModel):
     image_manage_view_mode: str | None = Field(default=None, pattern="^(classic|waterfall)$")
+    random_api_desktop_orientation: str | None = Field(default=None, pattern="^(landscape|portrait|square|any)$")
+    random_api_mobile_orientation: str | None = Field(default=None, pattern="^(landscape|portrait|square|any)$")
+    random_api_default_rating: str | None = Field(default=None, pattern="^(safe|sensitive|any)$")
+    random_api_default_variant: str | None = Field(default=None, pattern="^(original|preview|thumbnail)$")
     upload_worker_count: int | None = Field(default=None, ge=1, le=96)
     upload_claim_batch_size: int | None = Field(default=None, ge=1, le=100)
     github_proxy_url: str | None = Field(default=None, max_length=500)

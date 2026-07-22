@@ -64,6 +64,14 @@ class ApiAuthorizationTests(unittest.TestCase):
                 response = self.client.get(path, headers={"Authorization": "Basic wrong-token"})
                 self.assertEqual(response.status_code, 401)
 
+    def test_random_image_endpoint_is_public_but_rejects_bad_authorization_header(self):
+        self.assertEqual(self.client.get("/api/images/random").status_code, 404)
+        response = self.client.get(
+            "/api/images/random",
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+        self.assertEqual(response.status_code, 401)
+
     def test_protected_get_endpoints_reject_missing_and_bad_token(self):
         protected_get_paths = [
             "/api/auth/me",

@@ -8,6 +8,19 @@ from app.models import AppSetting
 UPLOAD_WORKER_COUNT_KEY = "upload.worker_count"
 UPLOAD_CLAIM_BATCH_SIZE_KEY = "upload.claim_batch_size"
 GITHUB_RELEASE_PROXY_URL_KEY = "system.github_release_proxy_url"
+RANDOM_API_DESKTOP_ORIENTATION_KEY = "random_api.desktop_orientation"
+RANDOM_API_MOBILE_ORIENTATION_KEY = "random_api.mobile_orientation"
+RANDOM_API_DEFAULT_RATING_KEY = "random_api.default_rating"
+RANDOM_API_DEFAULT_VARIANT_KEY = "random_api.default_variant"
+
+DEFAULT_RANDOM_API_DESKTOP_ORIENTATION = "landscape"
+DEFAULT_RANDOM_API_MOBILE_ORIENTATION = "portrait"
+DEFAULT_RANDOM_API_RATING = "safe"
+DEFAULT_RANDOM_API_VARIANT = "preview"
+
+VALID_RANDOM_API_ORIENTATIONS = {"landscape", "portrait", "square", "any"}
+VALID_RANDOM_API_RATINGS = {"safe", "sensitive", "any"}
+VALID_RANDOM_API_VARIANTS = {"original", "preview", "thumbnail"}
 
 
 def get_int_setting(db: Session, key: str, default: int, minimum: int, maximum: int) -> int:
@@ -25,6 +38,41 @@ def get_upload_worker_count(db: Session) -> int:
 
 def get_upload_claim_batch_size(db: Session) -> int:
     return get_int_setting(db, UPLOAD_CLAIM_BATCH_SIZE_KEY, settings.upload_claim_batch_size, 1, 100)
+
+
+def get_choice_setting(db: Session, key: str, default: str, choices: set[str]) -> str:
+    setting = db.get(AppSetting, key)
+    value = setting.value if setting else default
+    return value if value in choices else default
+
+
+def get_random_api_defaults(db: Session) -> dict[str, str]:
+    return {
+        "desktop_orientation": get_choice_setting(
+            db,
+            RANDOM_API_DESKTOP_ORIENTATION_KEY,
+            DEFAULT_RANDOM_API_DESKTOP_ORIENTATION,
+            VALID_RANDOM_API_ORIENTATIONS,
+        ),
+        "mobile_orientation": get_choice_setting(
+            db,
+            RANDOM_API_MOBILE_ORIENTATION_KEY,
+            DEFAULT_RANDOM_API_MOBILE_ORIENTATION,
+            VALID_RANDOM_API_ORIENTATIONS,
+        ),
+        "rating": get_choice_setting(
+            db,
+            RANDOM_API_DEFAULT_RATING_KEY,
+            DEFAULT_RANDOM_API_RATING,
+            VALID_RANDOM_API_RATINGS,
+        ),
+        "variant": get_choice_setting(
+            db,
+            RANDOM_API_DEFAULT_VARIANT_KEY,
+            DEFAULT_RANDOM_API_VARIANT,
+            VALID_RANDOM_API_VARIANTS,
+        ),
+    }
 
 
 def normalize_github_release_proxy_url(value: str | None) -> str:

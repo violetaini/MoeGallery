@@ -18,6 +18,10 @@ const imageManageViewMode = ref(getImageManageViewMode())
 const router = useRouter()
 const uploadWorkerCount = ref(12)
 const uploadClaimBatchSize = ref(1)
+const randomApiDesktopOrientation = ref('landscape')
+const randomApiMobileOrientation = ref('portrait')
+const randomApiDefaultRating = ref('safe')
+const randomApiDefaultVariant = ref('preview')
 const githubProxyUrl = ref('')
 const operationsApiKeys = ref([])
 const apiKeysVisible = ref(false)
@@ -103,6 +107,21 @@ const heroBackgroundItems = ref([
     uploading: false
   }
 ])
+
+const randomApiOrientationOptions = [
+  ...orientationOptions,
+  { value: 'any', label: '不限方向' }
+]
+const randomApiRatingOptions = [
+  { value: 'safe', label: '仅安全' },
+  { value: 'sensitive', label: '仅敏感' },
+  { value: 'any', label: '安全与敏感' }
+]
+const randomApiVariantOptions = [
+  { value: 'preview', label: '预览图' },
+  { value: 'original', label: '原图' },
+  { value: 'thumbnail', label: '缩略图' }
+]
 
 const adminAvatarUrl = computed(() => adminAvatarUrlFromImage(adminAvatarImage.value) || '/avatar.webp')
 const selectedHomeSlideshowImages = computed(() => {
@@ -265,6 +284,13 @@ function syncAccount(data) {
 
 function syncOperationsApiKeys(data) {
   operationsApiKeys.value = Array.isArray(data.operations_api_keys) ? data.operations_api_keys : []
+}
+
+function syncRandomApiSettings(data) {
+  randomApiDesktopOrientation.value = data.random_api_desktop_orientation || 'landscape'
+  randomApiMobileOrientation.value = data.random_api_mobile_orientation || 'portrait'
+  randomApiDefaultRating.value = data.random_api_default_rating || 'safe'
+  randomApiDefaultVariant.value = data.random_api_default_variant || 'preview'
 }
 
 function syncHomeSlideshowImages(data) {
@@ -479,6 +505,7 @@ async function loadAdminSettings() {
     uploadClaimBatchSize.value = data.upload_claim_batch_size || 1
     githubProxyUrl.value = data.github_proxy_url || ''
     syncOperationsApiKeys(data)
+    syncRandomApiSettings(data)
     syncAccount(data)
     setImageManageViewMode(imageManageViewMode.value)
   } catch (error) {
@@ -500,6 +527,10 @@ async function saveAdminPreferences() {
       admin_avatar_image_id: adminAvatarImageId.value || undefined,
       home_slideshow_image_ids: homeSlideshowImageIds.value,
       image_manage_view_mode: normalizeImageManageViewMode(imageManageViewMode.value),
+      random_api_desktop_orientation: randomApiDesktopOrientation.value,
+      random_api_mobile_orientation: randomApiMobileOrientation.value,
+      random_api_default_rating: randomApiDefaultRating.value,
+      random_api_default_variant: randomApiDefaultVariant.value,
       upload_worker_count: uploadWorkerCount.value,
       upload_claim_batch_size: uploadClaimBatchSize.value,
       github_proxy_url: githubProxyUrl.value.trim()
@@ -515,6 +546,7 @@ async function saveAdminPreferences() {
     uploadClaimBatchSize.value = data.upload_claim_batch_size
     githubProxyUrl.value = data.github_proxy_url || ''
     syncOperationsApiKeys(data)
+    syncRandomApiSettings(data)
     syncAccount(data)
     setImageManageViewMode(imageManageViewMode.value)
     ElMessage.success('后台偏好已保存')
@@ -907,6 +939,62 @@ onMounted(async () => {
                 {{ mode.label }}
               </el-radio-button>
             </el-radio-group>
+          </div>
+
+          <div class="admin-preference-section random-api-settings">
+            <div class="admin-preference-header">
+              <div class="admin-preference-copy">
+                <strong>随机图片 API</strong>
+                <span>无参数请求按设备应用默认方向，并始终只返回公开图片。</span>
+              </div>
+              <code>/api/images/random</code>
+            </div>
+            <div class="random-api-control-grid">
+              <label class="random-api-control">
+                <span>桌面默认方向</span>
+                <el-select v-model="randomApiDesktopOrientation" :disabled="settingsSaving">
+                  <el-option
+                    v-for="item in randomApiOrientationOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </label>
+              <label class="random-api-control">
+                <span>手机默认方向</span>
+                <el-select v-model="randomApiMobileOrientation" :disabled="settingsSaving">
+                  <el-option
+                    v-for="item in randomApiOrientationOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </label>
+              <label class="random-api-control">
+                <span>默认分级</span>
+                <el-select v-model="randomApiDefaultRating" :disabled="settingsSaving">
+                  <el-option
+                    v-for="item in randomApiRatingOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </label>
+              <label class="random-api-control">
+                <span>默认输出</span>
+                <el-select v-model="randomApiDefaultVariant" :disabled="settingsSaving">
+                  <el-option
+                    v-for="item in randomApiVariantOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </label>
+            </div>
           </div>
 
           <div class="admin-preference-section upload-queue-settings">

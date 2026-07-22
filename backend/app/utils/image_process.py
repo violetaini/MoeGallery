@@ -119,6 +119,29 @@ class HdrStaticMetadata:
     max_pic_average_light_level: int
 
 
+@dataclass(frozen=True)
+class AvifHdrMetadataInspection:
+    primary_item_id: int
+    associated_property_types: tuple[str, ...]
+    color_primaries: int | None
+    transfer_characteristics: int | None
+    matrix_coefficients: int | None
+    full_range: bool | None
+    has_mastering_display_metadata: bool
+    has_content_light_level_metadata: bool
+    max_content_light_level: int | None
+    max_pic_average_light_level: int | None
+
+
+@dataclass(frozen=True)
+class _IpmaEntry:
+    item_id: int
+    association_count_offset: int
+    associations_end: int
+    property_indexes: tuple[int, ...]
+    association_width: int
+
+
 def validate_upload_filename(filename: str | None) -> None:
     suffix = Path(filename or "").suffix.lower()
     if suffix in SUPPORTED_UPLOAD_EXTENSIONS:
@@ -290,10 +313,14 @@ def _find_box_path(buffer: bytes | bytearray, start: int, end: int, path: tuple[
         box_type = bytes(buffer[position + 4 : position + 8]).decode("latin1")
         header_size = 8
         if size == 1:
+            if position + 16 > end:
+                raise InvalidImageError(f"Invalid extended AVIF box header: {box_type}")
             size = struct.unpack_from(">Q", buffer, position + 8)[0]
             header_size = 16
         elif size == 0:
             size = end - position
+        if size < header_size or position + size > end:
+            raise InvalidImageError(f"Invalid AVIF box size: {box_type}")
         box_end = position + size
         content_start = position + header_size + (4 if box_type == "meta" else 0)
         if box_type == target:
@@ -302,6 +329,170 @@ def _find_box_path(buffer: bytes | bytearray, start: int, end: int, path: tuple[
             return _find_box_path(buffer, content_start, box_end, path[1:])
         position = box_end
     raise InvalidImageError(f"Required AVIF box path not found: {'/'.join(path)}")
+
+
+def _list_boxes(buffer: bytes | bytearray, start: int, end: int):
+    boxes = []
+    position = start
+    while position + 8 <= end:
+        size = _read_box_size(buffer, position)
+        box_type = bytes(buffer[position + 4 : position + 8]).decode("latin1")
+        header_size = 8
+        if size == 1:
+            if position + 16 > end:
+                raise InvalidImageError(f"Invalid extended AVIF box header: {box_type}")
+            size = struct.unpack_from(">Q", buffer, position + 8)[0]
+            header_size = 16
+        elif size == 0:
+            size = end - position
+        if size < header_size or position + size > end:
+            raise InvalidImageError(f"Invalid AVIF box size: {box_type}")
+        boxes.append((position, size, position + header_size, position + size, box_type))
+        position += size
+    if position != end:
+        raise InvalidImageError("Invalid trailing bytes in AVIF box container")
+    return boxes
+
+
+def _primary_item_id(buffer: bytes | bytearray, meta) -> int:
+    pitm = _find_box_path(buffer, meta[2], meta[3], ("pitm",))
+    payload_start = pitm[2]
+    if payload_start + 6 > pitm[3]:
+        raise InvalidImageError("Invalid AVIF pitm box")
+    version = buffer[payload_start]
+    item_id_size = 2 if version == 0 else 4
+    item_id_offset = payload_start + 4
+    if item_id_offset + item_id_size > pitm[3]:
+        raise InvalidImageError("Invalid AVIF primary item ID")
+    return int.from_bytes(buffer[item_id_offset : item_id_offset + item_id_size], "big")
+
+
+def _parse_ipma_entries(buffer: bytes | bytearray, ipma) -> tuple[_IpmaEntry, ...]:
+    payload_start = ipma[2]
+    if payload_start + 8 > ipma[3]:
+        raise InvalidImageError("Invalid AVIF ipma box")
+    version = buffer[payload_start]
+    flags = int.from_bytes(buffer[payload_start + 1 : payload_start + 4], "big")
+    entry_count = int.from_bytes(buffer[payload_start + 4 : payload_start + 8], "big")
+    item_id_size = 2 if version == 0 else 4
+    association_width = 2 if flags & 1 else 1
+    cursor = payload_start + 8
+    entries = []
+
+    for _ in range(entry_count):
+        if cursor + item_id_size + 1 > ipma[3]:
+            raise InvalidImageError("Invalid AVIF ipma entry")
+        item_id = int.from_bytes(buffer[cursor : cursor + item_id_size], "big")
+        cursor += item_id_size
+        association_count_offset = cursor
+        association_count = buffer[cursor]
+        cursor += 1
+        associations_size = association_count * association_width
+        associations_end = cursor + associations_size
+        if associations_end > ipma[3]:
+            raise InvalidImageError("Invalid AVIF ipma associations")
+
+        property_indexes = []
+        for offset in range(cursor, associations_end, association_width):
+            encoded = int.from_bytes(buffer[offset : offset + association_width], "big")
+            property_indexes.append(encoded & (0x7FFF if association_width == 2 else 0x7F))
+        entries.append(
+            _IpmaEntry(
+                item_id=item_id,
+                association_count_offset=association_count_offset,
+                associations_end=associations_end,
+                property_indexes=tuple(property_indexes),
+                association_width=association_width,
+            )
+        )
+        cursor = associations_end
+
+    if cursor != ipma[3]:
+        raise InvalidImageError("Invalid trailing bytes in AVIF ipma box")
+    return tuple(entries)
+
+
+def _property_type(buffer: bytes | bytearray, box) -> str:
+    box_type = box[4]
+    if box_type == "colr" and bytes(buffer[box[2] : box[2] + 4]) == b"nclx":
+        return "nclx"
+    return box_type
+
+
+def _valid_hdr_property(buffer: bytes | bytearray, box, property_type: str) -> bool:
+    payload_size = box[3] - box[2]
+    if property_type == "nclx":
+        return payload_size >= 11
+    if property_type == "mdcv":
+        return payload_size == 24
+    if property_type == "clli":
+        return payload_size == 4
+    return True
+
+
+def inspect_avif_hdr_metadata(data: bytes | bytearray) -> AvifHdrMetadataInspection:
+    meta = _find_box_path(data, 0, len(data), ("meta",))
+    iprp = _find_box_path(data, meta[2], meta[3], ("iprp",))
+    ipco = _find_box_path(data, iprp[2], iprp[3], ("ipco",))
+    ipma = _find_box_path(data, iprp[2], iprp[3], ("ipma",))
+    properties = _list_boxes(data, ipco[2], ipco[3])
+    primary_item_id = _primary_item_id(data, meta)
+    primary_entry = next(
+        (entry for entry in _parse_ipma_entries(data, ipma) if entry.item_id == primary_item_id),
+        None,
+    )
+    if primary_entry is None:
+        raise InvalidImageError("Primary AVIF item has no property association entry")
+
+    associated_boxes = []
+    associated_types = []
+    for property_index in primary_entry.property_indexes:
+        if property_index == 0:
+            continue
+        if property_index > len(properties):
+            raise InvalidImageError("AVIF property association index is out of range")
+        box = properties[property_index - 1]
+        associated_boxes.append(box)
+        associated_types.append(_property_type(data, box))
+
+    color_primaries = None
+    transfer_characteristics = None
+    matrix_coefficients = None
+    full_range = None
+    max_content_light_level = None
+    max_pic_average_light_level = None
+    has_mastering_display_metadata = False
+    has_content_light_level_metadata = False
+
+    for box, property_type in zip(associated_boxes, associated_types):
+        if not _valid_hdr_property(data, box, property_type):
+            continue
+        if property_type == "nclx" and color_primaries is None:
+            payload = box[2] + 4
+            color_primaries = int.from_bytes(data[payload : payload + 2], "big")
+            transfer_characteristics = int.from_bytes(data[payload + 2 : payload + 4], "big")
+            matrix_coefficients = int.from_bytes(data[payload + 4 : payload + 6], "big")
+            full_range = bool(data[payload + 6] & 0x80)
+        elif property_type == "mdcv":
+            has_mastering_display_metadata = True
+        elif property_type == "clli":
+            has_content_light_level_metadata = True
+            max_content_light_level, max_pic_average_light_level = struct.unpack_from(
+                ">2H", data, box[2]
+            )
+
+    return AvifHdrMetadataInspection(
+        primary_item_id=primary_item_id,
+        associated_property_types=tuple(associated_types),
+        color_primaries=color_primaries,
+        transfer_characteristics=transfer_characteristics,
+        matrix_coefficients=matrix_coefficients,
+        full_range=full_range,
+        has_mastering_display_metadata=has_mastering_display_metadata,
+        has_content_light_level_metadata=has_content_light_level_metadata,
+        max_content_light_level=max_content_light_level,
+        max_pic_average_light_level=max_pic_average_light_level,
+    )
 
 
 def _build_mdcv_box() -> bytes:
@@ -336,39 +527,85 @@ def _patch_avif_hdr_boxes(avif_path: Path, metadata: HdrStaticMetadata) -> None:
     iprp = _find_box_path(data, meta[2], meta[3], ("iprp",))
     ipco = _find_box_path(data, iprp[2], iprp[3], ("ipco",))
     ipma = _find_box_path(data, iprp[2], iprp[3], ("ipma",))
-    iloc = _find_box_path(data, meta[2], meta[3], ("iloc",))
     mdat = _find_box_path(data, 0, len(data), ("mdat",))
+    properties = _list_boxes(data, ipco[2], ipco[3])
+    primary_item_id = _primary_item_id(data, meta)
+    primary_entry = next(
+        (entry for entry in _parse_ipma_entries(data, ipma) if entry.item_id == primary_item_id),
+        None,
+    )
+    if primary_entry is None:
+        raise InvalidImageError("Primary AVIF item has no property association entry")
+    if ipma[0] < ipco[3]:
+        raise InvalidImageError("Unsupported AVIF property box order")
 
-    if b"mdcv" in data and b"clli" in data:
-        avif_path.write_bytes(data)
-        return
+    property_indexes_by_type = {}
+    for index, box in enumerate(properties, start=1):
+        property_type = _property_type(data, box)
+        if _valid_hdr_property(data, box, property_type):
+            property_indexes_by_type.setdefault(property_type, index)
 
-    property_blob = _build_mdcv_box() + _build_clli_box(metadata)
+    property_parts = []
+    target_property_indexes = []
+    for property_type, property_box in (
+        ("mdcv", _build_mdcv_box()),
+        ("clli", _build_clli_box(metadata)),
+    ):
+        property_index = property_indexes_by_type.get(property_type)
+        if property_index is None:
+            property_parts.append(property_box)
+            property_index = len(properties) + len(property_parts)
+        target_property_indexes.append(property_index)
+
+    association_limit = 0x7FFF if primary_entry.association_width == 2 else 0x7F
+    if any(index > association_limit for index in target_property_indexes):
+        raise InvalidImageError("AVIF property index exceeds ipma association capacity")
+    missing_associations = [
+        index for index in target_property_indexes if index not in primary_entry.property_indexes
+    ]
+    if len(primary_entry.property_indexes) + len(missing_associations) > 0xFF:
+        raise InvalidImageError("AVIF primary item has too many property associations")
+
+    property_blob = b"".join(property_parts)
     insert_at = ipco[3]
-    data[insert_at:insert_at] = property_blob
+    if property_blob:
+        data[insert_at:insert_at] = property_blob
     property_delta = len(property_blob)
 
-    _write_box_size(data, ipco[0], ipco[1] + property_delta)
-    _write_box_size(data, iprp[0], iprp[1] + property_delta)
-    _write_box_size(data, meta[0], meta[1] + property_delta)
+    if property_delta:
+        _write_box_size(data, ipco[0], ipco[1] + property_delta)
+        _write_box_size(data, iprp[0], iprp[1] + property_delta)
+        _write_box_size(data, meta[0], meta[1] + property_delta)
 
-    # ipma is located after ipco; iloc is before ipco and does not move.
-    ipma_offset = ipma[0] + property_delta
-    ipma_content = ipma[2] + property_delta
-    entry_count_offset = ipma_content + 4
-    item_id_offset = entry_count_offset + 4
-    association_count_offset = item_id_offset + 2
-    association_data_offset = association_count_offset + 1
-    association_count = data[association_count_offset]
-    data[association_count_offset] = association_count + 2
-    data[association_data_offset + association_count : association_data_offset + association_count] = bytes([5, 6])
-    _write_box_size(data, ipma_offset, ipma[1] + 2)
-    _write_box_size(data, iprp[0], _read_box_size(data, iprp[0]) + 2)
-    _write_box_size(data, meta[0], _read_box_size(data, meta[0]) + 2)
+    association_blob = b"".join(
+        index.to_bytes(primary_entry.association_width, "big") for index in missing_associations
+    )
+    association_delta = len(association_blob)
+    if association_delta:
+        association_count_offset = primary_entry.association_count_offset + property_delta
+        associations_end = primary_entry.associations_end + property_delta
+        data[association_count_offset] += len(missing_associations)
+        data[associations_end:associations_end] = association_blob
+        _write_box_size(data, ipma[0] + property_delta, ipma[1] + association_delta)
+        _write_box_size(data, iprp[0], _read_box_size(data, iprp[0]) + association_delta)
+        _write_box_size(data, meta[0], _read_box_size(data, meta[0]) + association_delta)
 
-    total_delta = property_delta + 2
+    total_delta = property_delta + association_delta
+    if not total_delta:
+        inspection = inspect_avif_hdr_metadata(data)
+        if not (
+            inspection.color_primaries == 9
+            and inspection.transfer_characteristics == 16
+            and inspection.matrix_coefficients == 9
+            and inspection.has_mastering_display_metadata
+            and inspection.has_content_light_level_metadata
+        ):
+            raise InvalidImageError("Unable to write complete BT.2020/PQ HDR metadata to AVIF")
+        return
 
-    iloc_payload = memoryview(data)[iloc[2] : iloc[3]]
+    updated_meta = _find_box_path(data, 0, len(data), ("meta",))
+    updated_iloc = _find_box_path(data, updated_meta[2], updated_meta[3], ("iloc",))
+    iloc_payload = memoryview(data)[updated_iloc[2] : updated_iloc[3]]
     version = iloc_payload[0]
     if version not in (0, 1, 2):
         raise InvalidImageError(f"Unsupported iloc version: {version}")
@@ -380,11 +617,11 @@ def _patch_avif_hdr_boxes(avif_path: Path, metadata: HdrStaticMetadata) -> None:
         item_count = int.from_bytes(iloc_payload[6:8], "big")
         payload_offset = 8
     else:
-        item_count = iloc_payload[6]
-        payload_offset = 7
+        item_count = int.from_bytes(iloc_payload[6:10], "big")
+        payload_offset = 10
 
     for _ in range(item_count):
-        payload_offset += 2  # item_id
+        payload_offset += 4 if version == 2 else 2  # item_id
         if version in (1, 2):
             payload_offset += 2  # construction_method
         payload_offset += 2  # data_reference_index
@@ -403,10 +640,22 @@ def _patch_avif_hdr_boxes(avif_path: Path, metadata: HdrStaticMetadata) -> None:
             if extent_offset >= mdat[0]:
                 new_offset = extent_offset + total_delta
                 data[
-                    iloc[2] + extent_offset_position : iloc[2] + extent_offset_position + offset_size
+                    updated_iloc[2]
+                    + extent_offset_position : updated_iloc[2]
+                    + extent_offset_position
+                    + offset_size
                 ] = new_offset.to_bytes(offset_size, "big")
             payload_offset += length_size
 
+    inspection = inspect_avif_hdr_metadata(data)
+    if not (
+        inspection.color_primaries == 9
+        and inspection.transfer_characteristics == 16
+        and inspection.matrix_coefficients == 9
+        and inspection.has_mastering_display_metadata
+        and inspection.has_content_light_level_metadata
+    ):
+        raise InvalidImageError("Unable to write complete BT.2020/PQ HDR metadata to AVIF")
     avif_path.write_bytes(data)
 
 

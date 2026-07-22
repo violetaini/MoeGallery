@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 import sys
@@ -16,7 +17,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.utils.image_process import save_hdr_avif_image
+from app.utils.image_process import inspect_avif_hdr_metadata, save_hdr_avif_image
 
 
 @unittest.skipUnless(imagecodecs is not None and np is not None, "imagecodecs/numpy not available")
@@ -30,10 +31,20 @@ class SaveHdrAvifImageTests(unittest.TestCase):
             save_hdr_avif_image(self._build_synthetic_jxr(), output_path)
 
             raw = output_path.read_bytes()
-            self.assertNotEqual(raw.find(b"nclx"), -1)
-            self.assertNotEqual(raw.find(b"mdcv"), -1)
-            self.assertNotEqual(raw.find(b"clli"), -1)
             self.assertTrue(imagecodecs.avif_check(raw))
+
+            metadata = inspect_avif_hdr_metadata(raw)
+            self.assertIn("nclx", metadata.associated_property_types)
+            self.assertIn("mdcv", metadata.associated_property_types)
+            self.assertIn("clli", metadata.associated_property_types)
+            self.assertEqual(metadata.color_primaries, 9)
+            self.assertEqual(metadata.transfer_characteristics, 16)
+            self.assertEqual(metadata.matrix_coefficients, 9)
+            self.assertFalse(metadata.full_range)
+            self.assertTrue(metadata.has_mastering_display_metadata)
+            self.assertTrue(metadata.has_content_light_level_metadata)
+            self.assertGreater(metadata.max_content_light_level, 0)
+            self.assertGreater(metadata.max_pic_average_light_level, 0)
 
             decoded = imagecodecs.avif_decode(raw)
             self.assertEqual(decoded.shape, (128, 256, 3))
@@ -54,8 +65,10 @@ class SaveHdrAvifImageTests(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 )
-                self.assertIn("Mastering display metadata", probe.stdout)
-                self.assertIn("Content light level metadata", probe.stdout)
+                stream = json.loads(probe.stdout)["streams"][0]
+                self.assertEqual(stream["color_space"], "bt2020nc")
+                self.assertEqual(stream["color_transfer"], "smpte2084")
+                self.assertEqual(stream["color_primaries"], "bt2020")
 
     @staticmethod
     def _build_synthetic_jxr() -> bytes:

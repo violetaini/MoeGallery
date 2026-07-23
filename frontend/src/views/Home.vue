@@ -11,7 +11,6 @@ const slides = ref([])
 const loading = ref(false)
 const activeIndex = ref(0)
 const paused = ref(false)
-const progressKey = ref(0)
 const railRef = ref(null)
 const activeDisplayImageSrc = ref(fallbackImage)
 const activeImageLoaded = ref(false)
@@ -19,6 +18,8 @@ const activeImageRetryCount = ref(0)
 const exiting = ref(false)
 const slideInterval = 5600
 const maxActiveImageRetries = 2
+const preloadAheadCount = 3
+const preloadedImages = new Map()
 let slideTimer = null
 const railDrag = {
   active: false,
@@ -31,8 +32,7 @@ const activeSlide = computed(() => slides.value[activeIndex.value] || null)
 const activeImageSrc = computed(() => imageSrc(activeSlide.value))
 const activeTitle = computed(() => activeSlide.value?.original_filename || activeSlide.value?.filename || 'Anime Gallery')
 const slideshowStyle = computed(() => ({
-  '--home-slideshow-image': `url("${activeImageLoaded.value ? activeDisplayImageSrc.value : fallbackImage}")`,
-  '--home-progress-duration': `${slideInterval}ms`
+  '--home-slideshow-image': `url("${activeImageLoaded.value ? activeDisplayImageSrc.value : fallbackImage}")`
 }))
 
 function imageSrc(image) {
@@ -67,20 +67,38 @@ function handleActiveImageError() {
 }
 
 function preloadHomeImage(source) {
-  if (exiting.value || typeof window === 'undefined' || !source || source === fallbackImage) return
+  if (exiting.value || typeof window === 'undefined' || !source || source === fallbackImage) return null
+  if (preloadedImages.has(source)) return preloadedImages.get(source).promise
+
   const image = new window.Image()
   image.decoding = 'async'
+  image.fetchPriority = 'low'
+  let resolveLoad
+  const promise = new Promise((resolve) => {
+    resolveLoad = resolve
+  })
+  preloadedImages.set(source, { image, promise })
+  image.onload = () => resolveLoad(true)
+  image.onerror = () => {
+    preloadedImages.delete(source)
+    resolveLoad(false)
+  }
   image.src = source
+  return promise
+}
+
+function preloadSlide(index) {
+  if (exiting.value || !slides.value.length) return
+  const normalizedIndex = (index + slides.value.length) % slides.value.length
+  preloadHomeImage(imageSrc(slides.value[normalizedIndex]))
 }
 
 function preloadNearbySlides() {
   if (exiting.value || !slides.value.length) return
-  const indexes = [activeIndex.value, activeIndex.value + 1, activeIndex.value - 1, activeIndex.value + 2]
-  const sources = indexes
-    .map((index) => slides.value[(index + slides.value.length) % slides.value.length])
-    .map((slide) => imageSrc(slide))
-    .filter(Boolean)
-  Array.from(new Set(sources)).forEach(preloadHomeImage)
+  for (let offset = 1; offset <= preloadAheadCount; offset += 1) {
+    preloadSlide(activeIndex.value + offset)
+  }
+  preloadSlide(activeIndex.value - 1)
 }
 
 function clearSlideTimer() {
@@ -92,7 +110,6 @@ function clearSlideTimer() {
 
 function scheduleSlideTimer() {
   clearSlideTimer()
-  progressKey.value += 1
   if (paused.value || slides.value.length <= 1) return
   slideTimer = window.setTimeout(() => {
     goNext()
@@ -270,11 +287,6 @@ watch(
           />
           <el-button circle :icon="ArrowRight" title="下一张" aria-label="下一张" @click="goNext" />
         </div>
-        <div
-          v-if="slides.length > 1 && !paused"
-          :key="progressKey"
-          class="home-slideshow__progress"
-        ></div>
       </div>
     </div>
 
@@ -307,6 +319,8 @@ watch(
           :class="{ 'is-active': index === activeIndex }"
           type="button"
           :aria-label="slide.original_filename || slide.filename || `图片 ${slide.id}`"
+          @pointerenter="preloadSlide(index)"
+          @focus="preloadSlide(index)"
           @pointerdown.stop
           @dragstart.prevent
           @click.stop="handleThumbClick(index)"

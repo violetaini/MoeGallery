@@ -5493,6 +5493,7 @@ body {
 
   .nav-actions {
     flex: 1 1 auto;
+    justify-content: flex-end;
     gap: 8px;
   }
 

@@ -20,7 +20,7 @@ class SavedImageFiles(TypedDict):
     filename: str
     original_filename: str
     file_path: str
-    preview_path: str
+    preview_path: str | None
     thumbnail_path: str
     file_size: int
     mime_type: str
@@ -32,6 +32,11 @@ class SavedImageFiles(TypedDict):
 def ensure_storage_dirs() -> None:
     for name in ("original", "preview", "thumbnail", "tasks", "updates"):
         (settings.storage_path / name).mkdir(parents=True, exist_ok=True)
+
+
+def requires_sdr_preview(dynamic_range: str | None) -> bool:
+    """Only HDR originals need a separate SDR browser fallback."""
+    return str(dynamic_range or "").lower() == DYNAMIC_RANGE_HDR
 
 
 def normalize_storage_relative_path(relative_path: str) -> str:
@@ -78,11 +83,9 @@ def save_image_files(
         original_filename_on_disk = f"{unique}{inspection.extension}"
     else:
         original_filename_on_disk = f"{unique}{WEBP_EXTENSION}"
-    preview_filename = f"{unique}.webp"
     thumbnail_filename = f"{unique}.webp"
 
     original_path = settings.storage_path / "original" / original_filename_on_disk
-    preview_path = settings.storage_path / "preview" / preview_filename
     thumbnail_path = settings.storage_path / "thumbnail" / thumbnail_filename
 
     if transcode_hdr_to_avif:
@@ -98,14 +101,19 @@ def save_image_files(
         mime_type = WEBP_MIME_TYPE
         file_size = original_path.stat().st_size
 
-    save_webp_derivative(data, preview_path, settings.preview_max_size)
+    preview_relative_path = None
+    if requires_sdr_preview(inspection.dynamic_range):
+        preview_filename = f"{unique}.webp"
+        preview_path = settings.storage_path / "preview" / preview_filename
+        save_webp_derivative(data, preview_path, settings.preview_max_size)
+        preview_relative_path = f"preview/{preview_filename}"
     save_webp_derivative(data, thumbnail_path, settings.thumbnail_max_size)
 
     return {
         "filename": original_filename_on_disk,
         "original_filename": clean_name,
         "file_path": f"original/{original_filename_on_disk}",
-        "preview_path": f"preview/{preview_filename}",
+        "preview_path": preview_relative_path,
         "thumbnail_path": f"thumbnail/{thumbnail_filename}",
         "file_size": file_size,
         "mime_type": mime_type,

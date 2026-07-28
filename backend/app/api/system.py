@@ -138,9 +138,40 @@ def system_health(
     preview_stats = _dir_stats(settings.storage_path / "preview")
     thumbnail_stats = _dir_stats(settings.storage_path / "thumbnail")
     image_count = db.scalar(select(func.count(Image.id))) or 0
+    hdr_image_count = db.scalar(
+        select(func.count(Image.id)).where(Image.dynamic_range == image_process.DYNAMIC_RANGE_HDR)
+    ) or 0
+    preview_reference_count = db.scalar(
+        select(func.count(Image.id)).where(Image.preview_path.is_not(None))
+    ) or 0
+    legacy_preview_reference_count = db.scalar(
+        select(func.count(Image.id)).where(
+            Image.preview_path.is_not(None),
+            Image.dynamic_range != image_process.DYNAMIC_RANGE_HDR,
+        )
+    ) or 0
+    missing_hdr_preview_reference_count = db.scalar(
+        select(func.count(Image.id)).where(
+            Image.dynamic_range == image_process.DYNAMIC_RANGE_HDR,
+            Image.preview_path.is_(None),
+        )
+    ) or 0
+    expected_preview_count = hdr_image_count
+    legacy_preview_file_count = max(0, preview_stats["file_count"] - expected_preview_count)
+    cleanup_required = bool(legacy_preview_reference_count or legacy_preview_file_count)
     derivative_counts_match = (
-        original_stats["file_count"] == preview_stats["file_count"] == thumbnail_stats["file_count"] == image_count
+        original_stats["file_count"] == image_count
+        and thumbnail_stats["file_count"] == image_count
+        and preview_stats["file_count"] == expected_preview_count
+        and preview_reference_count == expected_preview_count
+        and missing_hdr_preview_reference_count == 0
     )
+    if derivative_counts_match:
+        consistency_message = "required original, thumbnail, and HDR preview variants are complete"
+    elif cleanup_required and not missing_hdr_preview_reference_count:
+        consistency_message = "legacy SDR or animated preview files are pending cleanup"
+    else:
+        consistency_message = "required image variant counts differ from image records"
     return {
         "application": application_info,
         "database": {
@@ -153,10 +184,20 @@ def system_health(
             "thumbnail": thumbnail_stats,
             "consistency": {
                 "image_records": image_count,
+                "hdr_image_records": hdr_image_count,
+                "expected": {
+                    "original": image_count,
+                    "preview": expected_preview_count,
+                    "thumbnail": image_count,
+                },
+                "preview_references": preview_reference_count,
+                "missing_hdr_preview_references": missing_hdr_preview_reference_count,
+                "legacy_preview_references": legacy_preview_reference_count,
+                "legacy_preview_files": legacy_preview_file_count,
+                "cleanup_required": cleanup_required,
+                "preview_policy": "HDR images require SDR previews; SDR static and animated images use original plus thumbnail.",
                 "derivative_counts_match": derivative_counts_match,
-                "message": "original/preview/thumbnail counts match image records"
-                if derivative_counts_match
-                else "storage directory counts differ from image records",
+                "message": consistency_message,
             },
         },
         "upload_queue": {

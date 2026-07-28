@@ -82,7 +82,8 @@ Check these fields first:
 
 - `database.ok`
 - `storage.ok`
-- derivative counts for original, preview, and thumbnail files
+- `storage.consistency.expected`: original and thumbnail for every image, plus preview only for HDR images
+- `storage.consistency.cleanup_required`: legacy SDR or animated previews that can be reclaimed after a dry run
 - FFmpeg / AVIF / JXR capability
 - HDR metadata patch capability
 - upload worker settings
@@ -171,6 +172,8 @@ curl "$BASE_URL/api/images/random?device=mobile&response=json"
 ```
 
 `hidden` and private images are never returned, including when `rating=any`. Device auto-detection distinguishes PC from mobile hardware; it cannot reliably detect the current screen rotation, so landscape phones should pass `orientation=landscape` explicitly. The random endpoint itself is sent with `Cache-Control: no-store` so each request can select a new image.
+
+`variant=preview` returns the HDR SDR-preview where one exists. For normal SDR or animated images, it falls back to the master file because those types intentionally do not keep a duplicate preview derivative. `variant=thumbnail` always requests the lightweight card-sized derivative.
 
 ### Upload Images Immediately
 
@@ -381,14 +384,23 @@ Check:
 - `upload_worker_count` and `upload_claim_batch_size`.
 - Database connectivity and lock contention.
 
-### Preview or thumbnail missing
+### Required derivative missing or legacy previews pending cleanup
 
 Check:
 
-- `/api/system/health` derivative counts.
+- `/api/system/health` `storage.consistency.expected`, `missing_hdr_preview_references`, and `cleanup_required` fields.
 - Storage write permissions.
 - FFmpeg/Pillow/imagecodecs availability.
-- Re-run one real upload sample and inspect generated original, preview, and thumbnail files.
+- Re-run one real upload sample and inspect its expected files: all images require original and thumbnail; HDR images additionally require an SDR preview.
+
+After upgrading from an older release, reclaim redundant SDR and animated preview files in two steps from `backend/`:
+
+```bash
+python scripts_prune_redundant_previews.py
+python scripts_prune_redundant_previews.py --apply
+```
+
+The first command is a dry run. Back up the database and storage before the `--apply` command. The cleanup re-inspects each master file and retains HDR previews.
 
 ### HDR AVIF metadata incomplete
 

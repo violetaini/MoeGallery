@@ -85,10 +85,26 @@ class ReleaseScriptSafetyTests(unittest.TestCase):
             "library.sqlite3-wal",
         ]
 
-        ignored = module._ignore_backend("backend", database_files + ["models.py"])
+        ignored = module._ignore_backend("backend", database_files + ["requirements.txt"])
 
         self.assertTrue(set(database_files).issubset(ignored))
-        self.assertNotIn("models.py", ignored)
+        self.assertNotIn("requirements.txt", ignored)
+
+    def test_release_packager_excludes_local_only_scripts(self):
+        module_path = ROOT_DIR / "scripts" / "package_release.py"
+        spec = importlib.util.spec_from_file_location("moegallery_package_release_local_files", module_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        ignored = module._ignore_runtime_cache(
+            str(ROOT_DIR / "scripts"),
+            ["package_release.py", "upload_loud0715_to_cloud.py"],
+        )
+
+        self.assertNotIn("package_release.py", ignored)
+        self.assertIn("upload_loud0715_to_cloud.py", ignored)
 
 
 if __name__ == "__main__":

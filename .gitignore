@@ -20,8 +20,17 @@ __pycache__/
 installed.lock
 _e2e_tmp/
 _package_stage/
+.audit/
 dist-release/
 tools/
+subprojects/
+collections/
+.browser-profiles/
+.venv-anime-quality/
+.hf-cache-quality/
+scripts/upload_loud0715_to_cloud.py
+ScreenShot_*.png
+????????-????-????-????-????????????.png
 *.zip
 github.txt
 tmp-*

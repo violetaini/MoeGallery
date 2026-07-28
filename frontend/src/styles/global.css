@@ -4374,6 +4374,7 @@ body {
   border-radius: 12px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 30px),
+    var(--home-slide-frame-image, url("/placeholder/image-loading-landscape.webp")) center / contain no-repeat,
     url("/placeholder/image-loading-landscape.webp") center / cover no-repeat,
     rgba(7, 8, 14, 0.7);
   box-shadow: 0 28px 76px rgba(0, 0, 0, 0.4);
@@ -4402,6 +4403,7 @@ body {
 .home-slide-frame.is-image-loaded {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 30px),
+    var(--home-slide-frame-image, url("/placeholder/image-loading-landscape.webp")) center / contain no-repeat,
     rgba(7, 8, 14, 0.82);
 }
 

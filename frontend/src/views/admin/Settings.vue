@@ -162,7 +162,7 @@ const healthCards = computed(() => {
     database.dialect === 'sqlite'
       ? `SQLite · ${formatBytes(database.size_bytes)}`
       : `${database.dialect || 'Database'} · ${database.driver || 'driver'}`
-  const fileHealth = formatImageFileHealth(consistency.image_records, original, preview, thumbnail)
+  const fileHealth = formatImageFileHealth(consistency, original, preview, thumbnail)
   const missingFileDirs = [
     ['原图', original.exists],
     ['预览图', preview.exists],
@@ -244,21 +244,29 @@ function formatBytes(value) {
   return `${size} B`
 }
 
-function formatImageFileHealth(imageRecords, original, preview, thumbnail) {
-  const expected = Number(imageRecords || 0)
+function formatImageFileHealth(consistency, original, preview, thumbnail) {
+  const expected = Number(consistency?.image_records || 0)
+  const expectedPreview = Number(consistency?.expected?.preview ?? expected)
   const sections = [
-    ['原图', Number(original.file_count || 0)],
-    ['预览图', Number(preview.file_count || 0)],
-    ['缩略图', Number(thumbnail.file_count || 0)]
+    ['原图', Number(original.file_count || 0), expected],
+    ['HDR预览', Number(preview.file_count || 0), expectedPreview],
+    ['缩略图', Number(thumbnail.file_count || 0), expected]
   ]
   const issues = sections
-    .map(([label, count]) => {
-      const diff = count - expected
+    .map(([label, count, expectedCount]) => {
+      const diff = count - expectedCount
       if (diff < 0) return `${label}缺失 ${Math.abs(diff)} 个`
-      if (diff > 0) return `${label}多出 ${diff} 个`
+      if (diff > 0 && label !== 'HDR预览') return `${label}多出 ${diff} 个`
       return ''
     })
     .filter(Boolean)
+  const legacyPreviews = Math.max(
+    Number(consistency?.legacy_preview_files || 0),
+    Number(consistency?.legacy_preview_references || 0)
+  )
+  if (legacyPreviews > 0) {
+    issues.push(`待清理旧预览 ${legacyPreviews} 个`)
+  }
   if (!issues.length) {
     return { complete: true, message: `${expected} 张图片，文件完整` }
   }

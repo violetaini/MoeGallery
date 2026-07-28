@@ -30,9 +30,14 @@ const railDrag = {
 
 const activeSlide = computed(() => slides.value[activeIndex.value] || null)
 const activeImageSrc = computed(() => imageSrc(activeSlide.value))
+const activeThumbnailSrc = computed(() => thumbnailSrc(activeSlide.value))
 const activeTitle = computed(() => activeSlide.value?.original_filename || activeSlide.value?.filename || 'Anime Gallery')
+const activeBackdropSrc = computed(() => (
+  activeImageLoaded.value ? activeDisplayImageSrc.value : activeThumbnailSrc.value
+))
 const slideshowStyle = computed(() => ({
-  '--home-slideshow-image': `url("${activeImageLoaded.value ? activeDisplayImageSrc.value : fallbackImage}")`
+  '--home-slideshow-image': `url("${activeBackdropSrc.value}")`,
+  '--home-slide-frame-image': `url("${activeThumbnailSrc.value}")`
 }))
 
 function imageSrc(image) {
@@ -56,8 +61,6 @@ function handleActiveImageLoad() {
 function handleActiveImageError() {
   activeImageLoaded.value = false
   if (!activeImageSrc.value || activeImageRetryCount.value >= maxActiveImageRetries) {
-    activeDisplayImageSrc.value = fallbackImage
-    activeImageLoaded.value = true
     return
   }
   activeImageRetryCount.value += 1
@@ -90,7 +93,8 @@ function preloadHomeImage(source) {
 function preloadSlide(index) {
   if (exiting.value || !slides.value.length) return
   const normalizedIndex = (index + slides.value.length) % slides.value.length
-  preloadHomeImage(imageSrc(slides.value[normalizedIndex]))
+  // Keep the rail responsive without fetching several full wallpaper files.
+  preloadHomeImage(thumbnailSrc(slides.value[normalizedIndex]))
 }
 
 function preloadNearbySlides() {
@@ -321,7 +325,7 @@ watch(
           :aria-label="slide.original_filename || slide.filename || `图片 ${slide.id}`"
           @pointerenter="preloadSlide(index)"
           @focus="preloadSlide(index)"
-          @pointerdown.stop
+          @pointerdown.stop="preloadSlide(index)"
           @dragstart.prevent
           @click.stop="handleThumbClick(index)"
         >

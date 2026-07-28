@@ -78,7 +78,7 @@ Updates are handled by the main service, so no separate updater service or passw
 
 - A fullscreen slideshow home page whose images can be selected from the admin panel; when none are selected, images are chosen randomly from the library.
 - A masonry gallery with search, sorting, and filters for titles, characters, and content ratings.
-- Automatic loading at the end of the page, with upcoming images prefetched in advance.
+- Automatic loading at the end of the page, with upcoming image thumbnails prefetched in advance.
 - An in-page image detail overlay, while retaining a direct URL for every image.
 - Media-library-style title and character pages with backdrops, posters, avatars, and pagination.
 - Three fixed content ratings: `safe`, `sensitive`, and `hidden`.
@@ -94,8 +94,8 @@ Updates are handled by the main service, so no separate updater service or passw
 
 | Upload type | Stored format | Browser delivery |
 | --- | --- | --- |
-| Standard static image | Converted to WebP | WebP preview and thumbnail |
-| GIF or other animated image | Original animation format retained | Static WebP preview and thumbnail |
+| Standard static image | Converted to WebP | WebP master and thumbnail |
+| GIF or other animated image | Original animation format retained | Original animation and static WebP thumbnail |
 | JXR or HDR image | Converted to HDR AVIF with `nclx / mdcv / clli` metadata | SDR WebP preview and thumbnail on standard pages |
 | Other high-bit-depth image | HDR source retained when its format is supported | SDR WebP preview and thumbnail on standard pages |
 
@@ -106,6 +106,8 @@ Supported file extensions include:
 ```
 
 Uploads are not accepted based on the file extension alone. The server also attempts to decode each image and rejects disguised or unsupported files.
+
+Static SDR images and animated images deliberately do not keep a separate persistent preview file. Gallery cards use the thumbnail, while detail pages load the master file. HDR images retain an SDR WebP preview so standard dynamic-range displays have a compatible fallback.
 
 ## Updates and Backups
 

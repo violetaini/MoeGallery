@@ -1,13 +1,54 @@
 import argparse
 import hashlib
 import shutil
+import subprocess
 import tarfile
 import zipfile
+from functools import lru_cache
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_NAME = "MoeGallery"
+
+
+@lru_cache(maxsize=1)
+def _tracked_repository_files() -> set[str]:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit("Release packaging requires a Git checkout so local-only files can be excluded.") from exc
+    return {
+        item.decode("utf-8").replace("\\", "/")
+        for item in result.stdout.split(b"\0")
+        if item
+    }
+
+
+def _ignore_untracked(path: str, names: list[str]) -> set[str]:
+    directory = Path(path)
+    if not directory.is_absolute():
+        directory = ROOT / directory
+    try:
+        relative_directory = directory.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return set(names)
+
+    tracked = _tracked_repository_files()
+    ignored: set[str] = set()
+    for name in names:
+        relative_path = f"{relative_directory}/{name}" if relative_directory != "." else name
+        if relative_path in tracked:
+            continue
+        prefix = f"{relative_path}/"
+        if not any(item.startswith(prefix) for item in tracked):
+            ignored.add(name)
+    return ignored
 
 
 def _ignore_backend(path: str, names: list[str]) -> set[str]:
@@ -16,12 +57,14 @@ def _ignore_backend(path: str, names: list[str]) -> set[str]:
     database_sidecars = tuple(f"{suffix}-{kind}" for suffix in database_suffixes for kind in ("journal", "wal", "shm"))
     ignored.update(name for name in names if name.endswith((".pyc", ".pyo", *database_suffixes, *database_sidecars)))
     ignored.update(name for name in names if name.startswith("anime_gallery.db"))
+    ignored.update(_ignore_untracked(path, names))
     return ignored
 
 
 def _ignore_runtime_cache(path: str, names: list[str]) -> set[str]:
     ignored = {"__pycache__", ".pytest_cache"}
     ignored.update(name for name in names if name.endswith((".pyc", ".pyo")))
+    ignored.update(_ignore_untracked(path, names))
     return ignored
 
 

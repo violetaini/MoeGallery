@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeft, ArrowRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { storageUrl } from '../api/client'
@@ -18,9 +18,11 @@ const activeImageRetryCount = ref(0)
 const exiting = ref(false)
 const slideInterval = 5600
 const maxActiveImageRetries = 2
-const preloadAheadCount = 3
+const preloadWorkerCount = 3
 const preloadedImages = new Map()
 let slideTimer = null
+let preloadGeneration = 0
+let slideRequestSequence = 0
 const railDrag = {
   active: false,
   moved: false,
@@ -30,18 +32,13 @@ const railDrag = {
 
 const activeSlide = computed(() => slides.value[activeIndex.value] || null)
 const activeImageSrc = computed(() => imageSrc(activeSlide.value))
-const activeThumbnailSrc = computed(() => thumbnailSrc(activeSlide.value))
 const activeTitle = computed(() => activeSlide.value?.original_filename || activeSlide.value?.filename || 'Anime Gallery')
-const activeBackdropSrc = computed(() => (
-  activeImageLoaded.value ? activeDisplayImageSrc.value : activeThumbnailSrc.value
-))
 const slideshowStyle = computed(() => ({
-  '--home-slideshow-image': `url("${activeBackdropSrc.value}")`,
-  '--home-slide-frame-image': `url("${activeThumbnailSrc.value}")`
+  '--home-slideshow-image': `url("${activeDisplayImageSrc.value || fallbackImage}")`
 }))
 
 function imageSrc(image) {
-  return storageUrl(image?.preview_path || image?.file_path || image?.thumbnail_path) || fallbackImage
+  return storageUrl(image?.file_path || image?.preview_path || image?.thumbnail_path) || fallbackImage
 }
 
 function thumbnailSrc(image) {
@@ -81,7 +78,14 @@ function preloadHomeImage(source) {
     resolveLoad = resolve
   })
   preloadedImages.set(source, { image, promise })
-  image.onload = () => resolveLoad(true)
+  image.onload = async () => {
+    try {
+      await image.decode()
+    } catch {
+      // A completed load remains usable if decode() is unavailable or races disposal.
+    }
+    resolveLoad(true)
+  }
   image.onerror = () => {
     preloadedImages.delete(source)
     resolveLoad(false)
@@ -91,18 +95,34 @@ function preloadHomeImage(source) {
 }
 
 function preloadSlide(index) {
-  if (exiting.value || !slides.value.length) return
+  if (exiting.value || !slides.value.length) return null
   const normalizedIndex = (index + slides.value.length) % slides.value.length
-  // Keep the rail responsive without fetching several full wallpaper files.
-  preloadHomeImage(thumbnailSrc(slides.value[normalizedIndex]))
+  return preloadHomeImage(imageSrc(slides.value[normalizedIndex]))
 }
 
-function preloadNearbySlides() {
-  if (exiting.value || !slides.value.length) return
-  for (let offset = 1; offset <= preloadAheadCount; offset += 1) {
-    preloadSlide(activeIndex.value + offset)
+function preloadOrder() {
+  const order = []
+  for (let offset = 1; offset < slides.value.length; offset += 1) {
+    order.push((activeIndex.value + offset) % slides.value.length)
   }
-  preloadSlide(activeIndex.value - 1)
+  return order
+}
+
+async function preloadSlideshowOriginals() {
+  const generation = ++preloadGeneration
+  const order = preloadOrder()
+  let cursor = 0
+
+  async function worker() {
+    while (generation === preloadGeneration && cursor < order.length) {
+      const index = order[cursor]
+      cursor += 1
+      await preloadSlide(index)
+    }
+  }
+
+  const workerCount = Math.min(preloadWorkerCount, order.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
 }
 
 function clearSlideTimer() {
@@ -120,18 +140,36 @@ function scheduleSlideTimer() {
   }, slideInterval)
 }
 
-function chooseSlide(index) {
-  if (!slides.value.length) return
-  activeIndex.value = (index + slides.value.length) % slides.value.length
+async function chooseSlide(index) {
+  if (!slides.value.length || exiting.value) return
+  const targetIndex = (index + slides.value.length) % slides.value.length
+  const requestSequence = ++slideRequestSequence
+
+  clearSlideTimer()
+  if (targetIndex === activeIndex.value) {
+    scheduleSlideTimer()
+    return
+  }
+
+  const targetSource = imageSrc(slides.value[targetIndex])
+  const loaded = await preloadHomeImage(targetSource)
+  if (requestSequence !== slideRequestSequence || exiting.value) return
+
+  if (loaded) {
+    activeIndex.value = targetIndex
+    activeDisplayImageSrc.value = targetSource
+    activeImageRetryCount.value = 0
+    activeImageLoaded.value = true
+  }
   scheduleSlideTimer()
 }
 
 function goPrevious() {
-  chooseSlide(activeIndex.value - 1)
+  void chooseSlide(activeIndex.value - 1)
 }
 
 function goNext() {
-  chooseSlide(activeIndex.value + 1)
+  void chooseSlide(activeIndex.value + 1)
 }
 
 function togglePaused() {
@@ -186,7 +224,17 @@ function handleThumbClick(index) {
     railDrag.moved = false
     return
   }
-  chooseSlide(index)
+  void chooseSlide(index)
+}
+
+function setSlides(items) {
+  slides.value = items
+  activeIndex.value = 0
+  activeDisplayImageSrc.value = imageSrc(items[0])
+  activeImageRetryCount.value = 0
+  activeImageLoaded.value = false
+  slideRequestSequence += 1
+  void preloadSlideshowOriginals()
 }
 
 async function loadSlides() {
@@ -195,8 +243,7 @@ async function loadSlides() {
     const settings = await galleryApi.publicSettings().catch(() => null)
     const configuredSlides = settings?.home_slideshow_images || []
     if (configuredSlides.length) {
-      slides.value = configuredSlides
-      activeIndex.value = 0
+      setSlides(configuredSlides)
       return
     }
     let data = await galleryApi.images({
@@ -212,10 +259,9 @@ async function loadSlides() {
         sort: 'random'
       })
     }
-    slides.value = data.items || []
-    activeIndex.value = 0
+    setSlides(data.items || [])
   } catch (error) {
-    slides.value = []
+    setSlides([])
   } finally {
     loading.value = false
     scheduleSlideTimer()
@@ -223,29 +269,20 @@ async function loadSlides() {
 }
 
 onMounted(loadSlides)
-onBeforeUnmount(clearSlideTimer)
+onBeforeUnmount(() => {
+  preloadGeneration += 1
+  slideRequestSequence += 1
+  clearSlideTimer()
+  preloadedImages.clear()
+})
 
 onBeforeRouteLeave(() => {
   exiting.value = true
   paused.value = true
+  preloadGeneration += 1
+  slideRequestSequence += 1
   clearSlideTimer()
 })
-
-watch(
-  activeImageSrc,
-  (source) => {
-    activeDisplayImageSrc.value = source || fallbackImage
-    activeImageRetryCount.value = 0
-    activeImageLoaded.value = false
-    preloadNearbySlides()
-  },
-  { immediate: true }
-)
-
-watch(
-  () => [slides.value.length, activeIndex.value],
-  () => preloadNearbySlides()
-)
 </script>
 
 <template>

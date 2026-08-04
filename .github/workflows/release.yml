@@ -34,7 +34,8 @@ jobs:
           --health-retries 12
     env:
       AGMS_DATABASE_URL: mysql+pymysql://root:moegallery_ci_root@127.0.0.1:3306/moegallery_test?charset=utf8mb4
-      AGMS_STORAGE_PATH: ${{ runner.temp }}/moegallery-mysql-storage
+      # `runner` is unavailable in job-level env expressions. The Linux runner owns /tmp.
+      AGMS_STORAGE_PATH: /tmp/moegallery-mysql-storage
       AGMS_AUTH_SECRET: moegallery-ci-auth-secret-with-at-least-thirty-two-characters-20260804
       AGMS_API_KEYS: ci:agms_ci_api_key_with_at_least_thirty_two_characters_20260804
     steps:

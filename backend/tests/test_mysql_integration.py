@@ -1,6 +1,7 @@
 import os
 import sys
 import threading
+import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -87,10 +88,16 @@ class MysqlIntegrationTests(unittest.TestCase):
             try:
                 with self.Session() as db:
                     barrier.wait(timeout=10)
-                    task = claim_next_task(db, worker_id=f"mysql-ci-{slot}", now=datetime.utcnow())
-                    if task:
-                        with result_lock:
-                            claimed_ids.append(task.id)
+                    deadline = time.monotonic() + 3
+                    while time.monotonic() < deadline:
+                        task = claim_next_task(db, worker_id=f"mysql-ci-{slot}", now=datetime.utcnow())
+                        if task:
+                            with result_lock:
+                                claimed_ids.append(task.id)
+                            return
+                        # MySQL SKIP LOCKED can briefly return no row while candidates are locked.
+                        # Normal workers retry on their next poll; keep the integration test bounded.
+                        time.sleep(0.025)
             except Exception as exc:  # noqa: BLE001 - asserted in the parent thread.
                 with result_lock:
                     failures.append(exc)

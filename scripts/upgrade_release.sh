@@ -161,9 +161,9 @@ fi
 CREATED_BACKUP_DIR=""
 if [[ "$SKIP_BACKUP" -eq 0 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "[dry-run] $SCRIPT_DIR/backup_before_upgrade.sh --app-dir $APP_DIR --backup-root $BACKUP_ROOT"
+    echo "[dry-run] $SCRIPT_DIR/backup_before_upgrade.sh --app-dir $APP_DIR --backup-root $BACKUP_ROOT --include-storage"
   else
-    BACKUP_OUTPUT="$(bash "$SCRIPT_DIR/backup_before_upgrade.sh" --app-dir "$APP_DIR" --backup-root "$BACKUP_ROOT")"
+    BACKUP_OUTPUT="$(bash "$SCRIPT_DIR/backup_before_upgrade.sh" --app-dir "$APP_DIR" --backup-root "$BACKUP_ROOT" --include-storage)"
     printf '%s\n' "$BACKUP_OUTPUT"
     CREATED_BACKUP_DIR="$(printf '%s\n' "$BACKUP_OUTPUT" | tail -n 1)"
   fi

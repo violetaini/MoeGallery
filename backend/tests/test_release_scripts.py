@@ -145,6 +145,15 @@ class ReleaseScriptSafetyTests(unittest.TestCase):
         self.assertIn('curl --connect-timeout 2 --max-time 5 -fsS "$HEALTH_URL"', script)
         self.assertIn('Health check failed after ${HEALTH_CHECK_ATTEMPTS} attempts', script)
 
+    def test_panel_upgrade_includes_durable_storage_in_backup(self):
+        script = (ROOT_DIR / "scripts" / "upgrade_release.sh").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'backup_before_upgrade.sh" --app-dir "$APP_DIR" --backup-root "$BACKUP_ROOT" --include-storage',
+            script,
+        )
+        self.assertIn('backup_before_upgrade.sh --app-dir $APP_DIR --backup-root $BACKUP_ROOT --include-storage', script)
+
     def test_release_packager_requires_dependency_locks(self):
         script = (ROOT_DIR / "scripts" / "package_release.py").read_text(encoding="utf-8")
         self.assertIn('("requirements.lock.txt", "requirements-test.lock.txt")', script)

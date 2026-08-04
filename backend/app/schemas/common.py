@@ -14,6 +14,7 @@ class ImageSummary(OrmModel):
     file_path: str | None = None
     thumbnail_path: str | None = None
     preview_path: str | None = None
+    media_version: int = 1
     mime_type: str | None = None
     width: int
     height: int

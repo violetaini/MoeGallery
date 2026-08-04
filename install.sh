@@ -12,6 +12,7 @@ VERSION=""
 GITHUB_PROXY="${MOEGALLERY_GITHUB_PROXY:-}"
 REINSTALL="0"
 NON_INTERACTIVE="0"
+PIP_BOOTSTRAP_VERSION="26.2"
 
 usage() {
   cat <<'EOF'
@@ -214,7 +215,7 @@ fi
 mkdir -p "$TEMP_DIR/stage"
 tar -xzf "$TEMP_DIR/$ARCHIVE_NAME" -C "$TEMP_DIR/stage"
 STAGE_DIR="$(find "$TEMP_DIR/stage" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-if [[ -z "$STAGE_DIR" || ! -f "$STAGE_DIR/backend/requirements.txt" || ! -f "$STAGE_DIR/frontend/dist/index.html" ]]; then
+if [[ -z "$STAGE_DIR" || ! -f "$STAGE_DIR/backend/requirements.lock.txt" || ! -f "$STAGE_DIR/frontend/dist/index.html" ]]; then
   echo "The downloaded archive is not a valid MoeGallery release." >&2
   exit 1
 fi
@@ -240,8 +241,8 @@ rsync -a --delete \
 if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then
   "$PYTHON_BIN" -m venv "$APP_DIR/venv"
 fi
-"$APP_DIR/venv/bin/pip" install --upgrade pip
-"$APP_DIR/venv/bin/pip" install -r "$APP_DIR/backend/requirements.txt"
+"$APP_DIR/venv/bin/python" -m pip install --upgrade "pip==$PIP_BOOTSTRAP_VERSION"
+"$APP_DIR/venv/bin/python" -m pip install --require-hashes -r "$APP_DIR/backend/requirements.lock.txt"
 
 bash "$APP_DIR/scripts/install_systemd.sh" \
   --app-dir "$APP_DIR" \
@@ -266,11 +267,17 @@ fi
 echo
 echo "MoeGallery installation is ready."
 echo "Service: $SERVICE_NAME"
-if [[ "$HOST" == "0.0.0.0" ]]; then
-  SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-  echo "First install: http://${SERVER_IP:-SERVER_IP}:$PORT/install"
-  echo "Warning: direct HTTP access is not encrypted. Configure HTTPS before using it over an untrusted network."
+SETUP_URL="$(journalctl -u "$SERVICE_NAME" -n 100 --no-pager -o cat 2>/dev/null | sed -n 's/^\[setup\] First install: //p' | tail -n 1)"
+if [[ -n "$SETUP_URL" ]]; then
+  if [[ "$HOST" == "0.0.0.0" ]]; then
+    SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    SETUP_URL="${SETUP_URL/SERVER_IP/${SERVER_IP:-SERVER_IP}}"
+    echo "First install: $SETUP_URL"
+    echo "Warning: direct HTTP access is not encrypted. Configure HTTPS before using it over an untrusted network."
+  else
+    echo "First install: $SETUP_URL"
+    echo "The service only listens locally. Configure your own reverse proxy or use an SSH tunnel when remote access is needed."
+  fi
 else
-  echo "First install: http://127.0.0.1:$PORT/install"
-  echo "The service only listens locally. Configure your own reverse proxy or use an SSH tunnel when remote access is needed."
+  echo "Open: http://127.0.0.1:$PORT/"
 fi

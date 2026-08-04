@@ -36,9 +36,8 @@ class CharacterRead(CharacterBase, OrmModel):
 
 
 class CharacterDetail(CharacterRead):
-    images: list[ImageSummary] = []
+    image_count: int = Field(default=0, ge=0)
 
 
 class CharacterListResponse(PageResponse[CharacterRead]):
     pass
-

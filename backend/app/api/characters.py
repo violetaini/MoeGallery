@@ -4,34 +4,50 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import optional_admin, require_admin
+from app.auth import optional_admin, require_library_delete, require_library_write
 from app.database import get_db
 from app.models import Character, Image
+from app.models.associations import image_characters
 from app.schemas.character import CharacterCreate, CharacterDetail, CharacterListResponse, CharacterRead, CharacterUpdate
-from app.schemas.common import ImageSummary
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
 
-def _character_options(detail: bool = False):
-    options = [selectinload(Character.work), selectinload(Character.avatar_image)]
-    if detail:
-        options.append(selectinload(Character.images))
-    return options
+def _character_options():
+    return [selectinload(Character.work), selectinload(Character.avatar_image)]
 
 
 def _is_public_image(image) -> bool:
     return bool(image and image.is_public and image.rating != "hidden")
 
 
-def _serialize_character(character: Character, admin: bool, detail: bool = False):
+def _serialize_character(character: Character, admin: bool, *, image_count: int | None = None):
+    detail = image_count is not None
     payload = CharacterDetail.model_validate(character) if detail else CharacterRead.model_validate(character)
+    if detail:
+        payload.image_count = image_count
     if not admin:
         if not _is_public_image(character.avatar_image):
             payload.avatar_image = None
-        if detail:
-            payload.images = [ImageSummary.model_validate(image) for image in character.images if _is_public_image(image)]
     return payload
+
+
+def _character_image_count(db: Session, character_id: int, admin: bool) -> int:
+    if admin:
+        stmt = select(func.count()).select_from(image_characters).where(
+            image_characters.c.character_id == character_id
+        )
+    else:
+        stmt = (
+            select(func.count())
+            .select_from(image_characters.join(Image, image_characters.c.image_id == Image.id))
+            .where(
+                image_characters.c.character_id == character_id,
+                Image.is_public.is_(True),
+                Image.rating != "hidden",
+            )
+        )
+    return db.scalar(stmt) or 0
 
 
 def _ensure_image_exists(db: Session, image_id: int | None) -> None:
@@ -72,7 +88,7 @@ def list_characters(
 def create_character(
     payload: CharacterCreate,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
 ):
     _ensure_image_exists(db, payload.avatar_image_id)
     character = Character(**payload.model_dump())
@@ -88,10 +104,15 @@ def get_character(
     db: Annotated[Session, Depends(get_db)],
     admin: Annotated[dict | None, Depends(optional_admin)],
 ):
-    character = db.scalar(select(Character).options(*_character_options(detail=True)).where(Character.id == character_id))
+    character = db.scalar(select(Character).options(*_character_options()).where(Character.id == character_id))
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
-    return _serialize_character(character, admin=bool(admin), detail=True)
+    is_admin = bool(admin)
+    return _serialize_character(
+        character,
+        admin=is_admin,
+        image_count=_character_image_count(db, character_id, is_admin),
+    )
 
 
 @router.put("/{character_id}", response_model=CharacterRead)
@@ -99,7 +120,7 @@ def update_character(
     character_id: int,
     payload: CharacterUpdate,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
 ):
     character = db.get(Character, character_id)
     if not character:
@@ -117,7 +138,7 @@ def update_character(
 def delete_character(
     character_id: int,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_delete)],
 ):
     character = db.get(Character, character_id)
     if not character:

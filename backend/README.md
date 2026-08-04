@@ -10,7 +10,8 @@ The backend now includes admin authentication. Admin login writes an HttpOnly co
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install "pip==26.2"
+python -m pip install --require-hashes -r requirements.lock.txt
 alembic upgrade head
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -33,10 +34,12 @@ FLUSH PRIVILEGES;
 
 The default storage path is `../storage`.
 
+SQLite file databases automatically use WAL, an 8-second busy timeout, and a conservative effective upload-worker limit of four. `AGMS_SQLITE_SYNCHRONOUS=NORMAL` is the default for better throughput; set it to `FULL` when the highest possible durability after sudden power loss matters more than write speed. MySQL and MariaDB use a configurable pre-ping connection pool. The default pool is `24 + 40` overflow connections; all `AGMS_MYSQL_POOL_*` and timeout settings are read at process start and therefore require a restart.
+
 Run the backend test suite with the test-only dependencies installed:
 
 ```bash
-pip install -r requirements-test.txt
+python -m pip install --require-hashes -r requirements-test.lock.txt
 AGMS_DATABASE_URL=sqlite:////tmp/moegallery-tests.db \
 AGMS_STORAGE_PATH=/tmp/moegallery-test-storage \
 alembic upgrade head
@@ -86,6 +89,12 @@ curl -H "Authorization: Bearer $AGMS_API_KEY" http://127.0.0.1:8000/api/system/h
 - `GET /api/images`
 - `GET /api/images/{id}`
 - `POST /api/images/upload`
+- `POST /api/upload-tasks`
+- `GET /api/upload-tasks`
+- `POST /api/upload-tasks/{task_id}/retry`
+- `POST /api/upload-tasks/{task_id}/cancel`
+- `POST /api/upload-tasks/batch/actions`
+- `DELETE /api/upload-tasks/{task_id}`
 - `PUT /api/images/{id}`
 - `DELETE /api/images/{id}`
 - `PUT /api/images/batch`
@@ -98,6 +107,8 @@ curl -H "Authorization: Bearer $AGMS_API_KEY" http://127.0.0.1:8000/api/system/h
 - `GET /api/settings`
 - `PUT /api/settings`
 - `GET /api/system/health`
+
+Queued uploads use persistent database tasks with expiring worker leases and heartbeats. On startup, expired processing leases are recovered automatically. Recoverable failures use bounded retry delays; failed staged files remain available for the configured retention period so administrators can retry them from the upload page. Queue limits and retention are configured in **System Settings > Upload queue parameters**.
 - `POST /api/settings/auth-secret/rotate`
 - `GET /api/imports/metadata/template`
 Image listing supports extra filters used by the frontend:
@@ -112,7 +123,7 @@ Image listing supports extra filters used by the frontend:
 The admin image manager supports classic table and waterfall image-wall display modes, click-to-edit thumbnails, configurable page sizes, and batch edit/delete actions.
 Its main toolbar filters are work, character, and rating.
 Batch image edits are limited to works, characters, rating, favorite count, source URL, and artist. Filenames can only be changed one image at a time, and the original extension must be preserved.
-Admin settings persist the administrator profile, image manager display mode, and upload queue parameters. The profile supports changing the login username, password, and avatar image. Passwords are stored as PBKDF2-SHA256 hashes in `app_settings`; when no database profile exists yet, the backend falls back to `AGMS_ADMIN_USERNAME` and `AGMS_ADMIN_PASSWORD`.
+Admin settings persist the administrator profile, image manager display mode, and upload queue parameters. The profile supports changing the login username, password, and avatar image. Administrator passwords are stored only as PBKDF2-SHA256 hashes in `app_settings`; plaintext passwords are never persisted in `.env`, logs, or newly created upgrade backups.
 `upload_worker_count` controls concurrent upload processing workers, and `upload_claim_batch_size` controls how many tasks one worker can claim in one pass; saving settings causes the backend to start any missing workers up to the configured count.
 `GET /api/system/health` returns database and storage status, expected image-variant counts, legacy preview cleanup status, current upload queue settings, ffmpeg/AVIF capability, JXR decode capability, and HDR metadata patch availability. The expected variants are original plus thumbnail for every image, with an additional SDR preview only for HDR images. Database URLs are password-redacted in this response. The admin settings page renders loading, error, and retry states around this endpoint so deployment diagnostics are visible even when the check fails.
 The admin image upload page supports multi-file preview before submission. Every selected file can be previewed, `JXR` previews are generated server-side as temporary WebP responses, and the preview list supports pagination, lightbox viewing, and single-item removal before the final batch upload.
@@ -122,12 +133,12 @@ HDR JPEG XR uploads are transcoded to HDR AVIF originals through `ffmpeg` while 
 The HDR AVIF path writes `BT.2020 + PQ` `nclx` color information and then patches the container to add `mdcv / clli`, so the output carries complete static HDR metadata even when the local `ffmpeg` CLI does not expose `master_display` and `max_cll` options.
 Image responses now include `is_animated`, `dynamic_range`, `bit_depth`, and `color_profile`. The frontend uses those fields to prefer browser-displayable HDR originals on `dynamic-range: high` displays while keeping SDR WebP fallbacks for formats that are not used as direct browser originals.
 Existing static originals can be migrated with `python scripts_convert_originals_to_webp.py --apply`; animated and HDR originals are skipped, and the script also backfills the new image metadata fields. To reclaim legacy preview files after upgrading, run `python scripts_prune_redundant_previews.py` first for a dry run, then run `python scripts_prune_redundant_previews.py --apply` only after a database and storage backup. The cleanup re-inspects each source file and removes previews only for verified SDR static or animated images; HDR previews are retained.
-The old public `StaticFiles` mount has been removed. Storage files are now served through `/storage/{path}` with path normalization, database lookup, and permission checks, so hidden/private images cannot be fetched anonymously by guessing file paths.
+The old public `StaticFiles` mount has been removed. New clients use `/media/{image_id}/{variant}/{media_version}`. Public responses include short browser/shared-cache lifetimes and `ETag`; access-policy changes rotate `media_version`, while private and hidden responses remain `no-store` and require `library:read`. `/storage/{path}` remains as a permission-checked compatibility route. Set `AGMS_MEDIA_ACCEL_REDIRECT_PREFIX` only when a matching internal Nginx location is configured; otherwise FastAPI sends files directly.
 
 Deployment recommendation: validate the target `ffmpeg` build before going live. It does not need to expose `master_display` or `max_cll` on the CLI, but it must support AV1 still-picture encoding for AVIF output. Re-run one real HDR upload sample after deployment and confirm the generated original contains `nclx`, `mdcv`, and `clli`.
 Basic hardening now also includes login rate limiting, HttpOnly Cookie sessions, CSRF checks, server-side session revocation, auth secret rotation, and security response headers. `POST /api/auth/login` tracks failed attempts by source IP. Defaults are 8 failed attempts per 300-second window; further attempts return `429 Too many login attempts`, and a successful login clears that IP's failure counter. The defaults can be changed with `AGMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS` and `AGMS_LOGIN_RATE_LIMIT_MAX_ATTEMPTS`.
 The current limiter stores counters in process memory, which is enough for local or single-process deployments. For multi-process or multi-instance production deployments, move the counter to shared storage such as Redis. If the app is behind a reverse proxy, make sure the proxy passes the real client IP and prevents untrusted clients from spoofing `X-Forwarded-For`.
-The `/install` setup flow generates `AGMS_AUTH_SECRET` and a default `AGMS_API_KEYS` entry automatically and writes them to `.env`. `AGMS_AUTH_SECRET` is not an API key; keep both values server-side only. If you maintain `.env` manually, generate strong random values with at least 32 characters. When no persistent auth secret is configured, the backend falls back to a per-process random secret so old fixed defaults cannot be abused, but sessions will be invalid after restart. Use `AGMS_COOKIE_SECURE=true` for HTTPS production deployments.
+The `/install` setup flow generates `AGMS_AUTH_SECRET` and a default `AGMS_API_KEYS` entry automatically and writes them to `.env`. `AGMS_AUTH_SECRET` is not an API key; keep both values server-side only. Manage API keys from the admin settings page, where each key can be assigned scopes, an expiration time, and revoked independently. Existing keys are migrated to full access on the first upgraded request. If you maintain `.env` manually, generate strong random values with at least 32 characters; after the policy migration, newly added environment keys must also be registered through the admin API. When no persistent auth secret is configured, the backend falls back to a per-process random secret so old fixed defaults cannot be abused, but sessions will be invalid after restart. Use `AGMS_COOKIE_SECURE=true` for HTTPS production deployments.
 
 UI-visible identifiers are presentation-only display numbers generated by the frontend list order. API routes, payloads, and database relationships continue to use immutable database IDs, so deleted rows may leave primary-key gaps without affecting the displayed sequence.
 

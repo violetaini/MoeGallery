@@ -25,13 +25,39 @@ export AGMS_API_KEY="paste-key-from-AGMS_API_KEYS"
 curl -H "Authorization: Bearer $AGMS_API_KEY" "$BASE_URL/api/auth/me"
 ```
 
-Configure one or more keys in `.env`:
+The installer creates the first key in `.env`:
 
 ```env
-AGMS_API_KEYS=ops-main:agms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,backup:agms_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+AGMS_API_KEYS=default:agms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Only the key value after `:` is sent in the `Authorization` header. Keep keys server-side, rotate them if exposed, and do not put them in frontend code. The backend settings page can display the current operations API key and reset it to a new strong default key.
+Only the key value after `:` is sent in the `Authorization` header. Keep keys server-side and do not put them in frontend code. Create, edit, expire, or revoke additional keys from **System settings > Operations API Key**. The panel intentionally shows the complete key to authenticated administrators. Existing keys are granted all scopes once during an upgrade; newly created keys use the scopes selected by the administrator.
+
+## API Key scopes
+
+| Scope | Purpose |
+| --- | --- |
+| `library:read` | Read private or hidden library records and protected media files. |
+| `uploads:manage` | Upload, preview, check duplicates, and inspect upload tasks. |
+| `library:write` | Create or update image metadata, works, characters, and ratings. |
+| `library:delete` | Permanently delete images, works, characters, and ratings. |
+| `system:read` | Read statistics, system health, and API documentation. |
+| `settings:manage` | Change backend preferences, administrator profile, password, and login secret. |
+| `updates:read` | Check releases and inspect update tasks. |
+| `updates:run` | Start validation or formal update tasks. |
+| `api_keys:manage` | Create, edit, revoke, or reset API keys. |
+
+Selecting all nine scopes gives the key full system control. Scope requirements are also shown on every protected operation in the web API reference as `x-api-key-scopes`. A key without the required scope receives `403`; an unknown, expired, or revoked key receives `401`.
+
+API key management endpoints require `api_keys:manage`:
+
+```text
+GET    /api/settings/api-keys
+POST   /api/settings/api-keys
+PUT    /api/settings/api-keys/{key_id}
+DELETE /api/settings/api-keys/{key_id}
+POST   /api/settings/api-keys/reset
+```
 
 ## Protected Docs
 
@@ -88,6 +114,7 @@ Check these fields first:
 - HDR metadata patch capability
 - upload worker settings
 - auth secret health
+- `media_delivery.mode`, shared cache duration, and optional Nginx internal-send status
 
 ### List Images
 
@@ -117,6 +144,46 @@ exclude_avatar_images=true
 require_work_related=true
 require_character_related=true
 ```
+
+### Read Image Files
+
+Image metadata includes `media_version`. New clients should build image URLs with the image ID, requested variant, and that version:
+
+```text
+/media/{image_id}/{variant}/{media_version}
+variant=original|preview|thumbnail
+```
+
+Example:
+
+```bash
+curl -I "$BASE_URL/media/101/preview/1"
+```
+
+If the requested preview or thumbnail does not exist, the server falls back to another usable variant and reports the served variant in `X-AGMS-Media-Variant`. Public files return `ETag` and short cache headers. The default browser lifetime is 60 seconds and the default shared/CDN lifetime is 300 seconds. A matching `If-None-Match` returns `304`.
+
+Changing an image between public/private or changing its rating increments `media_version`; old versioned URLs then return `404` at the origin. Private and `hidden` files require a browser administrator session or an API key with `library:read` and always return `Cache-Control: private, no-store`.
+
+`/storage/{relative_path}` remains available for older clients. New integrations should use `/media` so access changes produce a new cache key. A CDN may cache public `/media/*` responses only when it honors the origin `Cache-Control`; do not override `private` or `no-store` responses.
+
+### Work and Character Details
+
+Detail responses contain metadata and exact relationship counts, but deliberately do not embed every related image or character:
+
+```bash
+curl "$BASE_URL/api/works/12"
+curl "$BASE_URL/api/characters/34"
+```
+
+A work detail includes `character_count` and `image_count`. A character detail includes `image_count`. Fetch the related records through the paginated list endpoints:
+
+```bash
+curl "$BASE_URL/api/characters?work_id=12&page=1&page_size=24"
+curl "$BASE_URL/api/images?work_id=12&page=1&page_size=24"
+curl "$BASE_URL/api/images?character_id=34&page=1&page_size=24"
+```
+
+For anonymous callers, image counts and image pages exclude private and `hidden` records. An API key with `library:read` may pass `public_only=false` to include them. This contract avoids loading an entire large library through one detail request.
 
 ### Get One Random Image
 
@@ -223,9 +290,17 @@ curl -X POST "$BASE_URL/api/upload-tasks/check-duplicates-files" \
   -F "files=@/data/b.png"
 ```
 
+Each result distinguishes three cases:
+
+- `duplicate`: the image is already stored in the library.
+- `duplicate_in_queue`: the same content is already queued or processing.
+- `duplicate_in_batch`: an earlier file in this request has the same content.
+
+Both preflight endpoints query hashes in batches. Preflight is advisory; the image table's SHA-256 uniqueness check remains the final protection against concurrent duplicate writes.
+
 ### Queue Batch Upload Tasks
 
-Use `/api/upload-tasks` for larger batches. Processing workers run concurrently according to backend settings.
+Use `/api/upload-tasks` for larger batches. The server validates every file and relation ID before creating any task, then inserts all tasks in one database transaction. If validation, staging, or task insertion fails, the full batch is rejected and its staged files are removed. Processing workers run concurrently according to backend settings.
 
 ```bash
 curl -X POST "$BASE_URL/api/upload-tasks" \
@@ -256,10 +331,44 @@ Common statuses:
 ```text
 queued
 processing
-succeeded
+retry_wait
+success
 failed
-duplicate
+canceled
 ```
+
+A successful task can also return `duplicate=true`; this means it resolved to an existing image instead of creating another file. `preflight_duplicate=true` records that the server had already detected a matching library, queue, or earlier batch item before processing.
+
+`retry_wait` means a recoverable failure is waiting for its next automatic attempt. The default maximum is three total attempts, so the default retry delays are 10 and 30 seconds before the final failure. Administrators can set the total attempt limit from 1 to 10 in **System Settings > Upload queue parameters**.
+
+Retry one failed task while its staged file is still available:
+
+```bash
+curl -X POST -H "Authorization: Bearer $AGMS_API_KEY" \
+  "$BASE_URL/api/upload-tasks/123/retry"
+```
+
+Cancel one queued, processing, or retry-waiting task:
+
+```bash
+curl -X POST -H "Authorization: Bearer $AGMS_API_KEY" \
+  "$BASE_URL/api/upload-tasks/123/cancel"
+```
+
+Processing cancellation is cooperative. If the worker has already committed a complete image, the successful result wins instead of deleting valid data.
+
+Apply one action to multiple task IDs:
+
+```bash
+curl -X POST "$BASE_URL/api/upload-tasks/batch/actions" \
+  -H "Authorization: Bearer $AGMS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"ids":[123,124],"action":"retry"}'
+```
+
+`action` accepts `retry`, `cancel`, or `delete`. Delete only removes terminal task history and any remaining staged file; it does not delete an image that a successful task already created.
+
+Workers claim tasks with expiring leases and renew them with heartbeats. On startup, the service automatically requeues processing tasks whose leases have expired. A live lease is not disturbed. Failed staged files are retained for manual retry for seven days by default, and terminal task history is retained for 90 days.
 
 ### Batch Edit Image Metadata
 
@@ -380,9 +489,13 @@ Check:
 Check:
 
 - `/api/system/health` upload queue section.
-- Backend logs for worker exceptions.
-- `upload_worker_count` and `upload_claim_batch_size`.
+- `alive_workers` matches `target_workers`; a short mismatch can occur while worker settings are changing.
+- `queued`, `processing`, and `retry_wait` counts are moving rather than growing continuously.
+- Backend logs and each task's `error_code` / `error_message` for worker exceptions.
+- `upload_worker_count`, `upload_claim_batch_size`, `max_attempts`, and `failed_retention_days`.
 - Database connectivity and lock contention.
+
+Restarting the application is safe for queued tasks. Processing tasks are recovered only after their lease expires, which prevents a slow old worker and a replacement worker from finalizing the same task at the same time.
 
 ### Required derivative missing or legacy previews pending cleanup
 

@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Collection, Edit, Link, Picture, Plus, Star, Timer, UploadFilled, User } from '@element-plus/icons-vue'
-import { storageUrl } from '../../api/client'
+import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import ResponsiveImage from '../../components/ResponsiveImage.vue'
 import ImageMasonry from '../../components/ImageMasonry.vue'
@@ -70,7 +70,7 @@ const workForm = reactive({
 
 const workId = computed(() => Number(route.params.id))
 const poster = computed(() => work.value?.cover_image || null)
-const backdrop = computed(() => storageUrl(work.value?.backdrop_image?.preview_path || work.value?.cover_image?.preview_path || work.value?.cover_image?.thumbnail_path))
+const backdrop = computed(() => mediaUrl(work.value?.backdrop_image || work.value?.cover_image, 'preview'))
 const heroStyle = computed(() => (backdrop.value ? { '--work-backdrop-image': `url("${backdrop.value}")` } : {}))
 const runtimeText = computed(() => {
   if (!work.value?.run_time_minutes) return ''
@@ -86,7 +86,7 @@ const characterPageSize = computed(() => {
 })
 const currentCharacterAvatar = computed(() => {
   const selected = avatarImages.value.find((image) => image.id === characterForm.avatar_image_id)
-  return storageUrl(selected?.thumbnail_path || selected?.preview_path)
+  return mediaUrl(selected, 'thumbnail')
 })
 const avatarImageDisplayIds = computed(() => new Map(avatarImages.value.map((image, index) => [image.id, displayId(index)])))
 
@@ -101,6 +101,8 @@ async function loadWork() {
   pageLoading.value = true
   try {
     work.value = await galleryApi.work(workId.value)
+    characterTotal.value = work.value.character_count || 0
+    imageTotal.value = work.value.image_count || 0
   } finally {
     pageLoading.value = false
   }

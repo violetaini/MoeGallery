@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Check, Coin, User } from '@element-plus/icons-vue'
+import { Check, Coin, Lock, User } from '@element-plus/icons-vue'
 import { galleryApi } from '../api/gallery'
 import { clearInstallStatusCache } from '../router'
 
@@ -11,6 +11,7 @@ const route = useRoute()
 const loading = ref(false)
 const checking = ref(false)
 const status = ref(null)
+const installToken = ref('')
 const form = reactive({
   database_type: 'sqlite',
   mysql_host: '127.0.0.1',
@@ -24,6 +25,15 @@ const form = reactive({
 
 const isInstalled = computed(() => Boolean(status.value?.installed))
 const isPreviewMode = computed(() => route.query.preview === '1')
+const canOpenInstallForm = computed(() => isPreviewMode.value || Boolean(installToken.value))
+
+function consumeInstallToken() {
+  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const token = fragment.get('token')?.trim() || ''
+  if (!token) return
+  installToken.value = token
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`)
+}
 
 async function loadStatus() {
   checking.value = true
@@ -84,13 +94,25 @@ async function submit() {
     return
   }
   if (isInstalled.value) return
+  if (!installToken.value) {
+    ElMessage.warning('请使用安装程序提供的首次安装链接')
+    return
+  }
   if (!form.admin_username.trim() || !form.admin_password) {
     ElMessage.warning('请填写管理员账号和密码')
     return
   }
+  if (form.admin_password.length < 12) {
+    ElMessage.warning('管理员密码至少需要 12 位')
+    return
+  }
+  if (form.admin_password.trim().toLowerCase() === form.admin_username.trim().toLowerCase()) {
+    ElMessage.warning('管理员密码不能与用户名相同')
+    return
+  }
   loading.value = true
   try {
-    const result = await galleryApi.install(buildPayload())
+    const result = await galleryApi.install(buildPayload(), installToken.value)
     if (result.restart_required) {
       ElMessage.success('初始化完成，服务正在自动重启')
       if (!await waitForManagedRestart()) {
@@ -109,6 +131,7 @@ async function submit() {
 }
 
 onMounted(() => {
+  consumeInstallToken()
   loadStatus()
 })
 </script>
@@ -121,7 +144,13 @@ onMounted(() => {
         <h1>首次部署初始化</h1>
       </div>
 
-      <el-form label-position="top" @submit.prevent>
+      <div v-if="!canOpenInstallForm && !isInstalled" class="install-token-required">
+        <el-icon><Lock /></el-icon>
+        <strong>需要首次安装链接</strong>
+        <span>请使用安装程序输出的专用链接进入此页面。</span>
+      </div>
+
+      <el-form v-else label-position="top" @submit.prevent>
         <section class="install-section">
           <div class="install-section__title">
             <el-icon><Coin /></el-icon>
@@ -168,7 +197,14 @@ onMounted(() => {
               <el-input v-model="form.admin_username" autocomplete="username" />
             </el-form-item>
             <el-form-item label="密码">
-              <el-input v-model="form.admin_password" type="password" show-password autocomplete="new-password" />
+              <el-input
+                v-model="form.admin_password"
+                type="password"
+                show-password
+                minlength="12"
+                maxlength="128"
+                autocomplete="new-password"
+              />
             </el-form-item>
           </div>
         </section>

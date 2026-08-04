@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import require_updates_read, require_updates_run
 from app.database import get_db
 from app.schemas.update import UpdateCheckResponse, UpdateTaskCreate, UpdateTaskListResponse, UpdateTaskRead
 from app.services import update_service
@@ -14,14 +14,14 @@ router = APIRouter(prefix="/updates", tags=["updates"])
 @router.get("/check", response_model=UpdateCheckResponse)
 def check_updates(
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[dict, Depends(require_admin)],
+    _admin: Annotated[dict, Depends(require_updates_read)],
 ):
     return update_service.check_for_updates(db)
 
 
 @router.get("/tasks", response_model=UpdateTaskListResponse)
 def list_update_tasks(
-    _admin: Annotated[dict, Depends(require_admin)],
+    _admin: Annotated[dict, Depends(require_updates_read)],
     limit: int = Query(20, ge=1, le=100),
 ):
     return {"items": update_service.list_tasks(limit=limit)}
@@ -31,7 +31,7 @@ def list_update_tasks(
 def create_update_task(
     payload: UpdateTaskCreate,
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[dict, Depends(require_admin)],
+    _admin: Annotated[dict, Depends(require_updates_run)],
 ):
     try:
         return update_service.create_update_task(
@@ -51,7 +51,7 @@ def create_update_task(
 @router.get("/tasks/{task_id}", response_model=UpdateTaskRead)
 def get_update_task(
     task_id: str,
-    _admin: Annotated[dict, Depends(require_admin)],
+    _admin: Annotated[dict, Depends(require_updates_read)],
 ):
     try:
         return update_service.read_task(task_id)

@@ -68,13 +68,57 @@ Open `http://SERVER_IP:8111`. Plain HTTP does not encrypt admin credentials or c
 
 The installer does not open the selected port in the server firewall or cloud security group.
 
+## Media Delivery And Caching
+
+No additional component is required by default; FastAPI sends image files directly. Public images allow 60 seconds of browser caching and 300 seconds of shared/CDN caching by default. Private and hidden images are never shared-cacheable. These values can be adjusted in `.env`:
+
+```env
+AGMS_MEDIA_PUBLIC_BROWSER_CACHE_SECONDS=60
+AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=300
+AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=
+```
+
+For larger libraries or higher concurrency, Nginx can send the files through an internal location. This is an optional optimization and does not configure a domain:
+
+```nginx
+location ^~ /_agms_media/ {
+    internal;
+    alias /opt/moegallery/storage/;
+}
+
+location / {
+    proxy_pass http://127.0.0.1:8111;
+}
+```
+
+Then set the prefix and restart the service:
+
+```env
+AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=/_agms_media
+```
+
+The Nginx worker must have read and directory-traversal access to `/opt/moegallery/storage/`. After changing this setting, confirm `Nginx delivery` in System Health and open an original, preview, and thumbnail. A CDN should honor the origin headers for public `/media/*` responses and must not override `private` or `no-store`. The legacy `/storage/*` route exists only for client compatibility.
+
 ## First-Time Setup
 
-After the service starts and passes its health check, open the `/install` URL printed by the installation script.
+After the service starts and passes its health check, open the complete first-time setup URL printed by the installation script. Its `#token=...` fragment contains a one-time setup token. The page reads it automatically and immediately removes it from the address bar; there is no token field to fill in.
+
+The token is generated only while setup is incomplete. It expires after two hours and is destroyed after a successful setup. Requests without the correct token cannot create the administrator or change installation state, and only one setup task can run at a time. If the URL is lost or expires, restart the service and retrieve the newest URL:
+
+```bash
+sudo systemctl restart moegallery
+sudo journalctl -u moegallery -n 100 --no-pager -o cat \
+  | grep '^\[setup\] First install:' \
+  | tail -n 1
+```
+
+The administrator password must be at least 12 characters, must differ from the username, and cannot be a common default password.
 
 ### SQLite
 
 Select SQLite and continue. The database file is stored in the default application directory, so no filesystem path is required.
+
+File-backed SQLite automatically enables WAL, foreign keys, and an 8-second busy timeout. Upload processing is capped at four effective workers to avoid competing writers. `AGMS_SQLITE_SYNCHRONOUS=NORMAL` is the SSD-friendly default; it can lose a very small number of most recent committed transactions after abrupt power loss. Set `AGMS_SQLITE_SYNCHRONOUS=FULL` and restart the service when maximum crash durability is more important than write throughput. `AGMS_SQLITE_BUSY_TIMEOUT_MS` and `AGMS_SQLITE_UPLOAD_WORKER_LIMIT` are available for advanced tuning.
 
 ### MySQL or MariaDB
 
@@ -88,6 +132,8 @@ FLUSH PRIVILEGES;
 ```
 
 Enter the host, port, database name, username, and password in `/install`. These connection details are written to `.env`, so use an account dedicated to the MoeGallery database. Do not enter the MySQL root account or another database administrator account.
+
+MySQL 8 claims upload tasks in parallel with `SKIP LOCKED`. The default pool has 24 persistent and 40 overflow connections, with some capacity reserved for web requests; the effective upload-worker limit is shown in Admin Settings and System Health. Tune `AGMS_MYSQL_POOL_SIZE`, `AGMS_MYSQL_MAX_OVERFLOW`, `AGMS_MYSQL_POOL_TIMEOUT_SECONDS`, `AGMS_MYSQL_POOL_RECYCLE_SECONDS`, and the connection read/write timeouts in `.env`. These are startup settings, so restart the service after changing them.
 
 The setup wizard generates the `AGMS_AUTH_SECRET` session-signing secret and an initial operations API key. It then runs the database migrations, writes `.env`, creates `installed.lock`, and asks the built-in launcher to restart the application.
 
@@ -116,6 +162,38 @@ Default layout:
 ```
 
 By default, this directory is owned by the `moegallery` service account. The account can run the application and manage MoeGallery's own files, but it has no login shell or root privileges. It is separate from the web admin account. The main installer accepts `--user` to use an existing system account; `scripts/install_systemd.sh` also accepts `--group` when a specific group is required.
+
+## Scheduled Backup and Recovery
+
+The Update Center creates a lightweight rollback backup before an update. In addition, create a full scheduled backup daily. It includes the database, application configuration, originals, thumbnails, and SDR preview files for HDR images. Staged upload tasks, downloaded update files, and runtime locks are intentionally excluded so that stale work is not restored.
+
+```bash
+sudo -u moegallery bash /opt/moegallery/scripts/backup_gallery.sh \
+  --app-dir /opt/moegallery \
+  --keep-days 14
+```
+
+Scheduled backups are stored in `/opt/moegallery/backups/scheduled/`. The script removes only `upgrade-*` directories in that scheduled directory after the retention period; it never prunes other backups created by panel updates. Use `--dry-run` to inspect the planned action. This root crontab entry runs it every day at 03:20:
+
+```cron
+20 3 * * * sudo -u moegallery bash /opt/moegallery/scripts/backup_gallery.sh --app-dir /opt/moegallery --keep-days 14 >> /opt/moegallery/logs/backup.log 2>&1
+```
+
+Stop the service before restoring a complete backup, then start it again after the restore finishes:
+
+```bash
+sudo systemctl stop moegallery
+sudo bash /opt/moegallery/scripts/restore_upgrade_backup.sh \
+  --app-dir /opt/moegallery \
+  --backup-dir /opt/moegallery/backups/scheduled/upgrade-YYYYMMDD-HHMMSS
+sudo systemctl start moegallery
+```
+
+Backups contain `.env` and database credentials, and the backup directory is owner-only. They are not a substitute for off-site recovery: copy encrypted scheduled backups to another disk or trusted location. MySQL recovery still requires the `mysqldump` and `mysql` client commands.
+
+## Automated Verification
+
+GitHub runs verification for pushes to every branch, pull requests, and the weekly schedule: the full SQLite backend suite, real MySQL 8 migrations and concurrent task claims, SQLite/MySQL backup recovery rehearsals, the production frontend build, and key Chromium workflows at desktop and mobile widths. The release workflow must also pass an independent MySQL 8 verification and recovery rehearsal before it packages a release.
 
 ## Updates from the Admin Panel
 
@@ -157,7 +235,8 @@ If the server cannot use the network installer, install a downloaded release arc
 sudo mkdir -p /opt/moegallery
 sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/moegallery --strip-components=1
 sudo python3 -m venv /opt/moegallery/venv
-sudo /opt/moegallery/venv/bin/pip install -r /opt/moegallery/backend/requirements.txt
+sudo /opt/moegallery/venv/bin/python -m pip install "pip==26.2"
+sudo /opt/moegallery/venv/bin/python -m pip install --require-hashes -r /opt/moegallery/backend/requirements.lock.txt
 sudo bash /opt/moegallery/scripts/install_systemd.sh \
   --app-dir /opt/moegallery \
   --host 127.0.0.1 \
@@ -165,6 +244,7 @@ sudo bash /opt/moegallery/scripts/install_systemd.sh \
 ```
 
 Before extracting the archive, verify it against `SHA256SUMS.txt` from the same release.
+See [Dependency Security Maintenance](dependency-security.md) for lock regeneration and emergency upgrades.
 
 ## Troubleshooting
 

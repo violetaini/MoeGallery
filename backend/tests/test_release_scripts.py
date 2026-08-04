@@ -67,6 +67,25 @@ class ReleaseScriptSafetyTests(unittest.TestCase):
                 for exclusion in self.CACHE_EXCLUSIONS:
                     self.assertIn(f"--exclude='{exclusion}'", sync_block)
 
+    def test_scheduled_backup_includes_durable_images_and_bounded_retention(self):
+        scheduled_backup = (ROOT_DIR / "scripts" / "backup_gallery.sh").read_text(encoding="utf-8")
+        upgrade_backup = (ROOT_DIR / "scripts" / "backup_before_upgrade.sh").read_text(encoding="utf-8")
+        restore = (ROOT_DIR / "scripts" / "restore_upgrade_backup.sh").read_text(encoding="utf-8")
+
+        self.assertIn("--include-storage", scheduled_backup)
+        self.assertIn('SCHEDULED_ROOT="$BACKUP_ROOT/scheduled"', scheduled_backup)
+        self.assertIn("-name 'upgrade-*'", scheduled_backup)
+        self.assertIn('rm -rf -- "$candidate_real"', scheduled_backup)
+        self.assertIn("storage-files.tar.gz", upgrade_backup)
+        self.assertIn("storage-files.tar.gz", restore)
+        self.assertIn("for directory in original preview thumbnail", restore)
+
+    def test_backup_rehearsal_requires_explicit_mysql_opt_in(self):
+        script = (ROOT_DIR / "scripts" / "verify_backup_restore.py").read_text(encoding="utf-8")
+        self.assertIn("--allow-mysql", script)
+        self.assertIn("TemporaryDirectory", script)
+        self.assertIn("Expired scheduled backup was not pruned", script)
+
     def test_release_packager_ignores_supported_sqlite_names(self):
         module_path = ROOT_DIR / "scripts" / "package_release.py"
         spec = importlib.util.spec_from_file_location("moegallery_package_release", module_path)
@@ -105,6 +124,22 @@ class ReleaseScriptSafetyTests(unittest.TestCase):
 
         self.assertNotIn("package_release.py", ignored)
         self.assertIn("upload_loud0715_to_cloud.py", ignored)
+
+    def test_install_and_upgrade_require_hashed_dependency_lock(self):
+        scripts = (
+            ROOT_DIR / "install.sh",
+            ROOT_DIR / "scripts" / "upgrade_release.sh",
+        )
+        for script_path in scripts:
+            script = script_path.read_text(encoding="utf-8")
+            with self.subTest(script=script_path.name):
+                self.assertIn("requirements.lock.txt", script)
+                self.assertIn("--require-hashes", script)
+                self.assertIn('PIP_BOOTSTRAP_VERSION="26.2"', script)
+
+    def test_release_packager_requires_dependency_locks(self):
+        script = (ROOT_DIR / "scripts" / "package_release.py").read_text(encoding="utf-8")
+        self.assertIn('("requirements.lock.txt", "requirements-test.lock.txt")', script)
 
 
 if __name__ == "__main__":

@@ -1,31 +1,35 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import PublicLayout from '../layouts/PublicLayout.vue'
-import AdminLayout from '../layouts/AdminLayout.vue'
 import Home from '../views/Home.vue'
-import Gallery from '../views/Gallery.vue'
-import ImageDetail from '../views/ImageDetail.vue'
-import WorkList from '../views/WorkList.vue'
-import WorkDetail from '../views/WorkDetail.vue'
-import CharacterList from '../views/CharacterList.vue'
-import CharacterDetail from '../views/CharacterDetail.vue'
-import TagList from '../views/TagList.vue'
-import Search from '../views/Search.vue'
-import Login from '../views/Login.vue'
-import Install from '../views/Install.vue'
-import Dashboard from '../views/admin/Dashboard.vue'
-import ImageManage from '../views/admin/ImageManage.vue'
-import ImageUpload from '../views/admin/ImageUpload.vue'
-import MetadataImport from '../views/admin/MetadataImport.vue'
-import WorkManage from '../views/admin/WorkManage.vue'
-import CharacterManage from '../views/admin/CharacterManage.vue'
-import Settings from '../views/admin/Settings.vue'
-import AdminWorkDetail from '../views/admin/AdminWorkDetail.vue'
-import AdminCharacterDetail from '../views/admin/AdminCharacterDetail.vue'
-import ApiDocs from '../views/admin/ApiDocs.vue'
-import UpdateCenter from '../views/admin/UpdateCenter.vue'
 import { clearAuthSession, setAuthSession } from '../api/client'
 import { galleryApi } from '../api/gallery'
+import {
+  loadAdminCharacterDetail,
+  loadAdminLayout,
+  loadAdminWorkDetail,
+  loadApiDocs,
+  loadCharacterDetail,
+  loadCharacterList,
+  loadCharacterManage,
+  loadDashboard,
+  loadGallery,
+  loadImageDetail,
+  loadImageManage,
+  loadImageUpload,
+  loadInstall,
+  loadLogin,
+  loadMetadataImport,
+  loadSearch,
+  loadSettings,
+  loadTagList,
+  loadUpdateCenter,
+  loadWorkDetail,
+  loadWorkList,
+  loadWorkManage
+} from './preload'
+
+export { warmPublicRoutes } from './preload'
 
 let installStatusCache = null
 let authProbePromise = null
@@ -46,11 +50,11 @@ async function ensureAuthSession() {
     authProbePromise = galleryApi.me()
       .then((profile) => {
         setAuthSession({ username: profile.username, avatar_image: profile.avatar_image })
-        return true
+        return profile
       })
       .catch(() => {
         clearAuthSession()
-        return false
+        return null
       })
       .finally(() => {
         authProbePromise = null
@@ -67,47 +71,47 @@ const router = createRouter({
       component: PublicLayout,
       children: [
         { path: '', name: 'home', component: Home },
-        { path: 'gallery', name: 'gallery', component: Gallery },
-        { path: 'images/:id', name: 'image-detail', component: ImageDetail },
-        { path: 'works', name: 'works', component: WorkList },
-        { path: 'works/:id', name: 'work-detail', component: WorkDetail },
-        { path: 'characters', name: 'characters', component: CharacterList },
-        { path: 'characters/:id', name: 'character-detail', component: CharacterDetail },
-        { path: 'tags', name: 'tags', component: TagList },
-        { path: 'search', name: 'search', component: Search }
+        { path: 'gallery', name: 'gallery', component: loadGallery },
+        { path: 'images/:id', name: 'image-detail', component: loadImageDetail },
+        { path: 'works', name: 'works', component: loadWorkList },
+        { path: 'works/:id', name: 'work-detail', component: loadWorkDetail },
+        { path: 'characters', name: 'characters', component: loadCharacterList },
+        { path: 'characters/:id', name: 'character-detail', component: loadCharacterDetail },
+        { path: 'tags', name: 'tags', component: loadTagList },
+        { path: 'search', name: 'search', component: loadSearch }
       ]
     },
     {
       path: '/login',
       name: 'login',
-      component: Login
+      component: loadLogin
     },
     {
       path: '/install',
       name: 'install',
-      component: Install
+      component: loadInstall
     },
     {
       path: '/admin/api-docs',
       name: 'admin-api-docs',
-      component: ApiDocs,
+      component: loadApiDocs,
       meta: { requiresAuth: true }
     },
     {
       path: '/admin',
-      component: AdminLayout,
+      component: loadAdminLayout,
       meta: { requiresAuth: true },
       children: [
-        { path: '', name: 'admin-dashboard', component: Dashboard, meta: { title: '后台首页' } },
-        { path: 'images', name: 'admin-images', component: ImageManage, meta: { title: '图片管理' } },
-        { path: 'images/upload', name: 'admin-image-upload', component: ImageUpload, meta: { title: '图片上传' } },
-        { path: 'imports', name: 'admin-imports', component: MetadataImport, meta: { title: '批量导入' } },
-        { path: 'works', name: 'admin-works', component: WorkManage, meta: { title: '作品管理' } },
-        { path: 'works/:id', name: 'admin-work-detail', component: AdminWorkDetail, meta: { title: '作品主页' } },
-        { path: 'characters', name: 'admin-characters', component: CharacterManage, meta: { title: '角色管理' } },
-        { path: 'characters/:id', name: 'admin-character-detail', component: AdminCharacterDetail, meta: { title: '角色主页' } },
-        { path: 'updates', name: 'admin-updates', component: UpdateCenter, meta: { title: '更新中心' } },
-        { path: 'settings', name: 'admin-settings', component: Settings, meta: { title: '系统设置' } }
+        { path: '', name: 'admin-dashboard', component: loadDashboard, meta: { title: '后台首页' } },
+        { path: 'images', name: 'admin-images', component: loadImageManage, meta: { title: '图片管理' } },
+        { path: 'images/upload', name: 'admin-image-upload', component: loadImageUpload, meta: { title: '图片上传' } },
+        { path: 'imports', name: 'admin-imports', component: loadMetadataImport, meta: { title: '批量导入' } },
+        { path: 'works', name: 'admin-works', component: loadWorkManage, meta: { title: '作品管理' } },
+        { path: 'works/:id', name: 'admin-work-detail', component: loadAdminWorkDetail, meta: { title: '作品主页' } },
+        { path: 'characters', name: 'admin-characters', component: loadCharacterManage, meta: { title: '角色管理' } },
+        { path: 'characters/:id', name: 'admin-character-detail', component: loadAdminCharacterDetail, meta: { title: '角色主页' } },
+        { path: 'updates', name: 'admin-updates', component: loadUpdateCenter, meta: { title: '更新中心' } },
+        { path: 'settings', name: 'admin-settings', component: loadSettings, meta: { title: '系统设置' } }
       ]
     }
   ],
@@ -126,14 +130,20 @@ router.beforeEach(async (to) => {
     return { path: '/login' }
   }
   if (to.meta.requiresAuth) {
-    const authenticated = await ensureAuthSession()
-    if (!authenticated) {
+    const profile = await ensureAuthSession()
+    if (!profile) {
       return { path: '/login', query: { redirect: to.fullPath } }
+    }
+    if (profile.password_change_required && to.name !== 'admin-settings') {
+      return { path: '/admin/settings', query: { password_change: '1' } }
     }
   }
   if (to.name === 'login') {
-    const authenticated = await ensureAuthSession()
-    if (authenticated) return { path: '/admin' }
+    const profile = await ensureAuthSession()
+    if (profile?.password_change_required) {
+      return { path: '/admin/settings', query: { password_change: '1' } }
+    }
+    if (profile) return { path: '/admin' }
   }
   return true
 })

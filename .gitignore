@@ -3,6 +3,9 @@
 node_modules/
 frontend/node_modules/
 frontend/dist/
+frontend/.e2e/
+frontend/playwright-report/
+frontend/test-results/
 backend/anime_gallery.db
 backend/*.db
 backend/*.db*

@@ -41,11 +41,13 @@ On its first run, the installer asks which address the service should listen on:
 - `127.0.0.1`: accepts connections from the server itself only. This is the recommended option when using Nginx, aaPanel, or another reverse proxy.
 - `0.0.0.0`: listens on every network interface, allowing access through the server's LAN or public IP address.
 
-The default port is `8111`. When installation finishes, the script prints the first-time setup URL. With the default listen address, open the following URL on the server itself:
+The default port is `8111`. When installation finishes, the script prints a first-time setup URL containing a temporary token. With the default listen address, it looks like this:
 
 ```text
-http://127.0.0.1:8111/install
+http://127.0.0.1:8111/install#token=TEMPORARY_TOKEN
 ```
+
+Open the exact URL printed by the installer. The token expires after two hours, is consumed after a successful setup, and is never entered manually. If the link expires or is lost, restart `moegallery.service` and use the newest setup URL in the service log.
 
 To open the setup page from another computer, configure a reverse proxy or an SSH tunnel first. If you selected `0.0.0.0`, you can instead open `http://SERVER_IP:8111/install` directly.
 
@@ -137,7 +139,8 @@ Local development requires Python 3.11 or later and Node.js 20 or later.
 ```bash
 # Backend
 python -m venv .venv
-./.venv/bin/pip install -r backend/requirements.txt
+./.venv/bin/python -m pip install "pip==26.2"
+./.venv/bin/python -m pip install --require-hashes -r backend/requirements.lock.txt
 cd backend
 ../.venv/bin/uvicorn app.main:app --reload --port 8000
 

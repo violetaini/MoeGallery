@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import Boolean, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -8,13 +8,17 @@ from app.models.mixins import TimestampMixin
 
 class Image(Base, TimestampMixin):
     __tablename__ = "images"
+    __table_args__ = (
+        Index("ix_images_public_rating_created", "is_public", "rating", "created_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    preview_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True, index=True)
+    preview_path: Mapped[str | None] = mapped_column(String(500), nullable=True, index=True)
+    media_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     width: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     height: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     orientation: Mapped[str] = mapped_column(String(20), default="square", nullable=False, index=True)

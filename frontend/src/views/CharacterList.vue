@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
 import CharacterCard from '../components/CharacterCard.vue'
 
@@ -14,7 +14,7 @@ const publicSettings = ref(null)
 const fallbackHeroBackdrop = '/hero/characters-bg.png'
 const heroBackdrop = computed(() => {
   const image = publicSettings.value?.characters_hero_image
-  return storageUrl(image?.preview_path || image?.file_path || image?.thumbnail_path) || fallbackHeroBackdrop
+  return mediaUrl(image, 'preview') || fallbackHeroBackdrop
 })
 
 async function load() {

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import require_library_write
 from app.database import get_db
 from app.models import Character, Work
 from app.schemas.imports import MetadataImportRow, MetadataImportSummary
@@ -368,7 +368,7 @@ def _process_rows(db: Session, rows: list[dict[str, Any]], dry_run: bool) -> Met
 @router.post("/metadata", response_model=MetadataImportSummary)
 async def import_metadata(
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
     file: UploadFile = File(...),
     dry_run: bool = Query(True),
 ):
@@ -382,7 +382,7 @@ async def import_metadata(
 
 @router.get("/metadata/template")
 def download_metadata_template(
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
     format: Literal["csv", "json", "xlsx", "xlsm"] = Query("xlsx"),
 ):
     try:

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 
 const props = defineProps({
   images: { type: Array, default: () => [] },
@@ -114,7 +114,7 @@ function imageTitle(row) {
           :style="{ flex: `0 0 ${width}px`, width: `${width}px` }"
         >
           <button class="admin-image-wall-media" type="button" :aria-label="imageTitle(image)" @click="openEditor(image)">
-            <img :src="storageUrl(image.thumbnail_path || image.preview_path || image.file_path)" :alt="imageTitle(image)" loading="lazy" />
+            <img :src="mediaUrl(image, 'thumbnail')" :alt="imageTitle(image)" loading="lazy" />
           </button>
           <el-checkbox
             class="admin-image-wall-check"

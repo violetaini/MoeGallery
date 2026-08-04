@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { useRoute } from 'vue-router'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
 import { orientationOptions } from '../constants/orientations'
 import { ratingOptions } from '../constants/ratings'
@@ -52,7 +52,7 @@ const hasMore = computed(() => images.value.length < total.value)
 const fallbackHeroBackdrop = '/hero/gallery-bg.jpg'
 const heroBackdrop = computed(() => {
   const image = publicSettings.value?.home_hero_image
-  return storageUrl(image?.preview_path || image?.file_path || image?.thumbnail_path) || fallbackHeroBackdrop
+  return mediaUrl(image, 'preview') || fallbackHeroBackdrop
 })
 const activeFilterLabel = computed(() => {
   if (filters.character_id) return '角色视角'
@@ -160,7 +160,7 @@ async function preloadImageAssets(items = [], seq = preloadSeq) {
   const sources = [
     ...new Set(
       items
-        .map((image) => storageUrl(image.thumbnail_path || image.preview_path || image.file_path))
+        .map((image) => mediaUrl(image, 'thumbnail'))
         .filter(Boolean)
     )
   ]

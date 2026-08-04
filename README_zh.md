@@ -41,11 +41,13 @@ sudo bash install.sh
 - `127.0.0.1`：只允许服务器本机访问，适合搭配 Nginx、宝塔或其他反向代理，推荐使用。
 - `0.0.0.0`：监听所有网络接口，可通过服务器 IP 从局域网或公网访问。
 
-默认端口为 `8111`。安装完成后，脚本会输出首次安装页面的地址。使用默认监听方式时，可先在服务器本机访问：
+默认端口为 `8111`。安装完成后，脚本会输出带临时令牌的首次安装地址，使用默认监听方式时格式如下：
 
 ```text
-http://127.0.0.1:8111/install
+http://127.0.0.1:8111/install#token=临时令牌
 ```
+
+请完整打开安装脚本实际输出的地址，不需要手工填写令牌。令牌有效期为两小时，安装成功后立即失效；地址遗失或过期时，重启 `moegallery.service` 并从服务日志中使用最新的首次安装地址。
 
 如果需要从其他电脑访问，请先配置反向代理或 SSH 隧道；选择 `0.0.0.0` 时，也可以访问 `http://服务器IP:8111/install`。
 
@@ -137,7 +139,8 @@ SQLite 通过 SQLite Backup API 创建一致性备份；MySQL/MariaDB 使用 `my
 ```bash
 # 后端
 python -m venv .venv
-./.venv/bin/pip install -r backend/requirements.txt
+./.venv/bin/python -m pip install "pip==26.2"
+./.venv/bin/python -m pip install --require-hashes -r backend/requirements.lock.txt
 cd backend
 ../.venv/bin/uvicorn app.main:app --reload --port 8000
 

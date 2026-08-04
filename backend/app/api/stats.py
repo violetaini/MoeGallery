@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import require_system_read
 from app.config import settings
 from app.database import get_db
 from app.models import Character, Image, Work
@@ -26,7 +26,7 @@ def _storage_total_size() -> int:
 
 
 @router.get("/stats", response_model=StatsResponse)
-def stats(db: Annotated[Session, Depends(get_db)], admin: Annotated[dict, Depends(require_admin)]):
+def stats(db: Annotated[Session, Depends(get_db)], admin: Annotated[dict, Depends(require_system_read)]):
     image_count = db.scalar(select(func.count(Image.id))) or 0
     public_image_count = db.scalar(select(func.count(Image.id)).where(Image.is_public.is_(True))) or 0
     return {

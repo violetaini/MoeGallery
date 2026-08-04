@@ -11,6 +11,7 @@ from app.models import AppSetting, Image
 
 ADMIN_USERNAME_KEY = "admin.username"
 ADMIN_PASSWORD_HASH_KEY = "admin.password_hash"
+ADMIN_PASSWORD_CHANGE_REQUIRED_KEY = "admin.password_change_required"
 ADMIN_AVATAR_IMAGE_ID_KEY = "admin.avatar_image_id"
 
 PASSWORD_SCHEME = "pbkdf2_sha256"
@@ -22,6 +23,7 @@ class AdminAccount:
     username: str
     avatar_image_id: int | None
     avatar_image: Image | None
+    password_change_required: bool
 
 
 def _get_setting(db: Session, key: str) -> str | None:
@@ -58,7 +60,7 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, encoded: str | None) -> bool:
     if not encoded:
-        return hmac.compare_digest(password, settings.admin_password)
+        return False
     try:
         scheme, iterations_text, salt_text, digest_text = encoded.split(".", 3)
         if scheme != PASSWORD_SCHEME:
@@ -93,6 +95,7 @@ def get_admin_account(db: Session) -> AdminAccount:
         username=get_admin_username(db),
         avatar_image_id=avatar_image_id,
         avatar_image=avatar_image,
+        password_change_required=_get_setting(db, ADMIN_PASSWORD_CHANGE_REQUIRED_KEY) == "1",
     )
 
 
@@ -123,6 +126,7 @@ def update_admin_account(
         if len(password) < 6:
             raise ValueError("密码至少需要 6 位")
         _set_setting(db, ADMIN_PASSWORD_HASH_KEY, hash_password(password))
+        _delete_setting(db, ADMIN_PASSWORD_CHANGE_REQUIRED_KEY)
     if clear_avatar:
         _delete_setting(db, ADMIN_AVATAR_IMAGE_ID_KEY)
     elif avatar_image_id is not None:

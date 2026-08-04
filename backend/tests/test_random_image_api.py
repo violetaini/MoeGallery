@@ -117,7 +117,7 @@ class RandomImageApiTests(unittest.TestCase):
         response = self.client.get("/api/images/random", follow_redirects=False)
 
         self.assertEqual(response.status_code, 307)
-        self.assertEqual(response.headers["location"], f"/storage/{landscape.preview_path}")
+        self.assertEqual(response.headers["location"], f"/media/{landscape.id}/preview/{landscape.media_version}")
         self.assertEqual(response.headers["cache-control"], "no-store, max-age=0")
         target_response = self.client.get(response.headers["location"])
         self.assertEqual(target_response.status_code, 200)
@@ -174,7 +174,7 @@ class RandomImageApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["image"]["id"], target.id)
-        self.assertEqual(payload["image_url"], f"/storage/{target.file_path}")
+        self.assertEqual(payload["image_url"], f"/media/{target.id}/original/{target.media_version}")
         self.assertEqual(payload["requested_variant"], "original")
 
     def test_character_name_filter_supports_chinese_japanese_and_aliases(self):

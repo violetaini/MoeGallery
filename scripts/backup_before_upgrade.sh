@@ -5,6 +5,7 @@ APP_DIR="/opt/moegallery"
 BACKUP_ROOT=""
 ENV_FILE=""
 SKIP_DATABASE=0
+INCLUDE_STORAGE=0
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 usage() {
@@ -16,6 +17,7 @@ Options:
   --backup-root DIR    Backup root. Default: <app-dir>/backups
   --env-file FILE      Environment file. Default: <app-dir>/.env
   --skip-database      Back up only files, not the configured database
+  --include-storage    Also archive durable image files from storage/
   -h, --help           Show this help
 EOF
 }
@@ -38,6 +40,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_DATABASE=1
       shift
       ;;
+    --include-storage)
+      INCLUDE_STORAGE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -50,9 +56,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+normalize_path() {
+  local value="$1"
+  case "$value" in
+    [A-Za-z]:/*|[A-Za-z]:\\*)
+      if command -v cygpath >/dev/null 2>&1; then
+        cygpath -u "$value"
+        return
+      fi
+      ;;
+  esac
+  printf '%s\n' "$value"
+}
+
 APP_DIR="${APP_DIR%/}"
+APP_DIR="$(normalize_path "$APP_DIR")"
 BACKUP_ROOT="${BACKUP_ROOT:-$APP_DIR/backups}"
+BACKUP_ROOT="$(normalize_path "$BACKUP_ROOT")"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
+ENV_FILE="$(normalize_path "$ENV_FILE")"
+PYTHON_BIN="$(normalize_path "$PYTHON_BIN")"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="$BACKUP_ROOT/upgrade-$TIMESTAMP"
 
@@ -71,6 +94,37 @@ copy_if_exists() {
 }
 
 copy_if_exists "$ENV_FILE" "$BACKUP_DIR/env/.env"
+if [[ -f "$BACKUP_DIR/env/.env" ]]; then
+  "$PYTHON_BIN" - "$BACKUP_DIR/env/.env" <<'PY'
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+safe_lines = []
+for line in lines:
+    stripped = line.strip()
+    if stripped and not stripped.startswith("#") and "=" in line:
+        key = line.split("=", 1)[0].strip()
+        if key == "AGMS_ADMIN_PASSWORD":
+            continue
+    safe_lines.append(line)
+
+descriptor, temporary_name = tempfile.mkstemp(prefix=".env-", dir=path.parent)
+temporary_path = Path(temporary_name)
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
+        output.write("\n".join(safe_lines).rstrip() + "\n")
+        output.flush()
+        os.fsync(output.fileno())
+    temporary_path.chmod(0o600)
+    os.replace(temporary_path, path)
+finally:
+    temporary_path.unlink(missing_ok=True)
+PY
+fi
 copy_if_exists "$APP_DIR/installed.lock" "$BACKUP_DIR/install/installed.lock"
 copy_if_exists "$APP_DIR/VERSION" "$BACKUP_DIR/install/VERSION"
 
@@ -98,6 +152,34 @@ if [[ ${#app_items[@]} -gt 0 ]]; then
     -czf "$BACKUP_DIR/app-files.tar.gz" \
     -C "$APP_DIR" \
     "${app_items[@]}"
+fi
+
+if [[ "$INCLUDE_STORAGE" -eq 1 ]]; then
+  storage_items=()
+  for directory in original preview thumbnail; do
+    if [[ -d "$APP_DIR/storage/$directory" ]]; then
+      storage_items+=("storage/$directory")
+    fi
+  done
+
+  if [[ ${#storage_items[@]} -gt 0 ]]; then
+    tar -czf "$BACKUP_DIR/storage-files.tar.gz" -C "$APP_DIR" "${storage_items[@]}"
+  else
+    tar -czf "$BACKUP_DIR/storage-files.tar.gz" --files-from /dev/null
+  fi
+
+  "$PYTHON_BIN" - "$BACKUP_DIR/storage-backup.json" "${storage_items[@]}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+manifest_path.write_text(
+    json.dumps({"directories": [Path(item).name for item in sys.argv[2:]]}, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
+  echo "Durable image storage archived"
 fi
 
 if [[ "$SKIP_DATABASE" -eq 0 ]]; then
@@ -227,6 +309,7 @@ Contents:
 - install/installed.lock when present
 - install/VERSION when present
 - app-files.tar.gz for application files
+- storage-files.tar.gz for original, preview and thumbnail files when requested
 - database/ for SQLite or MySQL dump when database backup is enabled
 
 Restore strategy:

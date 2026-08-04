@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 import { imagePlaceholderFor } from '../utils/imagePlaceholder'
 
 const props = defineProps({
@@ -11,7 +11,7 @@ const props = defineProps({
 
 const emit = defineEmits(['open'])
 
-const imageUrl = computed(() => storageUrl(props.image.thumbnail_path || props.image.preview_path || props.image.file_path))
+const imageUrl = computed(() => mediaUrl(props.image, 'thumbnail'))
 const placeholderUrl = computed(() => imagePlaceholderFor(props.image))
 const title = computed(() => props.image.original_filename || props.image.filename || '图片')
 const displayImageUrl = ref('')

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeft, ArrowRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
 import { imageLoadingPlaceholders } from '../utils/imagePlaceholder'
 
@@ -38,11 +38,11 @@ const slideshowStyle = computed(() => ({
 }))
 
 function imageSrc(image) {
-  return storageUrl(image?.file_path || image?.preview_path || image?.thumbnail_path) || fallbackImage
+  return mediaUrl(image, 'original') || fallbackImage
 }
 
 function thumbnailSrc(image) {
-  return storageUrl(image?.thumbnail_path || image?.preview_path || image?.file_path) || fallbackImage
+  return mediaUrl(image, 'thumbnail') || fallbackImage
 }
 
 function withRetryParam(source, retry) {

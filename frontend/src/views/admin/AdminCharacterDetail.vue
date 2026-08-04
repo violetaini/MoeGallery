@@ -46,6 +46,7 @@ async function loadCharacter() {
   pageLoading.value = true
   try {
     character.value = await galleryApi.character(characterId.value)
+    imageTotal.value = character.value.image_count || 0
   } finally {
     pageLoading.value = false
   }

@@ -87,27 +87,36 @@ def save_image_files(
 
     original_path = settings.storage_path / "original" / original_filename_on_disk
     thumbnail_path = settings.storage_path / "thumbnail" / thumbnail_filename
+    preview_filename = f"{unique}.webp" if requires_sdr_preview(inspection.dynamic_range) else None
+    preview_path = settings.storage_path / "preview" / preview_filename if preview_filename else None
 
-    if transcode_hdr_to_avif:
-        save_hdr_avif_image(data, original_path)
-        mime_type = AVIF_MIME_TYPE
-        file_size = original_path.stat().st_size
-    elif preserve_original:
-        original_path.write_bytes(data)
-        mime_type = inspection.mime_type
-        file_size = original_path.stat().st_size
-    else:
-        save_webp_image(data, original_path)
-        mime_type = WEBP_MIME_TYPE
-        file_size = original_path.stat().st_size
+    try:
+        if transcode_hdr_to_avif:
+            save_hdr_avif_image(data, original_path)
+            mime_type = AVIF_MIME_TYPE
+            file_size = original_path.stat().st_size
+        elif preserve_original:
+            original_path.write_bytes(data)
+            mime_type = inspection.mime_type
+            file_size = original_path.stat().st_size
+        else:
+            save_webp_image(data, original_path)
+            mime_type = WEBP_MIME_TYPE
+            file_size = original_path.stat().st_size
 
-    preview_relative_path = None
-    if requires_sdr_preview(inspection.dynamic_range):
-        preview_filename = f"{unique}.webp"
-        preview_path = settings.storage_path / "preview" / preview_filename
-        save_webp_derivative(data, preview_path, settings.preview_max_size)
-        preview_relative_path = f"preview/{preview_filename}"
-    save_webp_derivative(data, thumbnail_path, settings.thumbnail_max_size)
+        if preview_path:
+            save_webp_derivative(data, preview_path, settings.preview_max_size)
+        save_webp_derivative(data, thumbnail_path, settings.thumbnail_max_size)
+    except Exception:
+        for generated_path in (original_path, preview_path, thumbnail_path):
+            if generated_path and generated_path.exists() and generated_path.is_file():
+                try:
+                    generated_path.unlink()
+                except OSError:
+                    pass
+        raise
+
+    preview_relative_path = f"preview/{preview_filename}" if preview_filename else None
 
     return {
         "filename": original_filename_on_disk,
@@ -128,7 +137,14 @@ def save_upload_task_file(data: bytes, original_filename: str | None) -> str:
     suffix = Path(original_filename or "").suffix.lower() or ".bin"
     filename = f"{uuid4().hex}{suffix}"
     path = settings.storage_path / "tasks" / filename
-    path.write_bytes(data)
+    try:
+        path.write_bytes(data)
+    except OSError:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return f"tasks/{filename}"
 
 

@@ -10,12 +10,19 @@ from sqlalchemy import func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import require_system_read
 from app.config import ROOT_DIR, auth_secret_health, settings
-from app.database import engine, get_db
+from app.database import database_concurrency_info, engine, get_db
 from app.models import Image
-from app.services.app_setting_service import get_upload_claim_batch_size, get_upload_worker_count
+from app.services.app_setting_service import (
+    get_upload_claim_batch_size,
+    get_upload_failed_retention_days,
+    get_upload_task_max_attempts,
+    get_upload_worker_count,
+    get_upload_worker_profile,
+)
 from app.services.release_service import current_app_version, latest_release_info, parse_semver
+from app.services.upload_task_service import upload_queue_stats
 from app.utils import image_process
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -64,6 +71,7 @@ def _database_info(db: Session) -> dict:
         "exists": True,
         "size_bytes": 0,
         "message": "ok",
+        "concurrency": database_concurrency_info(db),
     }
     if dialect == "sqlite":
         database_path = url.database or ""
@@ -124,7 +132,7 @@ def _application_info(db: Session) -> dict:
 
 @router.get("/health")
 def system_health(
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_system_read)],
     db: Annotated[Session, Depends(get_db)],
 ):
     database_info = _database_info(db)
@@ -172,6 +180,7 @@ def system_health(
         consistency_message = "legacy SDR or animated preview files are pending cleanup"
     else:
         consistency_message = "required image variant counts differ from image records"
+    worker_profile = get_upload_worker_profile(db)
     return {
         "application": application_info,
         "database": {
@@ -202,7 +211,22 @@ def system_health(
         },
         "upload_queue": {
             "worker_count": get_upload_worker_count(db),
+            "worker_requested": worker_profile["requested"],
+            "worker_limit": worker_profile["limit"],
+            "database_profile": worker_profile["profile"],
             "claim_batch_size": get_upload_claim_batch_size(db),
+            "max_attempts": get_upload_task_max_attempts(db),
+            "failed_retention_days": get_upload_failed_retention_days(db),
+            **upload_queue_stats(db),
+        },
+        "media_delivery": {
+            "route": "/media/{image_id}/{variant}/{media_version}",
+            "mode": "nginx_internal_redirect" if settings.media_accel_redirect_prefix else "application_file_response",
+            "accel_redirect_enabled": bool(settings.media_accel_redirect_prefix),
+            "accel_redirect_prefix": settings.media_accel_redirect_prefix,
+            "public_browser_cache_seconds": settings.media_public_browser_cache_seconds,
+            "public_shared_cache_seconds": settings.media_public_shared_cache_seconds,
+            "private_cache_control": "private, no-store, max-age=0",
         },
         "security": {
             "auth_secret": auth_secret_health(settings.auth_secret),

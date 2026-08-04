@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Search } from '@element-plus/icons-vue'
-import { storageUrl } from '../../api/client'
+import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import AdminImageEditOverlay from '../../components/AdminImageEditOverlay.vue'
 import AdminImageWall from '../../components/AdminImageWall.vue'
@@ -69,7 +69,7 @@ function imageLabel(row) {
 }
 
 function imageThumb(row) {
-  return storageUrl(row.thumbnail_path || row.preview_path || row.file_path)
+  return mediaUrl(row, 'thumbnail')
 }
 
 function clearSelection() {

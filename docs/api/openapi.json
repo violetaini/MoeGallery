@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Anime Gallery Media Server",
-    "description": "\nAnime Gallery Media Server API 覆盖前台图片浏览、后台媒体资料维护、批量上传任务、\n元数据导入、部署设置与系统健康检查。\n\n鉴权模型：\n\n- 浏览器后台会话使用 `agms_admin_session` HttpOnly Cookie。\n- 运维脚本建议使用 `Authorization: Bearer <AGMS_API_KEYS value>`。\n- 使用 Cookie 会话调用非安全方法时，还需要提交与 `agms_admin_csrf` Cookie 匹配的 `X-CSRF-Token`。\n- API Key 不依赖 Cookie，因此不需要 CSRF；请只在服务端保存，泄露后及时轮换。\n",
+    "description": "\nAnime Gallery Media Server API 覆盖前台图片浏览、后台媒体资料维护、批量上传任务、\n元数据导入、部署设置与系统健康检查。\n\n鉴权模型：\n\n- 浏览器后台会话使用 `agms_admin_session` HttpOnly Cookie。\n- 运维脚本建议使用 `Authorization: Bearer <AGMS_API_KEYS value>`，并只授予任务实际需要的权限。\n- 使用 Cookie 会话调用非安全方法时，还需要提交与 `agms_admin_csrf` Cookie 匹配的 `X-CSRF-Token`。\n- API Key 不依赖 Cookie，因此不需要 CSRF；可在后台独立创建、设置到期时间、调整权限或立即撤销。\n- 旧版本升级后，已有 API Key 默认迁移为全部权限，避免现有自动化任务中断。\n",
     "version": "0.1.5"
   },
   "servers": [
@@ -34,7 +34,7 @@
                   "summary": "浏览器管理员登录",
                   "value": {
                     "username": "admin",
-                    "password": "change-this-password"
+                    "password": "use-a-strong-password-2026"
                   }
                 }
               }
@@ -133,7 +133,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -143,7 +143,8 @@
             }
           }
         },
-        "description": "撤销当前 Cookie 会话并清理管理员 Cookie。"
+        "description": "撤销当前 Cookie 会话并清理管理员 Cookie。",
+        "x-api-key-scopes": []
       }
     },
     "/api/auth/me": {
@@ -224,7 +225,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -234,7 +235,8 @@
             }
           }
         },
-        "description": "返回已登录管理员资料。支持浏览器会话 Cookie 或运维 API Key。"
+        "description": "返回已登录管理员资料。支持浏览器会话 Cookie 或运维 API Key。",
+        "x-api-key-scopes": []
       }
     },
     "/api/install/status": {
@@ -256,7 +258,7 @@
             }
           }
         },
-        "description": "返回应用是否已经完成初始化。"
+        "description": "仅返回应用是否完成初始化、是否需要安装令牌以及是否等待重启。"
       }
     },
     "/api/install": {
@@ -266,7 +268,26 @@
         ],
         "summary": "执行首次安装",
         "operationId": "install_api_install_post",
+        "parameters": [
+          {
+            "name": "X-Install-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Install-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -278,7 +299,7 @@
                   "value": {
                     "database_type": "sqlite",
                     "admin_username": "admin",
-                    "admin_password": "change-this-password"
+                    "admin_password": "use-a-strong-password-2026"
                   }
                 },
                 "mysqlInstall": {
@@ -291,13 +312,12 @@
                     "mysql_username": "anime_gallery",
                     "mysql_password": "change-this-db-password",
                     "admin_username": "admin",
-                    "admin_password": "change-this-password"
+                    "admin_password": "use-a-strong-password-2026"
                   }
                 }
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -321,43 +341,51 @@
             }
           }
         },
-        "description": "初始化 SQLite 或 MySQL 部署配置，创建管理员账号，执行迁移，写入 `.env`，并创建安装锁。"
+        "description": "使用 `X-Install-Token` 一次性令牌初始化 SQLite 或 MySQL，创建管理员账号、执行迁移并原子写入安装状态。"
       }
     },
-    "/storage/{relative_path}": {
+    "/media/{image_id}/{variant}/{media_version}": {
       "get": {
         "tags": [
           "storage"
         ],
-        "summary": "读取存储媒体文件",
-        "operationId": "get_storage_file_storage__relative_path__get",
+        "summary": "读取版本化图片资源",
+        "operationId": "get_media_file_media__image_id___variant___media_version__get",
         "parameters": [
           {
-            "name": "relative_path",
+            "name": "image_id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Relative Path"
+              "type": "integer",
+              "title": "Image Id"
             },
-            "description": "图片元数据返回的存储相对路径，例如 `preview/example.webp`。"
+            "description": "图片数据库 ID。"
           },
           {
-            "name": "agms_admin_session",
-            "in": "cookie",
-            "required": false,
+            "name": "variant",
+            "in": "path",
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
+              "enum": [
+                "original",
+                "preview",
+                "thumbnail"
               ],
-              "title": "Agms Admin Session"
+              "type": "string",
+              "title": "Variant"
             },
-            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+            "description": "随机图片输出尺寸：`original`、`preview` 或 `thumbnail`。衍生图缺失时会回退到可用的较大图片。"
+          },
+          {
+            "name": "media_version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Media Version"
+            },
+            "description": "图片访问策略版本。必须与图片元数据中的 `media_version` 一致。"
           }
         ],
         "responses": {
@@ -380,7 +408,49 @@
             }
           }
         },
-        "description": "在路径规范化和数据库权限检查后，返回原图、预览图或缩略图。"
+        "description": "按图片 ID、尺寸和媒体版本读取文件。公开图片可短期缓存，私有或 hidden 图片禁止共享缓存；版本不匹配时返回 404。"
+      }
+    },
+    "/storage/{relative_path}": {
+      "get": {
+        "tags": [
+          "storage"
+        ],
+        "summary": "读取存储媒体文件",
+        "operationId": "get_storage_file_storage__relative_path__get",
+        "parameters": [
+          {
+            "name": "relative_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Relative Path"
+            },
+            "description": "图片元数据返回的存储相对路径，例如 `preview/example.webp`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "兼容旧客户端的路径资源地址。在路径规范化和数据库权限检查后返回文件；新客户端应使用按图片 ID 和媒体版本寻址的 `/media` 接口。"
       }
     },
     "/api/images/random": {
@@ -542,7 +612,7 @@
                         "orientation": "landscape",
                         "rating": "safe"
                       },
-                      "image_url": "/storage/preview/example.webp",
+                      "image_url": "/media/101/preview/1",
                       "requested_variant": "preview",
                       "served_variant": "preview",
                       "resolved_device": "pc",
@@ -923,7 +993,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -933,7 +1003,10 @@
             }
           }
         },
-        "description": "上传文件，校验后缀与内容，支持静态 SDR 原图转 WebP、动图保留原格式、HDR JXR 转 HDR AVIF。"
+        "description": "上传文件，校验后缀与内容，支持静态 SDR 原图转 WebP、动图保留原格式、HDR JXR 转 HDR AVIF。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
       }
     },
     "/api/images/preview": {
@@ -1012,7 +1085,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1022,7 +1095,10 @@
             }
           }
         },
-        "description": "文件正式入库前，为选中的上传文件返回临时 WebP 预览图。"
+        "description": "文件正式入库前，为选中的上传文件返回临时 WebP 预览图。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
       }
     },
     "/api/images/batch": {
@@ -1121,7 +1197,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1131,7 +1207,10 @@
             }
           }
         },
-        "description": "批量修改作品、角色、分级、收藏数、来源地址和作者。文件名不允许批量修改。"
+        "description": "批量修改作品、角色、分级、收藏数、来源地址和作者。文件名不允许批量修改。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       },
       "delete": {
         "tags": [
@@ -1221,7 +1300,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1231,7 +1310,10 @@
             }
           }
         },
-        "description": "删除多张图片记录及其原图、预览图和缩略图文件。"
+        "description": "删除多张图片记录及其原图、预览图和缩略图文件。\n\n所需 API Key 权限：`library:delete`。",
+        "x-api-key-scopes": [
+          "library:delete"
+        ]
       }
     },
     "/api/images/{image_id}": {
@@ -1381,7 +1463,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1391,7 +1473,10 @@
             }
           }
         },
-        "description": "更新单张图片的元数据和关联关系。修改文件名时必须保留原后缀。"
+        "description": "更新单张图片的元数据和关联关系。修改文件名时必须保留原后缀。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       },
       "delete": {
         "tags": [
@@ -1463,7 +1548,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1473,7 +1558,10 @@
             }
           }
         },
-        "description": "删除图片记录及其全部衍生文件。"
+        "description": "删除图片记录及其全部衍生文件。\n\n所需 API Key 权限：`library:delete`。",
+        "x-api-key-scopes": [
+          "library:delete"
+        ]
       }
     },
     "/api/images/{image_id}/view": {
@@ -1684,7 +1772,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1694,7 +1782,10 @@
             }
           }
         },
-        "description": "将一个或多个文件加入服务端并发上传处理队列。"
+        "description": "先校验整批文件、关联 ID 和 SHA-256，再以单个事务加入服务端并发处理队列。任一文件校验或任务提交失败时，本批次不会留下任务或暂存文件。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
       },
       "get": {
         "tags": [
@@ -1731,7 +1822,35 @@
             "description": "可选，逗号分隔的上传任务 ID 列表，用于直接查询指定任务。"
           },
           {
-            "name": "limit",
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "从 1 开始的页码。"
+          },
+          {
+            "name": "page_size",
             "in": "query",
             "required": false,
             "schema": {
@@ -1739,9 +1858,9 @@
               "maximum": 200,
               "minimum": 1,
               "default": 50,
-              "title": "Limit"
+              "title": "Page Size"
             },
-            "description": "最多返回的结果数量。"
+            "description": "每页记录数。大多数列表接口最多返回 100 条。"
           },
           {
             "name": "agms_admin_session",
@@ -1793,7 +1912,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1803,7 +1922,10 @@
             }
           }
         },
-        "description": "返回最近的排队、运行、成功或失败上传任务，供管理员监控。"
+        "description": "分页返回上传任务，可按排队、运行、等待重试、成功、失败或已取消状态筛选。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
       }
     },
     "/api/upload-tasks/check-duplicates": {
@@ -1884,7 +2006,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1894,7 +2016,10 @@
             }
           }
         },
-        "description": "用客户端计算的 SHA-256 与已入库图片和待处理队列做重复预检。"
+        "description": "批量比对客户端计算的 SHA-256，分别标记图库已有、上传队列已有和本批次内重复。服务端仍会在最终写入时执行唯一性保护。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
       }
     },
     "/api/upload-tasks/check-duplicates-files": {
@@ -1975,7 +2100,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -1985,10 +2110,286 @@
             }
           }
         },
-        "description": "当客户端未计算哈希时，由服务端对选中文件执行重复预检。"
+        "description": "当客户端未计算哈希时，由服务端批量计算 SHA-256 并执行图库、队列和批次内重复预检。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
+      }
+    },
+    "/api/upload-tasks/{task_id}/retry": {
+      "post": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "重试上传任务",
+        "operationId": "retry_task_api_upload_tasks__task_id__retry_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            },
+            "description": "任务 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTaskRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "立即重试仍保留暂存文件的失败任务，或提前执行等待重试的任务。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
+      }
+    },
+    "/api/upload-tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "取消上传任务",
+        "operationId": "cancel_task_api_upload_tasks__task_id__cancel_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            },
+            "description": "任务 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTaskRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "排队任务立即取消；处理中任务记录取消请求，并在安全检查点结束。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
       }
     },
     "/api/upload-tasks/{task_id}": {
+      "delete": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "删除上传任务记录",
+        "operationId": "remove_task_api_upload_tasks__task_id__delete",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            },
+            "description": "任务 ID。"
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "删除已完成、失败或已取消的任务记录，并清理仍保留的暂存文件。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
+      },
       "get": {
         "tags": [
           "upload-tasks"
@@ -2047,8 +2448,10 @@
                     "summary": "示例响应",
                     "value": {
                       "id": 1,
-                      "status": "succeeded",
-                      "filename": "example.webp",
+                      "status": "success",
+                      "original_filename": "example.webp",
+                      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "preflight_duplicate": false,
                       "error_message": null,
                       "image_id": 100
                     }
@@ -2078,7 +2481,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2088,7 +2491,126 @@
             }
           }
         },
-        "description": "返回单个上传任务的状态、结果或错误信息。"
+        "description": "返回单个上传任务的状态、结果或错误信息。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
+      }
+    },
+    "/api/upload-tasks/batch/actions": {
+      "post": {
+        "tags": [
+          "upload-tasks"
+        ],
+        "summary": "批量操作上传任务",
+        "operationId": "batch_task_action_api_upload_tasks_batch_actions_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadTaskBatchActionRequest"
+              },
+              "examples": {
+                "retryFailed": {
+                  "summary": "批量重试失败任务",
+                  "value": {
+                    "ids": [
+                      123,
+                      124
+                    ],
+                    "action": "retry"
+                  }
+                },
+                "cancelActive": {
+                  "summary": "批量取消活动任务",
+                  "value": {
+                    "ids": [
+                      125,
+                      126
+                    ],
+                    "action": "cancel"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTaskBatchActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "批量重试、取消或删除任务记录；不符合当前操作条件的任务计入 skipped。删除成功任务只清理任务历史，不删除已经入库的图片。\n\n所需 API Key 权限：`uploads:manage`。",
+        "x-api-key-scopes": [
+          "uploads:manage"
+        ]
       }
     },
     "/api/updates/check": {
@@ -2175,7 +2697,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2185,7 +2707,10 @@
             }
           }
         },
-        "description": "读取当前版本并查询 GitHub Latest Release，返回是否有新版本以及更新执行模式。"
+        "description": "读取当前版本并查询 GitHub Latest Release，返回是否有新版本以及更新执行模式。\n\n所需 API Key 权限：`updates:read`。",
+        "x-api-key-scopes": [
+          "updates:read"
+        ]
       }
     },
     "/api/updates/tasks": {
@@ -2269,7 +2794,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2279,7 +2804,10 @@
             }
           }
         },
-        "description": "返回最近的后台更新任务、进度和日志摘要。"
+        "description": "返回最近的后台更新任务、进度和日志摘要。\n\n所需 API Key 权限：`updates:read`。",
+        "x-api-key-scopes": [
+          "updates:read"
+        ]
       },
       "post": {
         "tags": [
@@ -2373,7 +2901,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2383,7 +2911,10 @@
             }
           }
         },
-        "description": "创建下载校验或正式更新任务。正式更新会校验 SHA256、备份、迁移数据库并重启服务。"
+        "description": "创建下载校验或正式更新任务。正式更新会校验 SHA256、备份、迁移数据库并重启服务。\n\n所需 API Key 权限：`updates:run`。",
+        "x-api-key-scopes": [
+          "updates:run"
+        ]
       }
     },
     "/api/updates/tasks/{task_id}": {
@@ -2464,7 +2995,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2474,7 +3005,10 @@
             }
           }
         },
-        "description": "返回单个更新任务的状态、进度和日志。"
+        "description": "返回单个更新任务的状态、进度和日志。\n\n所需 API Key 权限：`updates:read`。",
+        "x-api-key-scopes": [
+          "updates:read"
+        ]
       }
     },
     "/api/imports/metadata": {
@@ -2566,7 +3100,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2576,7 +3110,10 @@
             }
           }
         },
-        "description": "从 CSV、JSON、XLSX 或 XLSM 导入作品和角色。正式提交前建议先使用 `dry_run=true` 预览。"
+        "description": "从 CSV、JSON、XLSX 或 XLSM 导入作品和角色。正式提交前建议先使用 `dry_run=true` 预览。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       }
     },
     "/api/imports/metadata/template": {
@@ -2662,7 +3199,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2672,7 +3209,10 @@
             }
           }
         },
-        "description": "下载包含全部支持字段的空白 CSV、JSON、XLSX 或 XLSM 模板。"
+        "description": "下载包含全部支持字段的空白 CSV、JSON、XLSX 或 XLSM 模板。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       }
     },
     "/api/works": {
@@ -2765,7 +3305,7 @@
             }
           }
         },
-        "description": "获取作品记录，可按关键词筛选。"
+        "description": "分页获取作品记录，可按关键词筛选。传入 `page` 和 `page_size` 控制页码。"
       },
       "post": {
         "tags": [
@@ -2844,7 +3384,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -2854,7 +3394,10 @@
             }
           }
         },
-        "description": "创建作品记录，并可同时绑定元数据和图片。"
+        "description": "创建作品记录，并可同时绑定元数据和图片。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       }
     },
     "/api/works/{work_id}": {
@@ -2915,7 +3458,7 @@
             }
           }
         },
-        "description": "返回单个作品、作品角色和相关图片。"
+        "description": "返回作品基本资料以及 `character_count`、`image_count`。角色和图片不在详情中展开，请分别使用 `/api/characters?work_id=...` 与 `/api/images?work_id=...` 分页获取。访客图片计数不包含私有或 hidden 图片。"
       },
       "put": {
         "tags": [
@@ -3004,7 +3547,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3014,7 +3557,10 @@
             }
           }
         },
-        "description": "更新作品元数据、封面图和背景图绑定。"
+        "description": "更新作品元数据、封面图和背景图绑定。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       },
       "delete": {
         "tags": [
@@ -3086,7 +3632,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3096,7 +3642,10 @@
             }
           }
         },
-        "description": "删除作品记录并移除相关绑定。"
+        "description": "删除作品记录并移除相关绑定。\n\n所需 API Key 权限：`library:delete`。",
+        "x-api-key-scopes": [
+          "library:delete"
+        ]
       }
     },
     "/api/characters": {
@@ -3206,7 +3755,7 @@
             }
           }
         },
-        "description": "获取角色记录，可按作品或关键词筛选。"
+        "description": "分页获取角色记录，可按作品或关键词筛选。传入 `work_id` 可列出指定作品的角色。"
       },
       "post": {
         "tags": [
@@ -3285,7 +3834,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3295,7 +3844,10 @@
             }
           }
         },
-        "description": "创建角色，并可同时绑定作品和头像。"
+        "description": "创建角色，并可同时绑定作品和头像。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       }
     },
     "/api/characters/{character_id}": {
@@ -3356,7 +3908,7 @@
             }
           }
         },
-        "description": "返回单个角色和相关图片。"
+        "description": "返回角色基本资料和 `image_count`。相关图片不在详情中展开，请使用 `/api/images?character_id=...` 分页获取。访客计数不包含私有或 hidden 图片。"
       },
       "put": {
         "tags": [
@@ -3445,7 +3997,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3455,7 +4007,10 @@
             }
           }
         },
-        "description": "更新角色元数据、作品绑定和头像图片。"
+        "description": "更新角色元数据、作品绑定和头像图片。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       },
       "delete": {
         "tags": [
@@ -3527,7 +4082,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3537,7 +4092,10 @@
             }
           }
         },
-        "description": "删除单个角色并移除相关绑定。"
+        "description": "删除单个角色并移除相关绑定。\n\n所需 API Key 权限：`library:delete`。",
+        "x-api-key-scopes": [
+          "library:delete"
+        ]
       }
     },
     "/api/tags": {
@@ -3726,7 +4284,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3736,7 +4294,10 @@
             }
           }
         },
-        "description": "创建兼容旧数据的标签记录。"
+        "description": "创建兼容旧数据的标签记录。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       }
     },
     "/api/tags/{tag_id}": {
@@ -3886,7 +4447,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3896,7 +4457,10 @@
             }
           }
         },
-        "description": "更新兼容旧数据的标签记录。"
+        "description": "更新兼容旧数据的标签记录。\n\n所需 API Key 权限：`library:write`。",
+        "x-api-key-scopes": [
+          "library:write"
+        ]
       },
       "delete": {
         "tags": [
@@ -3968,7 +4532,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -3978,7 +4542,10 @@
             }
           }
         },
-        "description": "删除兼容旧数据的标签记录。"
+        "description": "删除兼容旧数据的标签记录。\n\n所需 API Key 权限：`library:delete`。",
+        "x-api-key-scopes": [
+          "library:delete"
+        ]
       }
     },
     "/api/search": {
@@ -4107,7 +4674,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -4117,7 +4684,10 @@
             }
           }
         },
-        "description": "返回后台首页统计计数。"
+        "description": "返回后台首页统计计数。\n\n所需 API Key 权限：`system:read`。",
+        "x-api-key-scopes": [
+          "system:read"
+        ]
       }
     },
     "/api/settings": {
@@ -4188,7 +4758,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -4198,7 +4768,10 @@
             }
           }
         },
-        "description": "返回管理员偏好、前台首页图片绑定、随机图片 API 默认值、上传队列参数、GitHub 更新检查代理和运维 API Key。"
+        "description": "返回管理员偏好、前台首页图片绑定、随机图片 API 默认值、上传队列参数、GitHub 更新检查代理和运维 API Key。\n\n所需 API Key 权限：`settings:manage`。",
+        "x-api-key-scopes": [
+          "settings:manage"
+        ]
       },
       "put": {
         "tags": [
@@ -4244,10 +4817,12 @@
               },
               "examples": {
                 "uploadWorkers": {
-                  "summary": "调整上传 worker 和更新检查代理",
+                  "summary": "调整上传 worker、重试与保留期限",
                   "value": {
                     "upload_worker_count": 24,
                     "upload_claim_batch_size": 4,
+                    "upload_task_max_attempts": 3,
+                    "upload_failed_retention_days": 7,
                     "image_manage_view_mode": "waterfall",
                     "github_proxy_url": "https://gh-proxy.example.com/"
                   }
@@ -4288,7 +4863,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -4298,7 +4873,10 @@
             }
           }
         },
-        "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、随机图片 API 默认值、上传 worker 参数和 GitHub 更新检查代理。"
+        "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、随机图片 API 默认值、受数据库并发上限约束的上传 worker 参数和 GitHub 更新检查代理。\n\n所需 API Key 权限：`settings:manage`。",
+        "x-api-key-scopes": [
+          "settings:manage"
+        ]
       }
     },
     "/api/settings/public": {
@@ -4389,7 +4967,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -4399,7 +4977,10 @@
             }
           }
         },
-        "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。"
+        "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。\n\n所需 API Key 权限：`settings:manage`。",
+        "x-api-key-scopes": [
+          "settings:manage"
+        ]
       }
     },
     "/api/settings/api-keys/reset": {
@@ -4470,7 +5051,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -4480,7 +5061,470 @@
             }
           }
         },
-        "description": "生成新的默认 `AGMS_API_KEYS`，写入 `.env`，并使旧 API Key 立即失效。"
+        "description": "生成新的默认 `AGMS_API_KEYS`，写入 `.env`，并使旧 API Key 立即失效。\n\n所需 API Key 权限：`api_keys:manage`。",
+        "x-api-key-scopes": [
+          "api_keys:manage"
+        ]
+      }
+    },
+    "/api/settings/api-keys": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "获取 API Key 列表",
+        "operationId": "read_operations_api_keys_api_settings_api_keys_get",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyRead"
+                  },
+                  "title": "Response Read Operations Api Keys Api Settings Api Keys Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "返回完整 API Key、权限、有效期及最近调用信息。仅 API Key 管理权限可调用。\n\n所需 API Key 权限：`api_keys:manage`。",
+        "x-api-key-scopes": [
+          "api_keys:manage"
+        ]
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "创建 API Key",
+        "operationId": "add_operations_api_key_api_settings_api_keys_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "创建可独立授权和设置有效期的新 API Key。\n\n所需 API Key 权限：`api_keys:manage`。",
+        "x-api-key-scopes": [
+          "api_keys:manage"
+        ]
+      }
+    },
+    "/api/settings/api-keys/{key_id}": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "修改 API Key",
+        "operationId": "edit_operations_api_key_api_settings_api_keys__key_id__put",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "修改 API Key 名称、权限范围和有效期，不更换密钥值。\n\n所需 API Key 权限：`api_keys:manage`。",
+        "x-api-key-scopes": [
+          "api_keys:manage"
+        ]
+      },
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "撤销 API Key",
+        "operationId": "delete_operations_api_key_api_settings_api_keys__key_id__delete",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "立即撤销指定 API Key，后续请求会被拒绝。\n\n所需 API Key 权限：`api_keys:manage`。",
+        "x-api-key-scopes": [
+          "api_keys:manage"
+        ]
+      }
+    },
+    "/api/settings/api-keys/{key_id}/rotate": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "刷新 API Key",
+        "operationId": "rotate_operations_api_key_api_settings_api_keys__key_id__rotate_post",
+        "security": [
+          {
+            "OperationsApiKey": []
+          },
+          {
+            "AdminSessionCookie": [],
+            "CsrfTokenCookie": [],
+            "CsrfTokenHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "agms_admin_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agms Admin Session"
+            },
+            "description": "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要鉴权，或提交的令牌无效。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "CSRF validation failed"
+                }
+              }
+            }
+          }
+        },
+        "description": "重新生成指定 API Key 的密钥值，保留名称、权限和有效期，并使旧密钥立即失效。\n\n所需 API Key 权限：`api_keys:manage`。",
+        "x-api-key-scopes": [
+          "api_keys:manage"
+        ]
       }
     },
     "/api/system/health": {
@@ -4532,7 +5576,13 @@
                       "database": {
                         "ok": true,
                         "dialect": "mysql",
-                        "url": "mysql+pymysql://user:***@127.0.0.1:3306/anime_gallery"
+                        "url": "mysql+pymysql://user:***@127.0.0.1:3306/anime_gallery",
+                        "concurrency": {
+                          "profile": "mysql_pool",
+                          "pool_size": 24,
+                          "max_overflow": 40,
+                          "worker_limit": 60
+                        }
                       },
                       "storage": {
                         "ok": true
@@ -4570,7 +5620,7 @@
             }
           },
           "403": {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {
               "application/json": {
                 "example": {
@@ -4580,7 +5630,10 @@
             }
           }
         },
-        "description": "返回程序版本、最新 Release、数据库迁移状态、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"
+        "description": "返回程序版本、最新 Release、数据库迁移状态、SQLite WAL 或 MySQL 连接池、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。\n\n所需 API Key 权限：`system:read`。",
+        "x-api-key-scopes": [
+          "system:read"
+        ]
       }
     },
     "/api/health": {
@@ -4654,12 +5707,39 @@
             "title": "Upload Worker Count",
             "default": 12
           },
+          "upload_worker_limit": {
+            "type": "integer",
+            "maximum": 96.0,
+            "minimum": 1.0,
+            "title": "Upload Worker Limit",
+            "default": 96
+          },
+          "database_concurrency_profile": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Database Concurrency Profile",
+            "default": "generic"
+          },
           "upload_claim_batch_size": {
             "type": "integer",
             "maximum": 100.0,
             "minimum": 1.0,
             "title": "Upload Claim Batch Size",
             "default": 1
+          },
+          "upload_task_max_attempts": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Upload Task Max Attempts",
+            "default": 3
+          },
+          "upload_failed_retention_days": {
+            "type": "integer",
+            "maximum": 90.0,
+            "minimum": 1.0,
+            "title": "Upload Failed Retention Days",
+            "default": 7
           },
           "github_proxy_url": {
             "type": "string",
@@ -4692,12 +5772,24 @@
               }
             ]
           },
+          "admin_password_change_required": {
+            "type": "boolean",
+            "title": "Admin Password Change Required",
+            "default": false
+          },
           "operations_api_keys": {
             "items": {
               "$ref": "#/components/schemas/ApiKeyRead"
             },
             "type": "array",
             "title": "Operations Api Keys"
+          },
+          "api_key_scopes": {
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyScopeRead"
+            },
+            "type": "array",
+            "title": "Api Key Scopes"
           },
           "home_slideshow_image_ids": {
             "items": {
@@ -4892,6 +5984,32 @@
             ],
             "title": "Upload Claim Batch Size"
           },
+          "upload_task_max_attempts": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Task Max Attempts"
+          },
+          "upload_failed_retention_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 90.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Failed Retention Days"
+          },
           "github_proxy_url": {
             "anyOf": [
               {
@@ -5064,8 +6182,49 @@
         "type": "object",
         "title": "AdminSettingsUpdate"
       },
+      "ApiKeyCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 9,
+            "minItems": 1,
+            "title": "Scopes"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "scopes"
+        ],
+        "title": "ApiKeyCreate"
+      },
       "ApiKeyRead": {
         "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
           "name": {
             "type": "string",
             "title": "Name"
@@ -5073,14 +6232,129 @@
           "key": {
             "type": "string",
             "title": "Key"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "full_access": {
+            "type": "boolean",
+            "title": "Full Access"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "last_used_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used Ip"
+          },
+          "status": {
+            "type": "string",
+            "pattern": "^(active|expired|revoked)$",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "key",
+          "scopes",
+          "full_access",
+          "status"
+        ],
+        "title": "ApiKeyRead"
+      },
+      "ApiKeyScopeRead": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "description"
+        ],
+        "title": "ApiKeyScopeRead"
+      },
+      "ApiKeyUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 9,
+            "minItems": 1,
+            "title": "Scopes"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
           }
         },
         "type": "object",
         "required": [
           "name",
-          "key"
+          "scopes"
         ],
-        "title": "ApiKeyRead"
+        "title": "ApiKeyUpdate"
       },
       "AuthUser": {
         "properties": {
@@ -5108,6 +6382,11 @@
                 "type": "null"
               }
             ]
+          },
+          "password_change_required": {
+            "type": "boolean",
+            "title": "Password Change Required",
+            "default": false
           }
         },
         "type": "object",
@@ -5467,13 +6746,11 @@
               }
             ]
           },
-          "images": {
-            "items": {
-              "$ref": "#/components/schemas/ImageSummary"
-            },
-            "type": "array",
-            "title": "Images",
-            "default": []
+          "image_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Image Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -5955,6 +7232,11 @@
             ],
             "title": "Preview Path"
           },
+          "media_version": {
+            "type": "integer",
+            "title": "Media Version",
+            "default": 1
+          },
           "mime_type": {
             "type": "string",
             "title": "Mime Type"
@@ -6162,6 +7444,11 @@
               }
             ],
             "title": "Preview Path"
+          },
+          "media_version": {
+            "type": "integer",
+            "title": "Media Version",
+            "default": 1
           },
           "mime_type": {
             "anyOf": [
@@ -6436,21 +7723,8 @@
           "admin_password": {
             "type": "string",
             "maxLength": 128,
-            "minLength": 6,
+            "minLength": 12,
             "title": "Admin Password"
-          },
-          "auth_secret": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 256,
-                "minLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Secret"
           }
         },
         "type": "object",
@@ -6490,25 +7764,20 @@
             "type": "boolean",
             "title": "Installed"
           },
-          "lock_exists": {
-            "type": "boolean",
-            "title": "Lock Exists"
-          },
-          "database_initialized": {
-            "type": "boolean",
-            "title": "Database Initialized"
-          },
           "restart_required": {
             "type": "boolean",
             "title": "Restart Required",
+            "default": false
+          },
+          "token_required": {
+            "type": "boolean",
+            "title": "Token Required",
             "default": false
           }
         },
         "type": "object",
         "required": [
-          "installed",
-          "lock_exists",
-          "database_initialized"
+          "installed"
         ],
         "title": "InstallStatus"
       },
@@ -6617,6 +7886,11 @@
                 "type": "null"
               }
             ]
+          },
+          "password_change_required": {
+            "type": "boolean",
+            "title": "Password Change Required",
+            "default": false
           }
         },
         "type": "object",
@@ -7419,6 +8693,11 @@
             "type": "boolean",
             "title": "Duplicate"
           },
+          "duplicate_in_queue": {
+            "type": "boolean",
+            "title": "Duplicate In Queue",
+            "default": false
+          },
           "duplicate_in_batch": {
             "type": "boolean",
             "title": "Duplicate In Batch"
@@ -7449,6 +8728,8 @@
               "$ref": "#/components/schemas/UploadDuplicateCheckRequestItem"
             },
             "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
             "title": "Items"
           }
         },
@@ -7473,6 +8754,7 @@
           },
           "sha256": {
             "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$",
             "title": "Sha256"
           }
         },
@@ -7498,6 +8780,52 @@
         ],
         "title": "UploadDuplicateCheckResponse"
       },
+      "UploadTaskBatchActionRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "retry",
+              "cancel",
+              "delete"
+            ],
+            "title": "Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids",
+          "action"
+        ],
+        "title": "UploadTaskBatchActionRequest"
+      },
+      "UploadTaskBatchActionResponse": {
+        "properties": {
+          "affected": {
+            "type": "integer",
+            "title": "Affected"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "affected",
+          "skipped"
+        ],
+        "title": "UploadTaskBatchActionResponse"
+      },
       "UploadTaskCreateResponse": {
         "properties": {
           "items": {
@@ -7522,11 +8850,26 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
           }
         },
         "type": "object",
         "required": [
-          "items"
+          "items",
+          "total",
+          "page",
+          "page_size"
         ],
         "title": "UploadTaskListResponse"
       },
@@ -7555,6 +8898,22 @@
             "type": "integer",
             "title": "File Size"
           },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "preflight_duplicate": {
+            "type": "boolean",
+            "title": "Preflight Duplicate",
+            "default": false
+          },
           "image_id": {
             "anyOf": [
               {
@@ -7570,6 +8929,79 @@
             "type": "boolean",
             "title": "Duplicate"
           },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count",
+            "default": 0
+          },
+          "max_attempts": {
+            "type": "integer",
+            "title": "Max Attempts",
+            "default": 3
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          },
+          "lease_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Expires At"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested",
+            "default": false
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "error_message": {
             "anyOf": [
               {
@@ -7580,6 +9012,23 @@
               }
             ],
             "title": "Error Message"
+          },
+          "staged_file_available": {
+            "type": "boolean",
+            "title": "Staged File Available",
+            "default": false
+          },
+          "staged_file_deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staged File Deleted At"
           },
           "created_at": {
             "type": "string",
@@ -7676,71 +9125,6 @@
           "type"
         ],
         "title": "ValidationError"
-      },
-      "WorkCharacterSummary": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "work_id": {
-            "type": "integer",
-            "title": "Work Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "original_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Original Name"
-          },
-          "avatar_image_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avatar Image Id"
-          },
-          "work": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WorkSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "avatar_image": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ImageSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "work_id",
-          "name"
-        ],
-        "title": "WorkCharacterSummary"
       },
       "WorkCreate": {
         "properties": {
@@ -8117,21 +9501,17 @@
               }
             ]
           },
-          "characters": {
-            "items": {
-              "$ref": "#/components/schemas/WorkCharacterSummary"
-            },
-            "type": "array",
-            "title": "Characters",
-            "default": []
+          "character_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Character Count",
+            "default": 0
           },
-          "images": {
-            "items": {
-              "$ref": "#/components/schemas/ImageSummary"
-            },
-            "type": "array",
-            "title": "Images",
-            "default": []
+          "image_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Image Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -8623,7 +10003,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "AGMS_API_KEY",
-        "description": "通过 `AGMS_API_KEYS` 配置的运维 API Key。"
+        "description": "后台创建的可分权运维 API Key。权限：`library:read` 媒体库读取；`uploads:manage` 图片上传；`library:write` 资料维护；`library:delete` 永久删除；`system:read` 系统只读；`settings:manage` 系统设置；`updates:read` 更新只读；`updates:run` 执行更新；`api_keys:manage` API Key 管理"
       },
       "AdminSessionCookie": {
         "type": "apiKey",

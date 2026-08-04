@@ -15,9 +15,11 @@ class LoginResponse(BaseModel):
     username: str
     avatar_image_id: int | None = None
     avatar_image: ImageSummary | None = None
+    password_change_required: bool = False
 
 
 class AuthUser(BaseModel):
     username: str
     avatar_image_id: int | None = None
     avatar_image: ImageSummary | None = None
+    password_change_required: bool = False

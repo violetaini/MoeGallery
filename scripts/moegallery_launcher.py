@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -122,8 +123,13 @@ class MoeGalleryLauncher:
     def child_environment(self) -> dict[str, str]:
         environment = os.environ.copy()
         environment.update(read_env_file(self.env_path))
+        environment.pop("AGMS_INSTALL_TOKEN", None)
         environment["AGMS_LAUNCHER_MANAGED"] = "1"
         environment["AGMS_LAUNCHER_APP_DIR"] = str(self.app_dir)
+        environment["AGMS_LISTEN_HOST"] = self.host
+        environment["AGMS_LISTEN_PORT"] = str(self.port)
+        if not (self.app_dir / "installed.lock").exists():
+            environment["AGMS_INSTALL_TOKEN"] = secrets.token_urlsafe(32)
         return environment
 
     def storage_root(self) -> Path:

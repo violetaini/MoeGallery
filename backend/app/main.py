@@ -1,5 +1,9 @@
+from contextlib import asynccontextmanager
+import logging
+import os
 from pathlib import PurePosixPath
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,10 +13,38 @@ from starlette.responses import HTMLResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
 from app.api import auth, characters, images, imports, install, search, settings as api_settings, stats, storage, system, tags, upload_tasks, updates, works
-from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, require_admin, verify_access_token, verify_api_key
+from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, require_system_read, verify_access_token, verify_api_key
 from app.config import ROOT_DIR, settings
 from app.openapi import configure_openapi
+from app.services.install_service import migrate_legacy_admin_password, prepare_install_token
 from app.services.storage_service import ensure_storage_dirs
+from app.services.upload_task_service import initialize_upload_queue, stop_upload_workers
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    migrate_legacy_admin_password()
+    install_token = prepare_install_token()
+    if install_token:
+        listen_host = os.environ.get("AGMS_LISTEN_HOST", "127.0.0.1")
+        display_host = "127.0.0.1" if listen_host == "127.0.0.1" else "SERVER_IP"
+        listen_port = os.environ.get("AGMS_LISTEN_PORT", "8000")
+        encoded_token = quote(install_token, safe="")
+        print(
+            f"[setup] First install: http://{display_host}:{listen_port}/install#token={encoded_token}",
+            flush=True,
+        )
+    else:
+        try:
+            initialize_upload_queue()
+        except Exception as exc:  # The health endpoint exposes queue availability after startup.
+            logger.error("Upload queue initialization failed (%s)", type(exc).__name__)
+    try:
+        yield
+    finally:
+        stop_upload_workers(join_timeout=0.1)
 
 
 app = FastAPI(
@@ -21,6 +53,7 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 
 
@@ -84,7 +117,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Install-Token"],
 )
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthorizationHeaderMiddleware)
@@ -135,17 +168,17 @@ SCALAR_API_DOCS_HTML = """
 
 
 @app.get("/api-docs", include_in_schema=False, response_class=HTMLResponse)
-def api_docs(_admin: Annotated[dict, Depends(require_admin)]):
+def api_docs(_admin: Annotated[dict, Depends(require_system_read)]):
     return HTMLResponse(SCALAR_API_DOCS_HTML)
 
 
 @app.get("/api-docs/openapi.json", include_in_schema=False)
-def api_docs_openapi(_admin: Annotated[dict, Depends(require_admin)]):
+def api_docs_openapi(_admin: Annotated[dict, Depends(require_system_read)]):
     return app.openapi()
 
 
 @app.get("/openapi.json", include_in_schema=False)
-def protected_openapi(_admin: Annotated[dict, Depends(require_admin)]):
+def protected_openapi(_admin: Annotated[dict, Depends(require_system_read)]):
     return app.openapi()
 
 
@@ -167,7 +200,7 @@ class SPAStaticFiles(StaticFiles):
     @staticmethod
     def should_fallback(path, scope) -> bool:
         first_segment = str(path).lstrip("/").split("/", 1)[0]
-        if first_segment in {"api", "api-docs", "openapi.json", "storage"}:
+        if first_segment in {"api", "api-docs", "openapi.json", "storage", "media"}:
             return False
         headers = {key.lower(): value for key, value in scope.get("headers", [])}
         accept = headers.get(b"accept", b"").decode("latin-1")

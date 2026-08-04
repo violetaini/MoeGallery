@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { FolderOpened, Picture, Upload, User } from '@element-plus/icons-vue'
-import { storageUrl } from '../../api/client'
+import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 
 const stats = ref(null)
@@ -108,7 +108,7 @@ onMounted(async () => {
           to="/admin/images"
         >
           <img
-            :src="storageUrl(image.thumbnail_path || image.preview_path || image.file_path)"
+            :src="mediaUrl(image, 'thumbnail')"
             :alt="imageTitle(image)"
           />
           <span class="admin-recent-strip__shade"></span>

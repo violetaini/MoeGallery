@@ -18,7 +18,7 @@ export function getAuthAvatar() {
 
 export function adminAvatarUrlFromImage(image) {
   if (!image) return ''
-  return storageUrl(image.thumbnail_path || image.preview_path || image.file_path)
+  return mediaUrl(image, 'thumbnail')
 }
 
 export function setAuthSession({ access_token, username, expires_in, avatar_image }) {
@@ -79,4 +79,18 @@ api.interceptors.response.use(
 export function storageUrl(path) {
   if (!path) return ''
   return `/storage/${String(path).replace(/^\/?storage\//, '').replaceAll('\\', '/')}`
+}
+
+export function mediaUrl(image, variant = 'preview') {
+  if (!image) return ''
+  if (image.id) {
+    const version = Math.max(1, Number(image.media_version || 1))
+    return `/media/${encodeURIComponent(image.id)}/${variant}/${version}`
+  }
+  const fallbackPaths = {
+    original: [image.file_path, image.preview_path, image.thumbnail_path],
+    preview: [image.preview_path, image.file_path, image.thumbnail_path],
+    thumbnail: [image.thumbnail_path, image.preview_path, image.file_path]
+  }
+  return storageUrl((fallbackPaths[variant] || fallbackPaths.preview).find(Boolean))
 }

@@ -1,15 +1,21 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import require_api_keys_manage, require_settings_manage
 from app.database import get_db
 from app.models import AppSetting, Image
-from app.config import generate_api_key, parse_api_keys, settings
-from app.schemas.settings import AdminSettingsRead, AdminSettingsUpdate, PublicSettingsRead
+from app.schemas.settings import (
+    AdminSettingsRead,
+    AdminSettingsUpdate,
+    ApiKeyCreate,
+    ApiKeyRead,
+    ApiKeyUpdate,
+    PublicSettingsRead,
+)
 from app.services.app_setting_service import (
     GITHUB_RELEASE_PROXY_URL_KEY,
     RANDOM_API_DEFAULT_RATING_KEY,
@@ -17,16 +23,30 @@ from app.services.app_setting_service import (
     RANDOM_API_DESKTOP_ORIENTATION_KEY,
     RANDOM_API_MOBILE_ORIENTATION_KEY,
     UPLOAD_CLAIM_BATCH_SIZE_KEY,
+    UPLOAD_TASK_FAILED_RETENTION_DAYS_KEY,
+    UPLOAD_TASK_MAX_ATTEMPTS_KEY,
     UPLOAD_WORKER_COUNT_KEY,
     get_github_release_proxy_url,
     get_random_api_defaults,
     get_upload_claim_batch_size,
+    get_upload_failed_retention_days,
+    get_upload_task_max_attempts,
     get_upload_worker_count,
+    get_upload_worker_profile,
+    upload_worker_limit_for_dialect,
     normalize_github_release_proxy_url,
 )
 from app.services.admin_account_service import get_admin_account, update_admin_account
 from app.services.auth_session_service import clear_admin_session_cookie, rotate_auth_secret
-from app.services.install_service import write_env
+from app.services.api_key_service import (
+    api_key_scope_catalog,
+    create_api_key,
+    list_configured_api_keys,
+    reset_api_keys,
+    revoke_api_key,
+    rotate_api_key,
+    update_api_key_policy,
+)
 from app.services.upload_task_service import start_upload_worker
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -159,10 +179,11 @@ def _read_public_settings(db: Session) -> dict[str, object]:
     return result
 
 
-def _read_settings(db: Session) -> dict[str, object]:
+def _read_settings(db: Session, *, include_api_keys: bool = True) -> dict[str, object]:
     account = get_admin_account(db)
     slideshow_image_ids, slideshow_images = _read_image_list_setting(db, HOME_SLIDESHOW_IMAGE_IDS_KEY)
     random_api_defaults = get_random_api_defaults(db)
+    worker_profile = get_upload_worker_profile(db)
     return {
         "image_manage_view_mode": _normalize_image_manage_view_mode(
             _get_value(
@@ -177,11 +198,17 @@ def _read_settings(db: Session) -> dict[str, object]:
         "random_api_default_variant": random_api_defaults["variant"],
         "github_proxy_url": get_github_release_proxy_url(db),
         "upload_worker_count": get_upload_worker_count(db),
+        "upload_worker_limit": worker_profile["limit"],
+        "database_concurrency_profile": worker_profile["profile"],
         "upload_claim_batch_size": get_upload_claim_batch_size(db),
+        "upload_task_max_attempts": get_upload_task_max_attempts(db),
+        "upload_failed_retention_days": get_upload_failed_retention_days(db),
         "admin_username": account.username,
         "admin_avatar_image_id": account.avatar_image_id,
         "admin_avatar_image": account.avatar_image,
-        "operations_api_keys": [{"name": name, "key": key} for name, key in parse_api_keys(settings.api_keys)],
+        "admin_password_change_required": account.password_change_required,
+        "operations_api_keys": list_configured_api_keys(db) if include_api_keys else [],
+        "api_key_scopes": api_key_scope_catalog(),
         **_read_public_settings(db),
         "home_slideshow_image_ids": slideshow_image_ids,
         "home_slideshow_images": slideshow_images,
@@ -191,9 +218,10 @@ def _read_settings(db: Session) -> dict[str, object]:
 @router.get("", response_model=AdminSettingsRead)
 def read_settings(
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_settings_manage)],
 ):
-    return _read_settings(db)
+    include_api_keys = admin.get("auth_type") != "api_key" or "api_keys:manage" in admin.get("api_key_scopes", [])
+    return _read_settings(db, include_api_keys=include_api_keys)
 
 
 @router.get("/public", response_model=PublicSettingsRead)
@@ -207,7 +235,7 @@ def read_public_settings(
 def update_settings(
     payload: AdminSettingsUpdate,
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_settings_manage)],
 ):
     data = payload.model_dump(exclude_unset=True)
     if data.get("image_manage_view_mode") is not None:
@@ -222,9 +250,19 @@ def update_settings(
         if data.get(field) is not None:
             _set_value(db, key, data[field])
     if data.get("upload_worker_count") is not None:
+        worker_limit = upload_worker_limit_for_dialect(db.get_bind().dialect.name)
+        if data["upload_worker_count"] > worker_limit:
+            raise HTTPException(
+                status_code=422,
+                detail=f"当前数据库模式的处理 worker 上限为 {worker_limit}",
+            )
         _set_value(db, UPLOAD_WORKER_COUNT_KEY, str(data["upload_worker_count"]))
     if data.get("upload_claim_batch_size") is not None:
         _set_value(db, UPLOAD_CLAIM_BATCH_SIZE_KEY, str(data["upload_claim_batch_size"]))
+    if data.get("upload_task_max_attempts") is not None:
+        _set_value(db, UPLOAD_TASK_MAX_ATTEMPTS_KEY, str(data["upload_task_max_attempts"]))
+    if data.get("upload_failed_retention_days") is not None:
+        _set_value(db, UPLOAD_TASK_FAILED_RETENTION_DAYS_KEY, str(data["upload_failed_retention_days"]))
     if data.get("github_proxy_url") is not None:
         try:
             github_proxy_url = normalize_github_release_proxy_url(data["github_proxy_url"])
@@ -267,14 +305,15 @@ def update_settings(
     db.commit()
     if data.get("upload_worker_count") is not None or data.get("upload_claim_batch_size") is not None:
         start_upload_worker()
-    return _read_settings(db)
+    include_api_keys = admin.get("auth_type") != "api_key" or "api_keys:manage" in admin.get("api_key_scopes", [])
+    return _read_settings(db, include_api_keys=include_api_keys)
 
 
 @router.post("/auth-secret/rotate")
 def rotate_admin_auth_secret(
     response: Response,
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[dict, Depends(require_admin)],
+    _admin: Annotated[dict, Depends(require_settings_manage)],
 ):
     result = rotate_auth_secret(db)
     db.commit()
@@ -285,9 +324,66 @@ def rotate_admin_auth_secret(
 @router.post("/api-keys/reset", response_model=AdminSettingsRead)
 def reset_operations_api_keys(
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[dict, Depends(require_admin)],
+    _admin: Annotated[dict, Depends(require_api_keys_manage)],
 ):
-    next_api_keys = f"default:{generate_api_key()}"
-    write_env({"AGMS_API_KEYS": next_api_keys})
-    settings.api_keys = next_api_keys
+    reset_api_keys(db)
     return _read_settings(db)
+
+
+@router.get("/api-keys", response_model=list[ApiKeyRead])
+def read_operations_api_keys(
+    db: Annotated[Session, Depends(get_db)],
+    _admin: Annotated[dict, Depends(require_api_keys_manage)],
+):
+    return list_configured_api_keys(db)
+
+
+@router.post("/api-keys", response_model=ApiKeyRead, status_code=status.HTTP_201_CREATED)
+def add_operations_api_key(
+    payload: ApiKeyCreate,
+    db: Annotated[Session, Depends(get_db)],
+    _admin: Annotated[dict, Depends(require_api_keys_manage)],
+):
+    try:
+        return create_api_key(db, **payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.put("/api-keys/{key_id}", response_model=ApiKeyRead)
+def edit_operations_api_key(
+    key_id: int,
+    payload: ApiKeyUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    _admin: Annotated[dict, Depends(require_api_keys_manage)],
+):
+    try:
+        result = update_api_key_policy(db, key_id, **payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="API Key not found")
+    return result
+
+
+@router.post("/api-keys/{key_id}/rotate", response_model=ApiKeyRead)
+def rotate_operations_api_key(
+    key_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    _admin: Annotated[dict, Depends(require_api_keys_manage)],
+):
+    result = rotate_api_key(db, key_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="API Key not found")
+    return result
+
+
+@router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_operations_api_key(
+    key_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    _admin: Annotated[dict, Depends(require_api_keys_manage)],
+):
+    if not revoke_api_key(db, key_id):
+        raise HTTPException(status_code=404, detail="API Key not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

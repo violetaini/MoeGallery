@@ -13,8 +13,10 @@ export const galleryApi = {
   installStatus() {
     return api.get('/install/status').then((r) => r.data)
   },
-  install(payload) {
-    return api.post('/install', payload).then((r) => r.data)
+  install(payload, installToken) {
+    return api.post('/install', payload, {
+      headers: { 'X-Install-Token': installToken }
+    }).then((r) => r.data)
   },
   images(params = {}) {
     return api.get('/images', { params }).then((r) => r.data)
@@ -51,6 +53,18 @@ export const galleryApi = {
   },
   uploadTasks(params = {}) {
     return api.get('/upload-tasks', { params }).then((r) => r.data)
+  },
+  retryUploadTask(id) {
+    return api.post(`/upload-tasks/${id}/retry`).then((r) => r.data)
+  },
+  cancelUploadTask(id) {
+    return api.post(`/upload-tasks/${id}/cancel`).then((r) => r.data)
+  },
+  deleteUploadTask(id) {
+    return api.delete(`/upload-tasks/${id}`)
+  },
+  batchUploadTaskAction(payload) {
+    return api.post('/upload-tasks/batch/actions', payload).then((r) => r.data)
   },
   previewUploadImage(file) {
     const data = new FormData()
@@ -134,6 +148,18 @@ export const galleryApi = {
   },
   resetApiKeys() {
     return api.post('/settings/api-keys/reset').then((r) => r.data)
+  },
+  createApiKey(payload) {
+    return api.post('/settings/api-keys', payload).then((r) => r.data)
+  },
+  updateApiKey(id, payload) {
+    return api.put(`/settings/api-keys/${id}`, payload).then((r) => r.data)
+  },
+  rotateApiKey(id) {
+    return api.post(`/settings/api-keys/${id}/rotate`).then((r) => r.data)
+  },
+  revokeApiKey(id) {
+    return api.delete(`/settings/api-keys/${id}`)
   },
   systemHealth() {
     return api.get('/system/health').then((r) => r.data)

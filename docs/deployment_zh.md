@@ -68,13 +68,57 @@ sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
 
 安装器不会自动开放服务器或云平台防火墙端口。
 
+## 图片发送与缓存
+
+默认配置无需额外组件，FastAPI 会直接发送图片。公开图片默认允许浏览器缓存 60 秒、共享缓存或 CDN 缓存 300 秒；私有和隐藏图片禁止共享缓存。可在 `.env` 中调整：
+
+```env
+AGMS_MEDIA_PUBLIC_BROWSER_CACHE_SECONDS=60
+AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=300
+AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=
+```
+
+如图片数量和并发访问明显增加，可让 Nginx 通过内部地址发送文件。该模式是可选优化，不影响首次安装，也不涉及域名配置：
+
+```nginx
+location ^~ /_agms_media/ {
+    internal;
+    alias /opt/moegallery/storage/;
+}
+
+location / {
+    proxy_pass http://127.0.0.1:8111;
+}
+```
+
+然后设置并重启服务：
+
+```env
+AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=/_agms_media
+```
+
+Nginx worker 必须对 `/opt/moegallery/storage/` 具有只读和目录遍历权限。配置不一致时图片会返回错误，因此修改后应在“系统设置 > 系统健康”确认显示“`Nginx 发送`”，并实际打开原图、预览图和缩略图检查。CDN 只应按源站响应头缓存公开的 `/media/*`，不能强制缓存带 `private` 或 `no-store` 的响应。旧 `/storage/*` 仅用于兼容客户端。
+
 ## 首次安装
 
-服务启动并通过健康检查后，打开安装脚本输出的 `/install` 地址。
+服务启动并通过健康检查后，完整打开安装脚本输出的首次安装地址。地址中的 `#token=...` 是一次性安装令牌，网页会自动读取并立即从地址栏清除，不需要手工填写。
+
+令牌只在安装尚未完成时生成，有效期为两小时，安装成功后立即销毁。没有正确令牌的请求不能创建管理员或修改安装状态；同一时间也只允许一个安装任务执行。地址遗失或过期时，重启服务并读取最新地址：
+
+```bash
+sudo systemctl restart moegallery
+sudo journalctl -u moegallery -n 100 --no-pager -o cat \
+  | grep '^\[setup\] First install:' \
+  | tail -n 1
+```
+
+管理员密码至少需要 12 个字符，不能与用户名相同，也不能使用常见默认密码。
 
 ### SQLite
 
 选择 SQLite 后直接继续。数据库文件会保存在程序默认目录中，无需填写存储路径。
+
+文件型 SQLite 会自动启用 WAL、外键检查和 8 秒忙等待；上传队列最多同时运行 4 个 worker，避免多个写事务互相锁住。默认 `AGMS_SQLITE_SYNCHRONOUS=NORMAL` 适合 SSD 上的图库服务；它在突然断电时可能丢失最后极少量已提交事务。对断电一致性要求更高时，在 `.env` 设置 `AGMS_SQLITE_SYNCHRONOUS=FULL` 后重启服务。需要调整等待时间或 worker 上限时，可设置 `AGMS_SQLITE_BUSY_TIMEOUT_MS` 与 `AGMS_SQLITE_UPLOAD_WORKER_LIMIT`。
 
 ### MySQL 或 MariaDB
 
@@ -88,6 +132,8 @@ FLUSH PRIVILEGES;
 ```
 
 在 `/install` 中填写主机、端口、数据库名、用户名和密码。数据库连接信息会写入 `.env`，因此请务必使用只管理 MoeGallery 数据库的专用账号，不要填写 MySQL 的 root 或其他管理员账号。
+
+MySQL 8 会使用 `SKIP LOCKED` 并行领取上传任务。默认连接池为 24 个常驻连接和 40 个溢出连接，预留部分连接给网页请求；上传 worker 的实际可用上限会在后台设置和系统健康中显示。可在 `.env` 调整 `AGMS_MYSQL_POOL_SIZE`、`AGMS_MYSQL_MAX_OVERFLOW`、`AGMS_MYSQL_POOL_TIMEOUT_SECONDS`、`AGMS_MYSQL_POOL_RECYCLE_SECONDS` 及连接读写超时；这些参数只在服务启动时读取，修改后必须重启服务。
 
 安装页面会自动生成会话签名密钥 `AGMS_AUTH_SECRET` 和初始 API Key，然后执行数据库迁移、写入 `.env`、创建 `installed.lock`，最后通知内置启动器重启应用。
 
@@ -116,6 +162,38 @@ sudo journalctl -u moegallery -f
 ```
 
 默认情况下，以上目录归 `moegallery` 服务用户所有。这个账号只能运行应用和读写 MoeGallery 自身文件，不能登录系统，也没有 root 权限。它与网页中的后台管理员账号没有关系。使用主安装器时可通过 `--user` 改用已有账号；直接运行 `scripts/install_systemd.sh` 时，还可以通过 `--group` 指定用户组。
+
+## 定期备份与恢复
+
+后台更新前会创建轻量级回滚备份。除此之外，建议每天创建一次完整的定期备份；它会同时保存数据库、程序配置、原图、缩略图和 HDR 图片的 SDR 预览图。上传暂存任务、更新下载文件和运行时锁不会备份，避免恢复过期任务。
+
+```bash
+sudo -u moegallery bash /opt/moegallery/scripts/backup_gallery.sh \
+  --app-dir /opt/moegallery \
+  --keep-days 14
+```
+
+定期备份保存在 `/opt/moegallery/backups/scheduled/`，只会清理该目录下超过保留天数的 `upgrade-*` 备份；面板更新产生的其他备份不会被此脚本删除。可先使用 `--dry-run` 查看计划操作。以 root 的 crontab 为例，每天凌晨 03:20 执行：
+
+```cron
+20 3 * * * sudo -u moegallery bash /opt/moegallery/scripts/backup_gallery.sh --app-dir /opt/moegallery --keep-days 14 >> /opt/moegallery/logs/backup.log 2>&1
+```
+
+恢复前先停止服务，再选择一个完整备份目录执行恢复，最后启动服务：
+
+```bash
+sudo systemctl stop moegallery
+sudo bash /opt/moegallery/scripts/restore_upgrade_backup.sh \
+  --app-dir /opt/moegallery \
+  --backup-dir /opt/moegallery/backups/scheduled/upgrade-YYYYMMDD-HHMMSS
+sudo systemctl start moegallery
+```
+
+备份中包含 `.env` 和数据库凭据，目录权限会限制为仅所有者可读写。它不能替代异地灾备：请将已加密的定期备份复制到另一块磁盘或其他可信位置。MySQL 恢复仍需要 `mysqldump` 和 `mysql` 客户端命令。
+
+## 自动验证
+
+GitHub 会在任意分支推送、Pull Request 和每周计划任务中运行验证：SQLite 全量后端测试、真实 MySQL 8 迁移与并发领取、SQLite/MySQL 备份恢复演练、前端生产构建，以及 Chromium 的桌面和手机端关键流程。发布工作流也必须先通过独立的 MySQL 8 验证和恢复演练，才会生成发布包。
 
 ## 面板更新
 
@@ -157,7 +235,8 @@ sudo bash /当前程序路径/scripts/install_systemd.sh \
 sudo mkdir -p /opt/moegallery
 sudo tar -xzf MoeGallery-vX.Y.Z.tar.gz -C /opt/moegallery --strip-components=1
 sudo python3 -m venv /opt/moegallery/venv
-sudo /opt/moegallery/venv/bin/pip install -r /opt/moegallery/backend/requirements.txt
+sudo /opt/moegallery/venv/bin/python -m pip install "pip==26.2"
+sudo /opt/moegallery/venv/bin/python -m pip install --require-hashes -r /opt/moegallery/backend/requirements.lock.txt
 sudo bash /opt/moegallery/scripts/install_systemd.sh \
   --app-dir /opt/moegallery \
   --host 127.0.0.1 \
@@ -165,6 +244,7 @@ sudo bash /opt/moegallery/scripts/install_systemd.sh \
 ```
 
 解压前必须使用同一发布版本中的 `SHA256SUMS.txt` 校验压缩包。
+依赖锁维护与安全升级流程见 [依赖安全维护](dependency-security_zh.md)。
 
 ## 常见问题
 

@@ -4,6 +4,7 @@ set -euo pipefail
 APP_DIR="/opt/moegallery"
 BACKUP_DIR=""
 PYTHON_BIN="python3"
+PIP_BOOTSTRAP_VERSION="26.2"
 
 usage() {
   cat <<'EOF'
@@ -46,13 +47,98 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$BACKUP_DIR" || ! -d "$BACKUP_DIR" ]]; then
+normalize_path() {
+  local value="$1"
+  case "$value" in
+    [A-Za-z]:/*|[A-Za-z]:\\*)
+      if command -v cygpath >/dev/null 2>&1; then
+        cygpath -u "$value"
+        return
+      fi
+      ;;
+  esac
+  printf '%s\n' "$value"
+}
+
+sync_tree_without_rsync() {
+  local source_dir="$1"
+  local target_dir="$2"
+  shift 2
+  "$PYTHON_BIN" - "$source_dir" "$target_dir" "$@" <<'PY'
+import fnmatch
+import os
+import shutil
+import sys
+from pathlib import Path
+
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+patterns = [item.replace("\\", "/").rstrip("/") for item in sys.argv[3:] if item]
+
+
+def excluded(relative: Path) -> bool:
+    normalized = relative.as_posix()
+    for pattern in patterns:
+        if normalized == pattern or normalized.startswith(f"{pattern}/"):
+            return True
+        if fnmatch.fnmatch(normalized, pattern) or fnmatch.fnmatch(relative.name, pattern):
+            return True
+    return False
+
+
+target.mkdir(parents=True, exist_ok=True)
+for root, directories, files in os.walk(source):
+    root_path = Path(root)
+    relative_root = root_path.relative_to(source)
+    directories[:] = [name for name in directories if not excluded(relative_root / name)]
+    destination_root = target / relative_root
+    destination_root.mkdir(parents=True, exist_ok=True)
+    for filename in files:
+        relative = relative_root / filename
+        if excluded(relative):
+            continue
+        source_file = source / relative
+        destination_file = target / relative
+        destination_file.parent.mkdir(parents=True, exist_ok=True)
+        if destination_file.is_dir():
+            shutil.rmtree(destination_file)
+        shutil.copy2(source_file, destination_file)
+
+for root, directories, files in os.walk(target, topdown=False):
+    root_path = Path(root)
+    relative_root = root_path.relative_to(target)
+    for filename in files:
+        relative = relative_root / filename
+        if not excluded(relative) and not (source / relative).exists():
+            (target / relative).unlink()
+    for directory in directories:
+        relative = relative_root / directory
+        destination_directory = target / relative
+        if excluded(relative) or (source / relative).exists():
+            continue
+        try:
+            destination_directory.rmdir()
+        except OSError:
+            pass
+PY
+}
+
+if [[ -z "$BACKUP_DIR" ]]; then
   echo "Valid --backup-dir is required" >&2
   exit 2
 fi
 
 APP_DIR="${APP_DIR%/}"
 BACKUP_DIR="${BACKUP_DIR%/}"
+APP_DIR="$(normalize_path "$APP_DIR")"
+BACKUP_DIR="$(normalize_path "$BACKUP_DIR")"
+PYTHON_BIN="$(normalize_path "$PYTHON_BIN")"
+
+if [[ ! -d "$BACKUP_DIR" ]]; then
+  echo "Valid --backup-dir is required" >&2
+  exit 2
+fi
 
 if [[ ! -f "$BACKUP_DIR/app-files.tar.gz" ]]; then
   echo "Application backup is missing: $BACKUP_DIR/app-files.tar.gz" >&2
@@ -69,34 +155,51 @@ tar -xzf "$BACKUP_DIR/app-files.tar.gz" -C "$WORK_DIR"
 
 mkdir -p "$APP_DIR/backend" "$APP_DIR/frontend" "$APP_DIR/scripts"
 if [[ -d "$WORK_DIR/backend" ]]; then
-  rsync -a --delete \
-    --exclude='__pycache__/' \
-    --exclude='*.pyc' \
-    --exclude='*.pyo' \
-    --exclude='anime_gallery.db*' \
-    --exclude='*.db' \
-    --exclude='*.db-*' \
-    --exclude='*.sqlite' \
-    --exclude='*.sqlite-*' \
-    --exclude='*.sqlite3' \
-    --exclude='*.sqlite3-*' \
-    "$WORK_DIR/backend/" "$APP_DIR/backend/"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude='__pycache__/' \
+      --exclude='*.pyc' \
+      --exclude='*.pyo' \
+      --exclude='anime_gallery.db*' \
+      --exclude='*.db' \
+      --exclude='*.db-*' \
+      --exclude='*.sqlite' \
+      --exclude='*.sqlite-*' \
+      --exclude='*.sqlite3' \
+      --exclude='*.sqlite3-*' \
+      "$WORK_DIR/backend/" "$APP_DIR/backend/"
+  else
+    sync_tree_without_rsync "$WORK_DIR/backend" "$APP_DIR/backend" \
+      '__pycache__/' '*.pyc' '*.pyo' 'anime_gallery.db*' '*.db' '*.db-*' '*.sqlite' '*.sqlite-*' '*.sqlite3' '*.sqlite3-*'
+  fi
 fi
 if [[ -d "$WORK_DIR/frontend" ]]; then
-  rsync -a --delete \
-    --exclude='dist/.user.ini' \
-    "$WORK_DIR/frontend/" "$APP_DIR/frontend/"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude='dist/.user.ini' \
+      "$WORK_DIR/frontend/" "$APP_DIR/frontend/"
+  else
+    sync_tree_without_rsync "$WORK_DIR/frontend" "$APP_DIR/frontend" 'dist/.user.ini'
+  fi
 fi
 if [[ -d "$WORK_DIR/scripts" ]]; then
-  rsync -a --delete \
-    --exclude='__pycache__/' \
-    --exclude='*.pyc' \
-    --exclude='*.pyo' \
-    "$WORK_DIR/scripts/" "$APP_DIR/scripts/"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude='__pycache__/' \
+      --exclude='*.pyc' \
+      --exclude='*.pyo' \
+      "$WORK_DIR/scripts/" "$APP_DIR/scripts/"
+  else
+    sync_tree_without_rsync "$WORK_DIR/scripts" "$APP_DIR/scripts" '__pycache__/' '*.pyc' '*.pyo'
+  fi
 fi
 if [[ -d "$WORK_DIR/docs" ]]; then
   mkdir -p "$APP_DIR/docs"
-  rsync -a --delete "$WORK_DIR/docs/" "$APP_DIR/docs/"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$WORK_DIR/docs/" "$APP_DIR/docs/"
+  else
+    sync_tree_without_rsync "$WORK_DIR/docs" "$APP_DIR/docs"
+  fi
 else
   rm -rf "$APP_DIR/docs"
 fi
@@ -115,6 +218,26 @@ if [[ -f "$BACKUP_DIR/install/installed.lock" ]]; then
 fi
 if [[ -f "$BACKUP_DIR/install/VERSION" ]]; then
   cp -a "$BACKUP_DIR/install/VERSION" "$APP_DIR/VERSION"
+fi
+
+if [[ -f "$BACKUP_DIR/storage-files.tar.gz" ]]; then
+  echo "Restoring durable image files from $BACKUP_DIR"
+  mkdir -p "$WORK_DIR/storage"
+  tar -xzf "$BACKUP_DIR/storage-files.tar.gz" -C "$WORK_DIR"
+  for directory in original preview thumbnail; do
+    source_dir="$WORK_DIR/storage/$directory"
+    target_dir="$APP_DIR/storage/$directory"
+    if [[ -d "$source_dir" ]]; then
+      mkdir -p "$target_dir"
+      if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "$source_dir/" "$target_dir/"
+      else
+        sync_tree_without_rsync "$source_dir" "$target_dir"
+      fi
+    elif [[ -d "$target_dir" ]]; then
+      rm -rf -- "$target_dir"
+    fi
+  done
 fi
 
 if [[ -f "$BACKUP_DIR/database-backup.json" ]]; then
@@ -179,8 +302,12 @@ elif database_type.startswith(("mysql", "mariadb")):
 PY
 fi
 
-if [[ -x "$APP_DIR/venv/bin/pip" && -f "$APP_DIR/backend/requirements.txt" ]]; then
-  "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/backend/requirements.txt"
+if [[ -x "$APP_DIR/venv/bin/python" && -f "$APP_DIR/backend/requirements.lock.txt" ]]; then
+  "$APP_DIR/venv/bin/python" -m pip install --upgrade "pip==$PIP_BOOTSTRAP_VERSION"
+  "$APP_DIR/venv/bin/python" -m pip install --require-hashes -r "$APP_DIR/backend/requirements.lock.txt"
+elif [[ -x "$APP_DIR/venv/bin/python" && -f "$APP_DIR/backend/requirements.txt" ]]; then
+  echo "Warning: restoring a legacy backup without a hashed dependency lock." >&2
+  "$APP_DIR/venv/bin/python" -m pip install -r "$APP_DIR/backend/requirements.txt"
 fi
 
 echo "Restore completed"

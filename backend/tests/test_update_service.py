@@ -13,7 +13,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.config import settings
-from app.auth import require_admin
+from app.auth import require_updates_read, require_updates_run
 from app.database import get_db
 from app.main import app
 from app.services import update_service
@@ -177,12 +177,14 @@ class UpdateApiTests(unittest.TestCase):
         def override_db():
             yield None
 
-        app.dependency_overrides[require_admin] = override_admin
+        app.dependency_overrides[require_updates_read] = override_admin
+        app.dependency_overrides[require_updates_run] = override_admin
         app.dependency_overrides[get_db] = override_db
         self.client = TestClient(app)
 
     def tearDown(self):
-        app.dependency_overrides.pop(require_admin, None)
+        app.dependency_overrides.pop(require_updates_read, None)
+        app.dependency_overrides.pop(require_updates_run, None)
         app.dependency_overrides.pop(get_db, None)
 
     def test_update_check_endpoint(self):

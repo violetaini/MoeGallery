@@ -1,4 +1,3 @@
-import ipaddress
 import threading
 import time
 from typing import Annotated
@@ -6,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.auth import ADMIN_SESSION_COOKIE, require_admin
+from app.auth import ADMIN_SESSION_COOKIE, require_authenticated_admin
 from app.config import settings
 from app.database import get_db
 from app.schemas.auth import AuthUser, LoginRequest, LoginResponse
@@ -17,68 +16,19 @@ from app.services.auth_session_service import (
     revoke_session,
     set_admin_session_cookie,
 )
+from app.utils.request_ip import client_ip
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _login_attempts: dict[str, list[int]] = {}
 _login_attempts_lock = threading.Lock()
 _MAX_LOGIN_RATE_LIMIT_KEYS = 4096
-_TRUSTED_CLIENT_IP_HEADERS = (
-    "ali-real-client-ip",
-    "ali-cdn-real-ip",
-    "true-client-ip",
-)
-
-
-def _parse_ip(value: str | None) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
-    raw = (value or "").strip().strip('"')
-    if not raw:
-        return None
-    if raw.startswith("[") and "]" in raw:
-        raw = raw[1 : raw.index("]")]
-    elif raw.count(":") == 1 and "." in raw:
-        host, port = raw.rsplit(":", 1)
-        if port.isdigit():
-            raw = host
-    try:
-        return ipaddress.ip_address(raw)
-    except ValueError:
-        return None
-
-
-def _peer_host(request: Request) -> str:
-    return request.client.host if request.client and request.client.host else "unknown"
-
-
-def _peer_can_set_forwarded_headers(request: Request) -> bool:
-    peer_ip = _parse_ip(_peer_host(request))
-    return bool(peer_ip and (peer_ip.is_loopback or peer_ip.is_private))
-
-
-def _client_ip(request: Request) -> str:
-    peer = _peer_host(request)
-    peer_ip = _parse_ip(peer)
-    if _peer_can_set_forwarded_headers(request):
-        for header_name in _TRUSTED_CLIENT_IP_HEADERS:
-            header_ip = _parse_ip(request.headers.get(header_name))
-            if header_ip:
-                return str(header_ip)
-        forwarded = request.headers.get("x-forwarded-for", "")
-        for raw_part in reversed(forwarded.split(",")):
-            forwarded_ip = _parse_ip(raw_part)
-            if forwarded_ip:
-                return str(forwarded_ip)
-        real_ip = _parse_ip(request.headers.get("x-real-ip"))
-        if real_ip:
-            return str(real_ip)
-    return str(peer_ip) if peer_ip else peer
-
-
+_client_ip = client_ip
 def _normalize_login_username(username: str | None) -> str:
     return (username or "").strip().casefold()
 
 
 def _login_rate_limit_keys(request: Request, username: str | None) -> list[str]:
-    keys = [f"ip:{_client_ip(request)}"]
+    keys = [f"ip:{client_ip(request)}"]
     normalized_username = _normalize_login_username(username)
     if normalized_username:
         keys.append(f"user:{normalized_username}")
@@ -156,7 +106,7 @@ def login(
         db,
         username=account.username,
         user_agent=request.headers.get("user-agent"),
-        ip_address=_client_ip(request),
+        ip_address=client_ip(request),
     )
     db.commit()
     set_admin_session_cookie(response, token)
@@ -166,6 +116,7 @@ def login(
         "username": account.username,
         "avatar_image_id": account.avatar_image_id,
         "avatar_image": account.avatar_image,
+        "password_change_required": account.password_change_required,
     }
 
 
@@ -173,7 +124,7 @@ def login(
 def logout(
     response: Response,
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[dict, Depends(require_admin)],
+    _admin: Annotated[dict, Depends(require_authenticated_admin)],
     session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
 ):
     revoke_session(db, token=session_cookie)
@@ -184,7 +135,7 @@ def logout(
 
 @router.get("/me", response_model=AuthUser)
 def me(
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_authenticated_admin)],
     db: Annotated[Session, Depends(get_db)],
 ):
     account = get_admin_account(db)
@@ -192,4 +143,5 @@ def me(
         "username": account.username if admin.get("auth_type") == "api_key" else admin["sub"],
         "avatar_image_id": account.avatar_image_id,
         "avatar_image": account.avatar_image,
+        "password_change_required": account.password_change_required,
     }

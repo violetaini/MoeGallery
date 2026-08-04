@@ -5,6 +5,7 @@ from fastapi.openapi.utils import get_openapi
 
 from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE
 from app.config import settings
+from app.services.api_key_service import API_KEY_SCOPE_DEFINITIONS
 
 
 API_DESCRIPTION = """
@@ -14,9 +15,10 @@ Anime Gallery Media Server API 覆盖前台图片浏览、后台媒体资料维�
 鉴权模型：
 
 - 浏览器后台会话使用 `agms_admin_session` HttpOnly Cookie。
-- 运维脚本建议使用 `Authorization: Bearer <AGMS_API_KEYS value>`。
+- 运维脚本建议使用 `Authorization: Bearer <AGMS_API_KEYS value>`，并只授予任务实际需要的权限。
 - 使用 Cookie 会话调用非安全方法时，还需要提交与 `agms_admin_csrf` Cookie 匹配的 `X-CSRF-Token`。
-- API Key 不依赖 Cookie，因此不需要 CSRF；请只在服务端保存，泄露后及时轮换。
+- API Key 不依赖 Cookie，因此不需要 CSRF；可在后台独立创建、设置到期时间、调整权限或立即撤销。
+- 旧版本升级后，已有 API Key 默认迁移为全部权限，避免现有自动化任务中断。
 """
 
 
@@ -52,6 +54,10 @@ PROTECTED_OPERATIONS = {
     ("POST", "/api/upload-tasks/check-duplicates"),
     ("POST", "/api/upload-tasks/check-duplicates-files"),
     ("GET", "/api/upload-tasks"),
+    ("POST", "/api/upload-tasks/batch/actions"),
+    ("POST", "/api/upload-tasks/{task_id}/retry"),
+    ("POST", "/api/upload-tasks/{task_id}/cancel"),
+    ("DELETE", "/api/upload-tasks/{task_id}"),
     ("GET", "/api/upload-tasks/{task_id}"),
     ("POST", "/api/imports/metadata"),
     ("GET", "/api/imports/metadata/template"),
@@ -69,11 +75,63 @@ PROTECTED_OPERATIONS = {
     ("PUT", "/api/settings"),
     ("POST", "/api/settings/auth-secret/rotate"),
     ("POST", "/api/settings/api-keys/reset"),
+    ("GET", "/api/settings/api-keys"),
+    ("POST", "/api/settings/api-keys"),
+    ("PUT", "/api/settings/api-keys/{key_id}"),
+    ("POST", "/api/settings/api-keys/{key_id}/rotate"),
+    ("DELETE", "/api/settings/api-keys/{key_id}"),
     ("GET", "/api/system/health"),
     ("GET", "/api/updates/check"),
     ("GET", "/api/updates/tasks"),
     ("POST", "/api/updates/tasks"),
     ("GET", "/api/updates/tasks/{task_id}"),
+}
+
+
+OPERATION_REQUIRED_SCOPES = {
+    ("POST", "/api/auth/logout"): (),
+    ("GET", "/api/auth/me"): (),
+    ("POST", "/api/images/upload"): ("uploads:manage",),
+    ("POST", "/api/images/preview"): ("uploads:manage",),
+    ("PUT", "/api/images/batch"): ("library:write",),
+    ("DELETE", "/api/images/batch"): ("library:delete",),
+    ("PUT", "/api/images/{image_id}"): ("library:write",),
+    ("DELETE", "/api/images/{image_id}"): ("library:delete",),
+    ("POST", "/api/upload-tasks"): ("uploads:manage",),
+    ("POST", "/api/upload-tasks/check-duplicates"): ("uploads:manage",),
+    ("POST", "/api/upload-tasks/check-duplicates-files"): ("uploads:manage",),
+    ("GET", "/api/upload-tasks"): ("uploads:manage",),
+    ("POST", "/api/upload-tasks/batch/actions"): ("uploads:manage",),
+    ("POST", "/api/upload-tasks/{task_id}/retry"): ("uploads:manage",),
+    ("POST", "/api/upload-tasks/{task_id}/cancel"): ("uploads:manage",),
+    ("DELETE", "/api/upload-tasks/{task_id}"): ("uploads:manage",),
+    ("GET", "/api/upload-tasks/{task_id}"): ("uploads:manage",),
+    ("POST", "/api/imports/metadata"): ("library:write",),
+    ("GET", "/api/imports/metadata/template"): ("library:write",),
+    ("POST", "/api/works"): ("library:write",),
+    ("PUT", "/api/works/{work_id}"): ("library:write",),
+    ("DELETE", "/api/works/{work_id}"): ("library:delete",),
+    ("POST", "/api/characters"): ("library:write",),
+    ("PUT", "/api/characters/{character_id}"): ("library:write",),
+    ("DELETE", "/api/characters/{character_id}"): ("library:delete",),
+    ("POST", "/api/tags"): ("library:write",),
+    ("PUT", "/api/tags/{tag_id}"): ("library:write",),
+    ("DELETE", "/api/tags/{tag_id}"): ("library:delete",),
+    ("GET", "/api/stats"): ("system:read",),
+    ("GET", "/api/settings"): ("settings:manage",),
+    ("PUT", "/api/settings"): ("settings:manage",),
+    ("POST", "/api/settings/auth-secret/rotate"): ("settings:manage",),
+    ("POST", "/api/settings/api-keys/reset"): ("api_keys:manage",),
+    ("GET", "/api/settings/api-keys"): ("api_keys:manage",),
+    ("POST", "/api/settings/api-keys"): ("api_keys:manage",),
+    ("PUT", "/api/settings/api-keys/{key_id}"): ("api_keys:manage",),
+    ("POST", "/api/settings/api-keys/{key_id}/rotate"): ("api_keys:manage",),
+    ("DELETE", "/api/settings/api-keys/{key_id}"): ("api_keys:manage",),
+    ("GET", "/api/system/health"): ("system:read",),
+    ("GET", "/api/updates/check"): ("updates:read",),
+    ("GET", "/api/updates/tasks"): ("updates:read",),
+    ("POST", "/api/updates/tasks"): ("updates:run",),
+    ("GET", "/api/updates/tasks/{task_id}"): ("updates:read",),
 }
 
 
@@ -92,15 +150,19 @@ OPERATION_METADATA = {
     },
     ("GET", "/api/install/status"): {
         "summary": "检查首次安装状态",
-        "description": "返回应用是否已经完成初始化。",
+        "description": "仅返回应用是否完成初始化、是否需要安装令牌以及是否等待重启。",
     },
     ("POST", "/api/install"): {
         "summary": "执行首次安装",
-        "description": "初始化 SQLite 或 MySQL 部署配置，创建管理员账号，执行迁移，写入 `.env`，并创建安装锁。",
+        "description": "使用 `X-Install-Token` 一次性令牌初始化 SQLite 或 MySQL，创建管理员账号、执行迁移并原子写入安装状态。",
     },
     ("GET", "/storage/{relative_path}"): {
         "summary": "读取存储媒体文件",
-        "description": "在路径规范化和数据库权限检查后，返回原图、预览图或缩略图。",
+        "description": "兼容旧客户端的路径资源地址。在路径规范化和数据库权限检查后返回文件；新客户端应使用按图片 ID 和媒体版本寻址的 `/media` 接口。",
+    },
+    ("GET", "/media/{image_id}/{variant}/{media_version}"): {
+        "summary": "读取版本化图片资源",
+        "description": "按图片 ID、尺寸和媒体版本读取文件。公开图片可短期缓存，私有或 hidden 图片禁止共享缓存；版本不匹配时返回 404。",
     },
     ("GET", "/api/images"): {
         "summary": "获取图片列表",
@@ -152,19 +214,41 @@ OPERATION_METADATA = {
     },
     ("POST", "/api/upload-tasks"): {
         "summary": "创建批量上传任务",
-        "description": "将一个或多个文件加入服务端并发上传处理队列。",
+        "description": (
+            "先校验整批文件、关联 ID 和 SHA-256，再以单个事务加入服务端并发处理队列。"
+            "任一文件校验或任务提交失败时，本批次不会留下任务或暂存文件。"
+        ),
     },
     ("POST", "/api/upload-tasks/check-duplicates"): {
         "summary": "检查重复哈希",
-        "description": "用客户端计算的 SHA-256 与已入库图片和待处理队列做重复预检。",
+        "description": (
+            "批量比对客户端计算的 SHA-256，分别标记图库已有、上传队列已有和本批次内重复。"
+            "服务端仍会在最终写入时执行唯一性保护。"
+        ),
     },
     ("POST", "/api/upload-tasks/check-duplicates-files"): {
         "summary": "检查重复上传文件",
-        "description": "当客户端未计算哈希时，由服务端对选中文件执行重复预检。",
+        "description": "当客户端未计算哈希时，由服务端批量计算 SHA-256 并执行图库、队列和批次内重复预检。",
     },
     ("GET", "/api/upload-tasks"): {
         "summary": "获取上传任务列表",
-        "description": "返回最近的排队、运行、成功或失败上传任务，供管理员监控。",
+        "description": "分页返回上传任务，可按排队、运行、等待重试、成功、失败或已取消状态筛选。",
+    },
+    ("POST", "/api/upload-tasks/batch/actions"): {
+        "summary": "批量操作上传任务",
+        "description": "批量重试、取消或删除任务记录；不符合当前操作条件的任务计入 skipped。删除成功任务只清理任务历史，不删除已经入库的图片。",
+    },
+    ("POST", "/api/upload-tasks/{task_id}/retry"): {
+        "summary": "重试上传任务",
+        "description": "立即重试仍保留暂存文件的失败任务，或提前执行等待重试的任务。",
+    },
+    ("POST", "/api/upload-tasks/{task_id}/cancel"): {
+        "summary": "取消上传任务",
+        "description": "排队任务立即取消；处理中任务记录取消请求，并在安全检查点结束。",
+    },
+    ("DELETE", "/api/upload-tasks/{task_id}"): {
+        "summary": "删除上传任务记录",
+        "description": "删除已完成、失败或已取消的任务记录，并清理仍保留的暂存文件。",
     },
     ("GET", "/api/upload-tasks/{task_id}"): {
         "summary": "获取上传任务详情",
@@ -178,14 +262,26 @@ OPERATION_METADATA = {
         "summary": "下载元数据导入模板",
         "description": "下载包含全部支持字段的空白 CSV、JSON、XLSX 或 XLSM 模板。",
     },
-    ("GET", "/api/works"): {"summary": "获取作品列表", "description": "获取作品记录，可按关键词筛选。"},
+    ("GET", "/api/works"): {
+        "summary": "获取作品列表",
+        "description": "分页获取作品记录，可按关键词筛选。传入 `page` 和 `page_size` 控制页码。",
+    },
     ("POST", "/api/works"): {"summary": "创建作品", "description": "创建作品记录，并可同时绑定元数据和图片。"},
-    ("GET", "/api/works/{work_id}"): {"summary": "获取作品详情", "description": "返回单个作品、作品角色和相关图片。"},
+    ("GET", "/api/works/{work_id}"): {
+        "summary": "获取作品详情",
+        "description": "返回作品基本资料以及 `character_count`、`image_count`。角色和图片不在详情中展开，请分别使用 `/api/characters?work_id=...` 与 `/api/images?work_id=...` 分页获取。访客图片计数不包含私有或 hidden 图片。",
+    },
     ("PUT", "/api/works/{work_id}"): {"summary": "更新作品", "description": "更新作品元数据、封面图和背景图绑定。"},
     ("DELETE", "/api/works/{work_id}"): {"summary": "删除作品", "description": "删除作品记录并移除相关绑定。"},
-    ("GET", "/api/characters"): {"summary": "获取角色列表", "description": "获取角色记录，可按作品或关键词筛选。"},
+    ("GET", "/api/characters"): {
+        "summary": "获取角色列表",
+        "description": "分页获取角色记录，可按作品或关键词筛选。传入 `work_id` 可列出指定作品的角色。",
+    },
     ("POST", "/api/characters"): {"summary": "创建角色", "description": "创建角色，并可同时绑定作品和头像。"},
-    ("GET", "/api/characters/{character_id}"): {"summary": "获取角色详情", "description": "返回单个角色和相关图片。"},
+    ("GET", "/api/characters/{character_id}"): {
+        "summary": "获取角色详情",
+        "description": "返回角色基本资料和 `image_count`。相关图片不在详情中展开，请使用 `/api/images?character_id=...` 分页获取。访客计数不包含私有或 hidden 图片。",
+    },
     ("PUT", "/api/characters/{character_id}"): {"summary": "更新角色", "description": "更新角色元数据、作品绑定和头像图片。"},
     ("DELETE", "/api/characters/{character_id}"): {"summary": "删除角色", "description": "删除单个角色并移除相关绑定。"},
     ("GET", "/api/tags"): {"summary": "获取标签列表", "description": "获取为兼容旧数据保留的标签记录。"},
@@ -197,10 +293,15 @@ OPERATION_METADATA = {
     ("GET", "/api/stats"): {"summary": "获取后台统计", "description": "返回后台首页统计计数。"},
     ("GET", "/api/settings"): {"summary": "获取后台设置", "description": "返回管理员偏好、前台首页图片绑定、随机图片 API 默认值、上传队列参数、GitHub 更新检查代理和运维 API Key。"},
     ("GET", "/api/settings/public"): {"summary": "获取公开设置", "description": "返回前台首页和列表页背景图片设置。"},
-    ("PUT", "/api/settings"): {"summary": "更新后台设置", "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、随机图片 API 默认值、上传 worker 参数和 GitHub 更新检查代理。"},
+    ("PUT", "/api/settings"): {"summary": "更新后台设置", "description": "更新管理员资料、图片管理显示模式、首页幻灯片、前台背景图、随机图片 API 默认值、受数据库并发上限约束的上传 worker 参数和 GitHub 更新检查代理。"},
     ("POST", "/api/settings/auth-secret/rotate"): {"summary": "轮换登录密钥", "description": "生成新的 `AGMS_AUTH_SECRET`，写入 `.env`，并撤销当前浏览器会话。"},
     ("POST", "/api/settings/api-keys/reset"): {"summary": "重置运维 API Key", "description": "生成新的默认 `AGMS_API_KEYS`，写入 `.env`，并使旧 API Key 立即失效。"},
-    ("GET", "/api/system/health"): {"summary": "获取系统健康状态", "description": "返回程序版本、最新 Release、数据库迁移状态、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"},
+    ("GET", "/api/settings/api-keys"): {"summary": "获取 API Key 列表", "description": "返回完整 API Key、权限、有效期及最近调用信息。仅 API Key 管理权限可调用。"},
+    ("POST", "/api/settings/api-keys"): {"summary": "创建 API Key", "description": "创建可独立授权和设置有效期的新 API Key。"},
+    ("PUT", "/api/settings/api-keys/{key_id}"): {"summary": "修改 API Key", "description": "修改 API Key 名称、权限范围和有效期，不更换密钥值。"},
+    ("POST", "/api/settings/api-keys/{key_id}/rotate"): {"summary": "刷新 API Key", "description": "重新生成指定 API Key 的密钥值，保留名称、权限和有效期，并使旧密钥立即失效。"},
+    ("DELETE", "/api/settings/api-keys/{key_id}"): {"summary": "撤销 API Key", "description": "立即撤销指定 API Key，后续请求会被拒绝。"},
+    ("GET", "/api/system/health"): {"summary": "获取系统健康状态", "description": "返回程序版本、最新 Release、数据库迁移状态、SQLite WAL 或 MySQL 连接池、存储、上传队列、FFmpeg、JXR 和 HDR 补丁诊断信息。"},
     ("GET", "/api/updates/check"): {"summary": "检查可用更新", "description": "读取当前版本并查询 GitHub Latest Release，返回是否有新版本以及更新执行模式。"},
     ("GET", "/api/updates/tasks"): {"summary": "获取更新任务列表", "description": "返回最近的后台更新任务、进度和日志摘要。"},
     ("POST", "/api/updates/tasks"): {"summary": "创建更新任务", "description": "创建下载校验或正式更新任务。正式更新会校验 SHA256、备份、迁移数据库并重启服务。"},
@@ -223,6 +324,7 @@ PARAMETER_DESCRIPTIONS = {
     "limit": "最多返回的结果数量。",
     "type": "兼容旧标签的类型筛选。",
     "relative_path": "图片元数据返回的存储相对路径，例如 `preview/example.webp`。",
+    "media_version": "图片访问策略版本。必须与图片元数据中的 `media_version` 一致。",
     ADMIN_SESSION_COOKIE: "管理员会话 Cookie。运维脚本建议改用 `Authorization: Bearer <api-key>`。",
     "rating": "图片分级。具体可选值以当前接口的参数定义为准。",
     "orientation": "图片方向：`landscape`（横图）、`portrait`（竖图）、`square`（方图）；随机图片接口还支持 `any`。",
@@ -247,7 +349,7 @@ REQUEST_EXAMPLES = {
         "application/json": {
             "adminLogin": {
                 "summary": "浏览器管理员登录",
-                "value": {"username": "admin", "password": "change-this-password"},
+                "value": {"username": "admin", "password": "use-a-strong-password-2026"},
             }
         }
     },
@@ -255,7 +357,11 @@ REQUEST_EXAMPLES = {
         "application/json": {
             "sqliteInstall": {
                 "summary": "SQLite 安装",
-                "value": {"database_type": "sqlite", "admin_username": "admin", "admin_password": "change-this-password"},
+                "value": {
+                    "database_type": "sqlite",
+                    "admin_username": "admin",
+                    "admin_password": "use-a-strong-password-2026",
+                },
             },
             "mysqlInstall": {
                 "summary": "MySQL 安装",
@@ -267,7 +373,7 @@ REQUEST_EXAMPLES = {
                     "mysql_username": "anime_gallery",
                     "mysql_password": "change-this-db-password",
                     "admin_username": "admin",
-                    "admin_password": "change-this-password",
+                    "admin_password": "use-a-strong-password-2026",
                 },
             },
         }
@@ -288,14 +394,28 @@ REQUEST_EXAMPLES = {
     ("PUT", "/api/settings"): {
         "application/json": {
             "uploadWorkers": {
-                "summary": "调整上传 worker 和更新检查代理",
+                "summary": "调整上传 worker、重试与保留期限",
                 "value": {
                     "upload_worker_count": 24,
                     "upload_claim_batch_size": 4,
+                    "upload_task_max_attempts": 3,
+                    "upload_failed_retention_days": 7,
                     "image_manage_view_mode": "waterfall",
                     "github_proxy_url": "https://gh-proxy.example.com/",
                 },
             }
+        }
+    },
+    ("POST", "/api/upload-tasks/batch/actions"): {
+        "application/json": {
+            "retryFailed": {
+                "summary": "批量重试失败任务",
+                "value": {"ids": [123, 124], "action": "retry"},
+            },
+            "cancelActive": {
+                "summary": "批量取消活动任务",
+                "value": {"ids": [125, 126], "action": "cancel"},
+            },
         }
     },
     ("POST", "/api/updates/tasks"): {
@@ -323,7 +443,7 @@ RESPONSE_EXAMPLES = {
     ("GET", "/api/images/random"): {
         "200": {
             "image": {"id": 101, "orientation": "landscape", "rating": "safe"},
-            "image_url": "/storage/preview/example.webp",
+            "image_url": "/media/101/preview/1",
             "requested_variant": "preview",
             "served_variant": "preview",
             "resolved_device": "pc",
@@ -334,15 +454,22 @@ RESPONSE_EXAMPLES = {
     ("GET", "/api/upload-tasks/{task_id}"): {
         "200": {
             "id": 1,
-            "status": "succeeded",
-            "filename": "example.webp",
+            "status": "success",
+            "original_filename": "example.webp",
+            "sha256": "a" * 64,
+            "preflight_duplicate": False,
             "error_message": None,
             "image_id": 100,
         },
     },
     ("GET", "/api/system/health"): {
         "200": {
-            "database": {"ok": True, "dialect": "mysql", "url": "mysql+pymysql://user:***@127.0.0.1:3306/anime_gallery"},
+            "database": {
+                "ok": True,
+                "dialect": "mysql",
+                "url": "mysql+pymysql://user:***@127.0.0.1:3306/anime_gallery",
+                "concurrency": {"profile": "mysql_pool", "pool_size": 24, "max_overflow": 40, "worker_limit": 60},
+            },
             "storage": {"ok": True},
             "auth_secret": {"configured": True, "ephemeral": False, "strong": True, "message": "已配置持久化强密钥"},
         },
@@ -384,6 +511,11 @@ def _mark_security(operation: dict, method: str, path: str) -> None:
         {"OperationsApiKey": []},
         {"AdminSessionCookie": [], "CsrfTokenCookie": [], "CsrfTokenHeader": []},
     ]
+    required_scopes = OPERATION_REQUIRED_SCOPES.get((method, path), ())
+    operation["x-api-key-scopes"] = list(required_scopes)
+    if required_scopes:
+        scope_text = "、".join(f"`{scope}`" for scope in required_scopes)
+        operation["description"] = f"{operation.get('description', '').rstrip()}\n\n所需 API Key 权限：{scope_text}。"
     responses = operation.setdefault("responses", {})
     responses.setdefault(
         "401",
@@ -395,7 +527,7 @@ def _mark_security(operation: dict, method: str, path: str) -> None:
     responses.setdefault(
         "403",
         {
-            "description": "使用 Cookie 会话发起写入请求时，缺少匹配的 CSRF 请求头。",
+            "description": "API Key 权限不足，或 Cookie 会话发起写入请求时缺少匹配的 CSRF 请求头。",
             "content": {"application/json": {"example": {"detail": "CSRF validation failed"}}},
         },
     )
@@ -415,7 +547,9 @@ def _customize_schema(schema: dict) -> dict:
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "AGMS_API_KEY",
-        "description": "通过 `AGMS_API_KEYS` 配置的运维 API Key。",
+        "description": "后台创建的可分权运维 API Key。权限：" + "；".join(
+            f"`{value}` {label}" for value, label, _description in API_KEY_SCOPE_DEFINITIONS
+        ),
     }
     security_schemes["AdminSessionCookie"] = {
         "type": "apiKey",

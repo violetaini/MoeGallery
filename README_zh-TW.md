@@ -41,11 +41,13 @@ sudo bash install.sh
 - `127.0.0.1`：僅本機存取或自行設定反向代理，建議使用。
 - `0.0.0.0`：直接透過公網或區域網路存取。
 
-預設連接埠為 `8111`。服務啟動後開啟：
+預設連接埠為 `8111`。安裝完成後會顯示含有暫時權杖的初次設定網址，格式如下：
 
 ```text
-http://伺服器IP:8111/install
+http://伺服器IP:8111/install#token=暫時權杖
 ```
+
+請完整開啟安裝程式實際顯示的網址，不需要手動輸入權杖。權杖的有效期限為兩小時，設定成功後立即失效；若網址遺失或過期，請重新啟動 `moegallery.service`，再從服務日誌取得最新網址。
 
 網頁安裝器會完成資料庫選擇、管理員帳號、資料庫遷移、登入密鑰、API Key、儲存目錄與安裝鎖初始化。
 
@@ -128,7 +130,8 @@ SQLite 使用 SQLite backup API；MySQL/MariaDB 使用 `mysqldump --single-trans
 
 ```bash
 python -m venv .venv
-./.venv/bin/pip install -r backend/requirements.txt
+./.venv/bin/python -m pip install "pip==26.2"
+./.venv/bin/python -m pip install --require-hashes -r backend/requirements.lock.txt
 cd backend && ../.venv/bin/uvicorn app.main:app --reload --port 8000
 
 cd frontend

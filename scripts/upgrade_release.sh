@@ -12,6 +12,7 @@ SKIP_MIGRATE=0
 DRY_RUN=0
 NO_SERVICE_CONTROL=0
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+PIP_BOOTSTRAP_VERSION="26.2"
 
 usage() {
   cat <<'EOF'
@@ -142,7 +143,7 @@ case "$ARCHIVE" in
 esac
 
 STAGE_DIR="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-if [[ -z "$STAGE_DIR" || ! -d "$STAGE_DIR/backend" || ! -d "$STAGE_DIR/frontend/dist" ]]; then
+if [[ -z "$STAGE_DIR" || ! -f "$STAGE_DIR/backend/requirements.lock.txt" || ! -d "$STAGE_DIR/frontend/dist" ]]; then
   echo "Archive does not look like a MoeGallery release package" >&2
   exit 1
 fi
@@ -225,7 +226,8 @@ done
 if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then
   run "$PYTHON_BIN" -m venv "$APP_DIR/venv"
 fi
-run "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/backend/requirements.txt"
+run "$APP_DIR/venv/bin/python" -m pip install --upgrade "pip==$PIP_BOOTSTRAP_VERSION"
+run "$APP_DIR/venv/bin/python" -m pip install --require-hashes -r "$APP_DIR/backend/requirements.lock.txt"
 
 if [[ -f "$APP_DIR/scripts/create_linux_dirs.sh" ]]; then
   run bash "$APP_DIR/scripts/create_linux_dirs.sh" --app-dir "$APP_DIR"

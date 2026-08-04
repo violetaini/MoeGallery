@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Close, Delete, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Close, Delete, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import { galleryApi } from '../../api/gallery'
 import { imageUploadAccept, imageUploadSupportText } from '../../constants/uploadFormats'
 
@@ -12,6 +12,13 @@ const characters = ref([])
 const uploading = ref(false)
 const checkingDuplicates = ref(false)
 const taskItems = ref([])
+const taskTotal = ref(0)
+const taskPage = ref(1)
+const taskPageSize = 20
+const taskStatusFilter = ref('')
+const selectedTaskIds = ref([])
+const taskLoading = ref(false)
+const taskActionLoading = ref(false)
 const taskPollingTimer = ref(null)
 const previewItems = ref([])
 const previewPage = ref(1)
@@ -35,9 +42,21 @@ const activePreviewIndex = computed(() => previewItems.value.findIndex((item) =>
 const activePreviewItem = computed(() => (
   activePreviewIndex.value >= 0 ? previewItems.value[activePreviewIndex.value] : null
 ))
-const activeTasks = computed(() => taskItems.value.filter((item) => ['queued', 'processing'].includes(item.status)))
+const activeTasks = computed(() => taskItems.value.filter((item) => ['queued', 'processing', 'retry_wait'].includes(item.status)))
 const completedTasks = computed(() => taskItems.value.filter((item) => item.status === 'success'))
 const failedTasks = computed(() => taskItems.value.filter((item) => item.status === 'failed'))
+const allPageTasksSelected = computed(() => (
+  taskItems.value.length > 0 && taskItems.value.every((item) => selectedTaskIds.value.includes(item.id))
+))
+const taskStatusOptions = [
+  { value: '', label: '全部状态' },
+  { value: 'queued', label: '排队中' },
+  { value: 'processing', label: '处理中' },
+  { value: 'retry_wait', label: '等待重试' },
+  { value: 'success', label: '已完成' },
+  { value: 'failed', label: '失败' },
+  { value: 'canceled', label: '已取消' }
+]
 const duplicateHashConcurrency = 8
 const uploadingLabel = computed(() => {
   if (checkingDuplicates.value) return '校验重复中'
@@ -48,15 +67,17 @@ const uploadingLabel = computed(() => {
 function taskStatusLabel(status) {
   if (status === 'queued') return '排队中'
   if (status === 'processing') return '处理中'
+  if (status === 'retry_wait') return '等待重试'
   if (status === 'success') return '已完成'
   if (status === 'failed') return '失败'
+  if (status === 'canceled') return '已取消'
   return status
 }
 
 function taskStatusType(status) {
   if (status === 'success') return 'success'
   if (status === 'failed') return 'danger'
-  if (status === 'processing') return 'warning'
+  if (status === 'processing' || status === 'retry_wait') return 'warning'
   return 'info'
 }
 
@@ -65,6 +86,41 @@ function formatBytes(size) {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function formatTaskTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function canRetryTask(task) {
+  return ['failed', 'retry_wait'].includes(task.status) && task.staged_file_available
+}
+
+function canCancelTask(task) {
+  return ['queued', 'processing', 'retry_wait'].includes(task.status) && !task.cancel_requested
+}
+
+function canDeleteTask(task) {
+  return ['success', 'failed', 'canceled'].includes(task.status)
+}
+
+function toggleTaskSelection(taskId, selected) {
+  const next = new Set(selectedTaskIds.value)
+  if (selected) next.add(taskId)
+  else next.delete(taskId)
+  selectedTaskIds.value = [...next]
+}
+
+function toggleAllPageTasks(selected) {
+  const next = new Set(selectedTaskIds.value)
+  taskItems.value.forEach((task) => {
+    if (selected) next.add(task.id)
+    else next.delete(task.id)
+  })
+  selectedTaskIds.value = [...next]
 }
 
 function revokePreview(url) {
@@ -293,7 +349,10 @@ async function checkDuplicates(files) {
 
 function duplicateMessage(items) {
   const libraryDuplicates = items.filter((item) => item.duplicate)
-  const batchDuplicates = items.filter((item) => item.duplicate_in_batch && !item.duplicate)
+  const queueDuplicates = items.filter((item) => item.duplicate_in_queue && !item.duplicate)
+  const batchDuplicates = items.filter(
+    (item) => item.duplicate_in_batch && !item.duplicate && !item.duplicate_in_queue
+  )
   const lines = []
   if (libraryDuplicates.length) {
     lines.push(`图库已有 ${libraryDuplicates.length} 张：`)
@@ -303,11 +362,15 @@ function duplicateMessage(items) {
       lines.push(`- ${item.filename} -> ${name}`)
     })
   }
+  if (queueDuplicates.length) {
+    lines.push(`上传队列中已有 ${queueDuplicates.length} 张：`)
+    queueDuplicates.slice(0, 8).forEach((item) => lines.push(`- ${item.filename}`))
+  }
   if (batchDuplicates.length) {
     lines.push(`本批次内重复 ${batchDuplicates.length} 张：`)
     batchDuplicates.slice(0, 8).forEach((item) => lines.push(`- ${item.filename}`))
   }
-  if (libraryDuplicates.length + batchDuplicates.length > 8) {
+  if (libraryDuplicates.length + queueDuplicates.length + batchDuplicates.length > 8) {
     lines.push('其余重复项请在预览列表中核对。')
   }
   return lines.join('\n')
@@ -320,7 +383,9 @@ async function resolveDuplicateUpload(files) {
   } finally {
     checkingDuplicates.value = false
   }
-  const duplicateItems = items.filter((item) => item.duplicate || item.duplicate_in_batch)
+  const duplicateItems = items.filter(
+    (item) => item.duplicate || item.duplicate_in_queue || item.duplicate_in_batch
+  )
   if (!duplicateItems.length) {
     return { files, mergeDuplicateRelations: false }
   }
@@ -344,8 +409,14 @@ async function resolveDuplicateUpload(files) {
     return { files, mergeDuplicateRelations: true }
   }
 
-  const duplicateNames = new Set(duplicateItems.map((item) => item.filename))
-  const nextFiles = files.filter((file) => !duplicateNames.has(file.name))
+  const duplicateIndexes = new Set(
+    items
+      .map((item, index) => (
+        item.duplicate || item.duplicate_in_queue || item.duplicate_in_batch ? index : -1
+      ))
+      .filter((index) => index >= 0)
+  )
+  const nextFiles = files.filter((_file, index) => !duplicateIndexes.has(index))
   if (!nextFiles.length) {
     ElMessage.info('已跳过所有重复图片，没有提交新任务')
     return null
@@ -369,9 +440,12 @@ async function submitUpload() {
     }
     const data = buildUploadFormData(duplicateDecision.files, duplicateDecision.mergeDuplicateRelations)
     const result = await galleryApi.createUploadTasks(data)
-    taskItems.value = result.items || []
-    ElMessage.success(`已提交 ${taskItems.value.length} 个上传任务`)
+    const submittedCount = result.items?.length || 0
+    taskPage.value = 1
+    taskStatusFilter.value = ''
+    ElMessage.success(`已提交 ${submittedCount} 个上传任务`)
     clearSelectedFiles()
+    await loadUploadTasks({ silent: true })
     startTaskPolling()
   } catch (error) {
     const detail = error?.response?.data?.detail || error?.message || '上传失败'
@@ -382,31 +456,79 @@ async function submitUpload() {
   }
 }
 
-async function refreshUploadTasks() {
-  if (!taskItems.value.length) return
-  const ids = taskItems.value.map((item) => item.id).join(',')
+async function loadUploadTasks({ silent = false } = {}) {
+  if (!silent) taskLoading.value = true
   try {
-    const data = await galleryApi.uploadTasks({ ids })
+    const data = await galleryApi.uploadTasks({
+      page: taskPage.value,
+      page_size: taskPageSize,
+      status: taskStatusFilter.value || undefined
+    })
     taskItems.value = data.items || []
-    if (!activeTasks.value.length) {
-      stopTaskPolling()
-      const duplicateCount = taskItems.value.filter((item) => item.duplicate).length
-      if (failedTasks.value.length) {
-        ElMessage.warning(`上传任务完成：成功 ${completedTasks.value.length} 个，失败 ${failedTasks.value.length} 个，重复 ${duplicateCount} 个`)
-      } else {
-        ElMessage.success(`上传任务完成：成功 ${completedTasks.value.length} 个，重复 ${duplicateCount} 个`)
-      }
-    }
+    taskTotal.value = Number(data.total || 0)
+    selectedTaskIds.value = selectedTaskIds.value.filter((id) => taskItems.value.some((task) => task.id === id))
   } catch (error) {
-    stopTaskPolling()
-    ElMessage.error(error?.response?.data?.detail || '刷新上传任务失败')
+    if (!silent) ElMessage.error(error?.response?.data?.detail || '刷新上传任务失败')
+  } finally {
+    if (!silent) taskLoading.value = false
   }
+}
+
+async function refreshUploadTasks() {
+  await loadUploadTasks({ silent: true })
+  if (!activeTasks.value.length) stopTaskPolling()
 }
 
 function startTaskPolling() {
   stopTaskPolling()
-  refreshUploadTasks()
-  taskPollingTimer.value = window.setInterval(refreshUploadTasks, 1500)
+  taskPollingTimer.value = window.setInterval(refreshUploadTasks, 2000)
+}
+
+async function changeTaskStatusFilter() {
+  taskPage.value = 1
+  selectedTaskIds.value = []
+  await loadUploadTasks()
+  if (activeTasks.value.length) startTaskPolling()
+  else stopTaskPolling()
+}
+
+async function changeTaskPage(page) {
+  taskPage.value = page
+  selectedTaskIds.value = []
+  await loadUploadTasks()
+  if (activeTasks.value.length) startTaskPolling()
+  else stopTaskPolling()
+}
+
+async function runTaskAction(action, ids) {
+  if (!ids.length) return
+  const labels = { retry: '重试', cancel: '取消', delete: '清理' }
+  if (action !== 'retry') {
+    const description = action === 'delete'
+      ? '将删除选中的已结束任务记录，并清理仍保留的暂存文件。'
+      : '排队任务会立即取消；处理中任务将在安全检查点停止，已经完成入库的任务仍会保留成功结果。'
+    try {
+      await ElMessageBox.confirm(description, `${labels[action]}上传任务`, {
+        type: 'warning',
+        confirmButtonText: `确认${labels[action]}`,
+        cancelButtonText: '返回'
+      })
+    } catch {
+      return
+    }
+  }
+  taskActionLoading.value = true
+  try {
+    const result = await galleryApi.batchUploadTaskAction({ ids, action })
+    ElMessage.success(`${labels[action]}完成：处理 ${result.affected} 个，跳过 ${result.skipped} 个`)
+    selectedTaskIds.value = []
+    await loadUploadTasks({ silent: true })
+    if (activeTasks.value.length) startTaskPolling()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || `${labels[action]}任务失败`)
+  } finally {
+    taskActionLoading.value = false
+  }
 }
 
 watch(fileList, (files) => {
@@ -419,7 +541,10 @@ watch(totalPreviewPages, (total) => {
   }
 })
 
-onMounted(loadOptions)
+onMounted(async () => {
+  await Promise.all([loadOptions(), loadUploadTasks()])
+  if (activeTasks.value.length) startTaskPolling()
+})
 onBeforeUnmount(() => {
   cleanupPreviewItems()
   stopTaskPolling()
@@ -501,27 +626,75 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </el-form-item>
-      <el-form-item v-if="taskItems.length" class="image-upload-form__section" label="任务状态">
-        <div class="upload-task-panel">
-          <div class="upload-task-panel__summary">
-            <span>处理中 {{ activeTasks.length }}</span>
+      <el-form-item class="image-upload-form__section" label="上传任务">
+        <div v-loading="taskLoading" class="upload-task-panel">
+          <div class="upload-task-toolbar">
+            <div class="upload-task-toolbar__filters">
+              <el-checkbox
+                :model-value="allPageTasksSelected"
+                :indeterminate="selectedTaskIds.length > 0 && !allPageTasksSelected"
+                aria-label="选择本页任务"
+                @change="toggleAllPageTasks"
+              />
+              <el-select v-model="taskStatusFilter" class="upload-task-status-filter" @change="changeTaskStatusFilter">
+                <el-option v-for="item in taskStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-button circle :icon="Refresh" aria-label="刷新任务" @click="loadUploadTasks()" />
+              <span class="muted">共 {{ taskTotal }} 个</span>
+            </div>
+            <div class="upload-task-toolbar__actions">
+              <span v-if="selectedTaskIds.length" class="muted">已选 {{ selectedTaskIds.length }} 个</span>
+              <el-button :disabled="!selectedTaskIds.length" :loading="taskActionLoading" @click="runTaskAction('retry', selectedTaskIds)">重试</el-button>
+              <el-button :disabled="!selectedTaskIds.length" :loading="taskActionLoading" @click="runTaskAction('cancel', selectedTaskIds)">取消</el-button>
+              <el-button type="danger" plain :disabled="!selectedTaskIds.length" :loading="taskActionLoading" @click="runTaskAction('delete', selectedTaskIds)">清理</el-button>
+            </div>
+          </div>
+          <div v-if="taskItems.length" class="upload-task-panel__summary">
+            <span>本页活动 {{ activeTasks.length }}</span>
             <span>成功 {{ completedTasks.length }}</span>
             <span>失败 {{ failedTasks.length }}</span>
             <el-button size="small" :icon="ArrowRight" @click="$router.push('/admin/images')">去图片管理</el-button>
           </div>
-          <div class="upload-task-list">
+          <div v-if="taskItems.length" class="upload-task-list">
             <div v-for="task in taskItems" :key="task.id" class="upload-task-item">
+              <el-checkbox
+                :model-value="selectedTaskIds.includes(task.id)"
+                :aria-label="`选择任务 ${task.id}`"
+                @change="(selected) => toggleTaskSelection(task.id, selected)"
+              />
               <div class="upload-task-item__main">
                 <strong>{{ task.original_filename || `任务 ${task.id}` }}</strong>
                 <span v-if="task.error_message" class="upload-task-item__error">{{ task.error_message }}</span>
                 <span v-else class="muted">
                   {{ task.image_id ? `图片 ID ${task.image_id}` : formatBytes(task.file_size) }}
                   <template v-if="task.duplicate"> · 重复文件</template>
+                  <template v-else-if="task.preflight_duplicate"> · 预检重复</template>
+                </span>
+                <span class="muted">
+                  {{ task.attempt_count > 0 ? `尝试 ${task.attempt_count}/${task.max_attempts}` : '历史任务' }}
+                  <template v-if="task.next_attempt_at"> · {{ formatTaskTime(task.next_attempt_at) }} 重试</template>
+                  <template v-if="task.cancel_requested"> · 正在取消</template>
                 </span>
               </div>
-              <el-tag :type="taskStatusType(task.status)">{{ taskStatusLabel(task.status) }}</el-tag>
+              <div class="upload-task-item__actions">
+                <el-tag :type="taskStatusType(task.status)">{{ taskStatusLabel(task.status) }}</el-tag>
+                <el-button v-if="canRetryTask(task)" size="small" @click="runTaskAction('retry', [task.id])">重试</el-button>
+                <el-button v-if="canCancelTask(task)" size="small" @click="runTaskAction('cancel', [task.id])">取消</el-button>
+                <el-button v-if="canDeleteTask(task)" size="small" :icon="Delete" circle aria-label="清理任务" @click="runTaskAction('delete', [task.id])" />
+              </div>
             </div>
           </div>
+          <el-empty v-else description="暂无上传任务" :image-size="64" />
+          <el-pagination
+            v-if="taskTotal > taskPageSize"
+            class="upload-task-pagination"
+            background
+            layout="prev, pager, next, total"
+            :current-page="taskPage"
+            :page-size="taskPageSize"
+            :total="taskTotal"
+            @current-change="changeTaskPage"
+          />
         </div>
       </el-form-item>
       <div class="admin-form-workbench">

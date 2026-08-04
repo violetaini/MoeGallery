@@ -5,8 +5,9 @@ import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 
 import App from './App.vue'
-import router from './router'
+import router, { warmPublicRoutes } from './router'
 import './styles/global.css'
 
 createApp(App).use(createPinia()).use(router).use(ElementPlus).mount('#app')
 
+router.isReady().then(() => warmPublicRoutes())

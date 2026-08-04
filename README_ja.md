@@ -41,11 +41,13 @@ sudo bash install.sh
 - `127.0.0.1`: サーバー内部からのみ接続を受け付けます。Nginx やホスティングパネルでリバースプロキシを構成する場合に推奨します。
 - `0.0.0.0`: すべてのネットワークインターフェースで待ち受け、LAN または公開 IP アドレスから直接アクセスできます。
 
-既定のポートは `8111` です。インストールが完了すると、初回セットアップ用の URL が表示されます。既定の待ち受けアドレスを使用する場合は、サーバー上で次の URL を開きます。
+既定のポートは `8111` です。インストールが完了すると、一時トークンを含む初回セットアップ URL が表示されます。既定の待ち受けアドレスでは、次のような URL になります。
 
 ```text
-http://127.0.0.1:8111/install
+http://127.0.0.1:8111/install#token=TEMPORARY_TOKEN
 ```
+
+インストーラーに表示された URL を省略せずに開いてください。トークンを手入力する必要はありません。有効期限は 2 時間で、セットアップが成功すると直ちに無効になります。URL を紛失した場合や期限が切れた場合は、`moegallery.service` を再起動し、サービスログに表示された最新の URL を使用してください。
 
 別の端末からセットアップする場合は、先にリバースプロキシまたは SSH トンネルを設定してください。`0.0.0.0` を選択した場合は、`http://SERVER_IP:8111/install` に直接アクセスできます。
 
@@ -137,7 +139,8 @@ SQLite では SQLite Backup API を使って整合性のあるバックアップ
 ```bash
 # バックエンド
 python -m venv .venv
-./.venv/bin/pip install -r backend/requirements.txt
+./.venv/bin/python -m pip install "pip==26.2"
+./.venv/bin/python -m pip install --require-hashes -r backend/requirements.lock.txt
 cd backend
 ../.venv/bin/uvicorn app.main:app --reload --port 8000
 

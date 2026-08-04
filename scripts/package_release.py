@@ -89,7 +89,7 @@ def _write_release_notes(stage_root: Path, version: str) -> None:
                 "",
                 "Included:",
                 "",
-                "- backend FastAPI source, Alembic migrations, and Python requirements",
+                "- backend FastAPI source, Alembic migrations, and hash-locked Python requirements",
                 "- prebuilt frontend assets in `frontend/dist`",
                 "- one-command installer, built-in update launcher, backup tools, documentation, and license",
                 "- empty `storage/` and `logs/` directories for deployment layout",
@@ -137,6 +137,11 @@ def _stage(version: str, output_dir: Path) -> Path:
     stage_root.mkdir(parents=True)
 
     _copytree(ROOT / "backend", stage_root / "backend", ignore=_ignore_backend)
+    for filename in ("requirements.lock.txt", "requirements-test.lock.txt"):
+        source = ROOT / "backend" / filename
+        if not source.is_file():
+            raise SystemExit(f"Missing dependency lock: backend/{filename}")
+        _copy_file(source, stage_root / "backend" / filename)
     _copytree(frontend_dist, stage_root / "frontend" / "dist")
     _copytree(ROOT / "scripts", stage_root / "scripts", ignore=_ignore_runtime_cache)
     if (ROOT / "docs").exists():

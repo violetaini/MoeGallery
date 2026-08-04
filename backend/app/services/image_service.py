@@ -1,11 +1,26 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Character, Image, Tag, Work
 from app.services.storage_service import delete_storage_file, save_image_files
 from app.utils.hash import average_hash_bytes, sha256_bytes
-from app.utils.image_process import InvalidImageError, inspect_image, render_webp_preview_bytes, validate_upload_filename
+from app.utils.image_process import (
+    ImageInspection,
+    InvalidImageError,
+    inspect_image,
+    render_webp_preview_bytes,
+    validate_upload_filename,
+)
+
+
+def _delete_generated_files(paths: tuple[str | None, ...]) -> None:
+    for path in paths:
+        try:
+            delete_storage_file(path)
+        except OSError:
+            pass
 
 
 def image_orientation(width: int, height: int) -> str:
@@ -33,6 +48,8 @@ class ImageService:
         character_ids: list[int] | None = None,
         tag_ids: list[int] | None = None,
         merge_duplicate_relations: bool = False,
+        precomputed_sha256: str | None = None,
+        precomputed_inspection: ImageInspection | None = None,
     ) -> tuple[Image, bool]:
         if not data:
             raise ValueError("Empty upload")
@@ -40,10 +57,7 @@ class ImageService:
             raise ValueError("File is larger than configured upload limit")
 
         validate_upload_filename(original_filename)
-        inspection = inspect_image(data)
-        # Browser supplied MIME is advisory; Pillow detection is authoritative.
-
-        sha256 = sha256_bytes(data)
+        sha256 = precomputed_sha256 or sha256_bytes(data)
         existing = self.db.scalar(select(Image).where(Image.sha256 == sha256))
         if existing:
             if merge_duplicate_relations:
@@ -52,6 +66,8 @@ class ImageService:
                 self.db.refresh(existing)
             return existing, True
 
+        inspection = precomputed_inspection or inspect_image(data)
+        # Browser supplied MIME is advisory; Pillow detection is authoritative.
         phash = self._create_phash(data)
         paths = save_image_files(data, sha256, original_filename, inspection)
         image = Image(
@@ -76,9 +92,25 @@ class ImageService:
             source_url=source_url,
             artist_name=artist_name,
         )
-        self._apply_relations(image, work_ids, character_ids, tag_ids)
-        self.db.add(image)
-        self.db.commit()
+        try:
+            self._apply_relations(image, work_ids, character_ids, tag_ids)
+            self.db.add(image)
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            _delete_generated_files((paths["file_path"], paths["preview_path"], paths["thumbnail_path"]))
+            existing = self.db.scalar(select(Image).where(Image.sha256 == sha256))
+            if not existing:
+                raise
+            if merge_duplicate_relations:
+                self._apply_relations(existing, work_ids, character_ids, tag_ids)
+                self.db.commit()
+                self.db.refresh(existing)
+            return existing, True
+        except Exception:
+            self.db.rollback()
+            _delete_generated_files((paths["file_path"], paths["preview_path"], paths["thumbnail_path"]))
+            raise
         self.db.refresh(image)
         return image, False
 

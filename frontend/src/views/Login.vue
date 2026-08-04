@@ -26,6 +26,11 @@ async function submit() {
       password: form.password
     })
     setAuthSession(session)
+    if (session.password_change_required) {
+      ElMessage.warning('当前账号仍使用旧版默认密码，请立即设置新密码')
+      await router.replace({ path: '/admin/settings', query: { password_change: '1' } })
+      return
+    }
     await router.replace(route.query.redirect || '/admin')
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || '登录失败')

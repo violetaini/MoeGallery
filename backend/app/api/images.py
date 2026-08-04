@@ -1,7 +1,6 @@
 import random
 from typing import Annotated
 from pathlib import PurePath
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
@@ -9,7 +8,12 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.helpers import parse_id_csv
-from app.auth import optional_admin, require_admin
+from app.auth import (
+    optional_admin,
+    require_library_delete,
+    require_library_write,
+    require_uploads_manage,
+)
 from app.database import get_db
 from app.models import Character, Image, Work
 from app.schemas.image import (
@@ -25,6 +29,7 @@ from app.schemas.image import (
 )
 from app.services.image_service import ImageService
 from app.services.app_setting_service import get_random_api_defaults
+from app.services.media_delivery_service import build_media_url, resolve_media_variant
 from app.services.storage_service import delete_storage_file, resolve_storage_file
 from app.utils.image_process import InvalidImageError, render_webp_preview_bytes, validate_upload_filename
 
@@ -181,28 +186,19 @@ def _detect_random_api_device(request: Request, requested_device: str) -> str:
 
 
 def _random_image_asset(image: Image, requested_variant: str) -> tuple[str, str]:
-    candidates = {
-        "original": ((image.file_path, "original"),),
-        "preview": (
-            (image.preview_path, "preview"),
-            (image.file_path, "original"),
-        ),
-        "thumbnail": (
-            (image.thumbnail_path, "thumbnail"),
-            (image.preview_path, "preview"),
-            (image.file_path, "original"),
-        ),
-    }
-    for path, served_variant in candidates[requested_variant]:
-        if not path:
-            continue
-        try:
-            target = resolve_storage_file(path)
-        except ValueError:
-            continue
-        if target.is_file():
-            return path, served_variant
-    raise FileNotFoundError
+    try:
+        path, served_variant = resolve_media_variant(image, requested_variant)
+        target = resolve_storage_file(path)
+    except ValueError as exc:
+        raise FileNotFoundError from exc
+    if not target.is_file():
+        raise FileNotFoundError
+    return path, served_variant
+
+
+def _rotate_media_version_if_access_changes(image: Image, data: dict) -> None:
+    if any(key in data and getattr(image, key) != data[key] for key in ("rating", "is_public")):
+        image.media_version = max(1, int(image.media_version or 1)) + 1
 
 
 @router.get(
@@ -269,7 +265,7 @@ def random_image(
     if not selected_image or not selected_path or not served_variant:
         raise HTTPException(status_code=404, detail="No public image matches the random image filters")
 
-    image_url = f"/storage/{quote(selected_path, safe='/')}"
+    image_url = build_media_url(selected_image, served_variant)
     headers = {
         "Cache-Control": "no-store, max-age=0",
         "Cross-Origin-Resource-Policy": "cross-origin",
@@ -372,7 +368,7 @@ def list_images(
 @router.post("/upload", response_model=ImageUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_images(
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_uploads_manage)],
     files: Annotated[list[UploadFile], File()],
     work_ids: str | None = Form(None),
     character_ids: str | None = Form(None),
@@ -417,7 +413,7 @@ async def upload_images(
 
 @router.post("/preview")
 async def preview_upload_image(
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_uploads_manage)],
     file: Annotated[UploadFile, File()],
 ):
     try:
@@ -433,7 +429,7 @@ async def preview_upload_image(
 def update_images_batch(
     payload: ImageBatchUpdate,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
 ):
     image_ids = list(dict.fromkeys(payload.image_ids))
     images = db.scalars(select(Image).options(*_image_options()).where(Image.id.in_(image_ids))).unique().all()
@@ -450,6 +446,7 @@ def update_images_batch(
     character_ids = data.pop("character_ids", None)
     service = ImageService(db)
     for image in images:
+        _rotate_media_version_if_access_changes(image, data)
         for key, value in data.items():
             setattr(image, key, value)
         service.update_relations(image, work_ids, character_ids)
@@ -462,7 +459,7 @@ def update_images_batch(
 def delete_images_batch(
     payload: ImageBatchDelete,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_delete)],
 ):
     image_ids = list(dict.fromkeys(payload.image_ids))
     images = db.scalars(select(Image).where(Image.id.in_(image_ids))).unique().all()
@@ -544,7 +541,7 @@ def update_image(
     image_id: int,
     payload: ImageUpdate,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
 ):
     image = db.scalar(select(Image).options(*_image_options()).where(Image.id == image_id))
     if not image:
@@ -554,6 +551,7 @@ def update_image(
     _validate_original_filename_extension(image.original_filename or image.filename, data.get("original_filename"))
     work_ids = data.pop("work_ids", None)
     character_ids = data.pop("character_ids", None)
+    _rotate_media_version_if_access_changes(image, data)
     for key, value in data.items():
         setattr(image, key, value)
     ImageService(db).update_relations(image, work_ids, character_ids)
@@ -566,7 +564,7 @@ def update_image(
 def delete_image(
     image_id: int,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_delete)],
 ):
     image = db.scalar(select(Image).where(Image.id == image_id))
     if not image:

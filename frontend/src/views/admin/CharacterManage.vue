@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Search, UploadFilled } from '@element-plus/icons-vue'
-import { storageUrl } from '../../api/client'
+import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import { imageUploadAccept } from '../../constants/uploadFormats'
 import { displayId } from '../../utils/displayId'
@@ -29,7 +29,7 @@ const form = reactive({
 
 const currentAvatar = computed(() => {
   const selected = avatarImages.value.find((image) => image.id === form.avatar_image_id)
-  return storageUrl(selected?.thumbnail_path || selected?.preview_path)
+  return mediaUrl(selected, 'thumbnail')
 })
 
 const avatarImageDisplayIds = computed(() => new Map(avatarImages.value.map((image, index) => [image.id, displayId(index)])))
@@ -148,7 +148,7 @@ onMounted(async () => {
         <template #default="{ row }">
           <img
             v-if="row.avatar_image"
-            :src="storageUrl(row.avatar_image.thumbnail_path || row.avatar_image.preview_path)"
+            :src="mediaUrl(row.avatar_image, 'thumbnail')"
             alt=""
             class="table-thumb"
           />

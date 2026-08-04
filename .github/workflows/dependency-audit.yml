@@ -1,0 +1,62 @@
+name: Dependency audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/requirements*.in"
+      - "backend/requirements*.txt"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - ".github/workflows/dependency-audit.yml"
+  pull_request:
+    paths:
+      - "backend/requirements*.in"
+      - "backend/requirements*.txt"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - ".github/workflows/dependency-audit.yml"
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Python dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install audit tooling
+        run: python -m pip install "pip==26.2" "pip-audit==2.10.1"
+      - name: Verify and audit lock
+        run: |
+          python -m pip install --require-hashes -r backend/requirements.lock.txt
+          python -m pip_audit --strict --require-hashes --disable-pip -r backend/requirements.lock.txt
+
+  frontend:
+    name: npm dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install exact dependency graph
+        working-directory: frontend
+        run: npm ci
+      - name: Audit dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high

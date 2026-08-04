@@ -3,9 +3,8 @@ from pydantic import BaseModel, Field, model_validator
 
 class InstallStatus(BaseModel):
     installed: bool
-    lock_exists: bool
-    database_initialized: bool
     restart_required: bool = False
+    token_required: bool = False
 
 
 class InstallRequest(BaseModel):
@@ -17,8 +16,7 @@ class InstallRequest(BaseModel):
     mysql_username: str | None = None
     mysql_password: str | None = None
     admin_username: str = Field(min_length=1, max_length=80)
-    admin_password: str = Field(min_length=6, max_length=128)
-    auth_secret: str | None = Field(default=None, min_length=32, max_length=256)
+    admin_password: str = Field(min_length=12, max_length=128)
 
     @model_validator(mode="after")
     def validate_database_fields(self):
@@ -30,6 +28,14 @@ class InstallRequest(BaseModel):
             ]
             if missing:
                 raise ValueError(f"Missing MySQL fields: {', '.join(missing)}")
+        normalized_password = self.admin_password.strip().casefold()
+        normalized_username = self.admin_username.strip().casefold()
+        if self.admin_password != self.admin_password.strip():
+            raise ValueError("管理员密码首尾不能包含空格")
+        if normalized_password == normalized_username:
+            raise ValueError("管理员密码不能与用户名相同")
+        if normalized_password in {"admin123", "password", "password123", "change-this-password"}:
+            raise ValueError("管理员密码过于简单")
         return self
 
 

@@ -2,12 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import CharacterSummary, ImageSummary, OrmModel, PageResponse, WorkSummary
-
-
-class WorkCharacterSummary(CharacterSummary):
-    work: WorkSummary | None = None
-    avatar_image: ImageSummary | None = None
+from app.schemas.common import ImageSummary, OrmModel, PageResponse
 
 
 class WorkBase(BaseModel):
@@ -61,8 +56,8 @@ class WorkRead(WorkBase, OrmModel):
 
 
 class WorkDetail(WorkRead):
-    characters: list[WorkCharacterSummary] = []
-    images: list[ImageSummary] = []
+    character_count: int = Field(default=0, ge=0)
+    image_count: int = Field(default=0, ge=0)
 
 
 class WorkListResponse(PageResponse[WorkRead]):

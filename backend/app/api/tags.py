@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import optional_admin, require_admin
+from app.auth import optional_admin, require_library_delete, require_library_write
 from app.database import get_db
 from app.models import Tag
 from app.schemas.common import ImageSummary
@@ -37,7 +37,7 @@ def list_tags(
 def create_tag(
     payload: TagCreate,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
 ):
     tag = Tag(**payload.model_dump())
     db.add(tag)
@@ -66,7 +66,7 @@ def update_tag(
     tag_id: int,
     payload: TagUpdate,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_write)],
 ):
     tag = db.get(Tag, tag_id)
     if not tag:
@@ -82,7 +82,7 @@ def update_tag(
 def delete_tag(
     tag_id: int,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[dict, Depends(require_admin)],
+    admin: Annotated[dict, Depends(require_library_delete)],
 ):
     tag = db.get(Tag, tag_id)
     if not tag:

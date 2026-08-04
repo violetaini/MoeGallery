@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Calendar, Collection, Link, Picture, Star, Timer, User } from '@element-plus/icons-vue'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
 import CharacterCard from '../components/CharacterCard.vue'
 import ImageMasonry from '../components/ImageMasonry.vue'
@@ -33,8 +33,8 @@ const workId = computed(() => route.params.id)
 const backdrop = computed(() => {
   const image = work.value?.backdrop_image || work.value?.cover_image
   if (!image) return ''
-  const highDynamicRangePath = prefersHdr.value && canUseHdrOriginal(image) ? image.file_path : ''
-  return storageUrl(highDynamicRangePath || image.preview_path || image.thumbnail_path || image.file_path)
+  const variant = prefersHdr.value && canUseHdrOriginal(image) ? 'original' : 'preview'
+  return mediaUrl(image, variant)
 })
 const heroStyle = computed(() => (backdrop.value ? { '--work-backdrop-image': `url("${backdrop.value}")` } : {}))
 const createdAt = computed(() => {
@@ -70,6 +70,8 @@ async function loadWork() {
   pageLoading.value = true
   try {
     work.value = await galleryApi.work(workId.value)
+    characterTotal.value = work.value.character_count || 0
+    imageTotal.value = work.value.image_count || 0
   } finally {
     pageLoading.value = false
   }

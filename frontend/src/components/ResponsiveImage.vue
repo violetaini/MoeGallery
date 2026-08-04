@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 import { canUseHdrOriginal } from '../utils/imageDisplay'
 
 const props = defineProps({
@@ -14,9 +14,9 @@ const props = defineProps({
   preferAnimated: { type: Boolean, default: false }
 })
 
-const originalSrc = computed(() => storageUrl(props.image?.file_path))
-const previewSrc = computed(() => storageUrl(props.image?.preview_path || props.image?.file_path || props.image?.thumbnail_path))
-const thumbnailSrc = computed(() => storageUrl(props.image?.thumbnail_path || props.image?.preview_path || props.image?.file_path))
+const originalSrc = computed(() => mediaUrl(props.image, 'original'))
+const previewSrc = computed(() => mediaUrl(props.image, 'preview'))
+const thumbnailSrc = computed(() => mediaUrl(props.image, 'thumbnail'))
 
 const defaultSrc = computed(() => {
   if (props.variant === 'thumbnail') {

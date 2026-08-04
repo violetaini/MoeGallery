@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, Loading, Refresh } from '@element-plus/icons-vue'
-import { adminAvatarUrlFromImage, clearAuthSession, setAuthSession, storageUrl } from '../../api/client'
+import { Check, Delete, Edit, Loading, Plus, Refresh } from '@element-plus/icons-vue'
+import { adminAvatarUrlFromImage, clearAuthSession, mediaUrl, setAuthSession } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import { orientationLabel, orientationOptions } from '../../constants/orientations'
 import { imageUploadAccept } from '../../constants/uploadFormats'
@@ -17,17 +17,28 @@ import {
 const imageManageViewMode = ref(getImageManageViewMode())
 const router = useRouter()
 const uploadWorkerCount = ref(12)
+const uploadWorkerLimit = ref(96)
+const databaseConcurrencyProfile = ref('generic')
 const uploadClaimBatchSize = ref(1)
+const uploadTaskMaxAttempts = ref(3)
+const uploadFailedRetentionDays = ref(7)
 const randomApiDesktopOrientation = ref('landscape')
 const randomApiMobileOrientation = ref('portrait')
 const randomApiDefaultRating = ref('safe')
 const randomApiDefaultVariant = ref('preview')
 const githubProxyUrl = ref('')
 const operationsApiKeys = ref([])
-const apiKeysVisible = ref(false)
+const apiKeyScopes = ref([])
+const visibleApiKeyIds = ref(new Set())
 const resettingApiKeys = ref(false)
+const apiKeyDialogOpen = ref(false)
+const apiKeySaving = ref(false)
+const editingApiKeyId = ref(null)
+const rotatingApiKeyId = ref(null)
+const apiKeyForm = ref({ name: '', scopes: ['library:read'], expires_at: null })
 const adminUsername = ref('')
 const adminPassword = ref('')
+const adminPasswordChangeRequired = ref(false)
 const adminAvatarImage = ref(null)
 const adminAvatarImageId = ref(null)
 const avatarUploading = ref(false)
@@ -124,6 +135,15 @@ const randomApiVariantOptions = [
 ]
 
 const adminAvatarUrl = computed(() => adminAvatarUrlFromImage(adminAvatarImage.value) || '/avatar.webp')
+const uploadWorkerHint = computed(() => {
+  if (databaseConcurrencyProfile.value === 'sqlite_conservative') {
+    return `SQLite 单写入模式，当前最多 ${uploadWorkerLimit.value} 个 worker。`
+  }
+  if (databaseConcurrencyProfile.value === 'mysql_high_throughput') {
+    return `MySQL 并行领取任务，当前最多 ${uploadWorkerLimit.value} 个 worker。`
+  }
+  return `当前数据库最多允许 ${uploadWorkerLimit.value} 个 worker。`
+})
 const selectedHomeSlideshowImages = computed(() => {
   const imageById = new Map()
   ;[...homeSlideshowImages.value, ...homeSlideshowImageOptions.value, ...homeSlideshowPickerImages.value].forEach((image) => {
@@ -157,11 +177,13 @@ const healthCards = computed(() => {
   const jxr = data.capabilities?.jxr_decode || {}
   const hdr = data.capabilities?.hdr_avif_metadata_patch || {}
   const authSecret = data.security?.auth_secret || {}
+  const mediaDelivery = data.media_delivery || {}
   const database = data.database || {}
+  const databaseConcurrency = database.concurrency || {}
   const databaseDetail =
     database.dialect === 'sqlite'
-      ? `SQLite · ${formatBytes(database.size_bytes)}`
-      : `${database.dialect || 'Database'} · ${database.driver || 'driver'}`
+      ? `SQLite · ${databaseConcurrency.journal_mode === 'wal' ? 'WAL' : '非 WAL'} · 忙等 ${Math.round(Number(databaseConcurrency.busy_timeout_ms || 0) / 1000)} 秒`
+      : `${database.dialect || 'Database'} · 连接 ${databaseConcurrency.pool?.checked_out ?? 0}/${databaseConcurrency.pool_capacity ?? databaseConcurrency.pool_size ?? '-'}`
   const fileHealth = formatImageFileHealth(consistency, original, preview, thumbnail)
   const missingFileDirs = [
     ['原图', original.exists],
@@ -170,9 +192,11 @@ const healthCards = computed(() => {
   ]
     .filter(([, exists]) => !exists)
     .map(([label]) => label)
-  const fileHealthDetail = missingFileDirs.length
+  const fileHealthBaseDetail = missingFileDirs.length
     ? `${missingFileDirs.join('、')}目录缺失`
     : fileHealth.message
+  const mediaDeliveryMode = mediaDelivery.accel_redirect_enabled ? 'Nginx 发送' : '应用发送'
+  const fileHealthDetail = `${fileHealthBaseDetail} · ${mediaDeliveryMode} · CDN ${mediaDelivery.public_shared_cache_seconds ?? 300} 秒`
   const filesReady = missingFileDirs.length === 0 && fileHealth.complete
   const migrationReady = migration.up_to_date !== false
   const versionDetail = !migrationReady
@@ -208,9 +232,9 @@ const healthCards = computed(() => {
     {
       key: 'upload',
       label: '上传队列',
-      value: `${data.upload_queue?.worker_count ?? uploadWorkerCount.value} workers`,
-      detail: `单轮领取 ${data.upload_queue?.claim_batch_size ?? uploadClaimBatchSize.value}`,
-      tone: 'info'
+      value: `${data.upload_queue?.worker_alive ?? 0}/${data.upload_queue?.worker_target ?? data.upload_queue?.worker_count ?? uploadWorkerCount.value} worker`,
+      detail: `排队 ${data.upload_queue?.queued ?? 0} · 处理中 ${data.upload_queue?.processing ?? 0} · 上限 ${data.upload_queue?.worker_limit ?? uploadWorkerLimit.value}`,
+      tone: (data.upload_queue?.failed ?? 0) > 0 ? 'warning' : 'info'
     },
     {
       key: 'ffmpeg',
@@ -283,6 +307,7 @@ function storageStats(name) {
 
 function syncAccount(data) {
   adminUsername.value = data.admin_username || ''
+  adminPasswordChangeRequired.value = Boolean(data.admin_password_change_required)
   adminAvatarImageId.value = data.admin_avatar_image_id || null
   adminAvatarImage.value = data.admin_avatar_image || null
   syncHomeSlideshowImages(data)
@@ -292,6 +317,132 @@ function syncAccount(data) {
 
 function syncOperationsApiKeys(data) {
   operationsApiKeys.value = Array.isArray(data.operations_api_keys) ? data.operations_api_keys : []
+  apiKeyScopes.value = Array.isArray(data.api_key_scopes) ? data.api_key_scopes : apiKeyScopes.value
+  const configuredIds = new Set(operationsApiKeys.value.map((item) => item.id))
+  visibleApiKeyIds.value = new Set([...visibleApiKeyIds.value].filter((id) => configuredIds.has(id)))
+}
+
+function isApiKeyVisible(id) {
+  return visibleApiKeyIds.value.has(id)
+}
+
+function setApiKeyVisible(id, visible) {
+  const next = new Set(visibleApiKeyIds.value)
+  if (visible) next.add(id)
+  else next.delete(id)
+  visibleApiKeyIds.value = next
+}
+
+function toggleApiKeyVisible(id) {
+  setApiKeyVisible(id, !isApiKeyVisible(id))
+}
+
+function apiKeyScopeLabel(scope) {
+  return apiKeyScopes.value.find((item) => item.value === scope)?.label || scope
+}
+
+function formatApiKeyTime(value, fallback = '从不过期') {
+  if (!value) return fallback
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function openCreateApiKey() {
+  editingApiKeyId.value = null
+  apiKeyForm.value = { name: '', scopes: ['library:read'], expires_at: null }
+  apiKeyDialogOpen.value = true
+}
+
+function openEditApiKey(item) {
+  editingApiKeyId.value = item.id
+  apiKeyForm.value = {
+    name: item.name,
+    scopes: [...item.scopes],
+    expires_at: item.expires_at ? new Date(item.expires_at) : null
+  }
+  apiKeyDialogOpen.value = true
+}
+
+function selectAllApiKeyScopes() {
+  apiKeyForm.value.scopes = apiKeyScopes.value.map((item) => item.value)
+}
+
+async function saveApiKey() {
+  if (!apiKeyForm.value.name.trim()) {
+    ElMessage.warning('请输入 Key 名称')
+    return
+  }
+  if (!apiKeyForm.value.scopes.length) {
+    ElMessage.warning('请至少选择一项权限')
+    return
+  }
+  apiKeySaving.value = true
+  const payload = {
+    name: apiKeyForm.value.name.trim(),
+    scopes: apiKeyForm.value.scopes,
+    expires_at: apiKeyForm.value.expires_at ? apiKeyForm.value.expires_at.toISOString() : null
+  }
+  try {
+    const item = editingApiKeyId.value
+      ? await galleryApi.updateApiKey(editingApiKeyId.value, payload)
+      : await galleryApi.createApiKey(payload)
+    const index = operationsApiKeys.value.findIndex((key) => key.id === item.id)
+    if (index >= 0) operationsApiKeys.value.splice(index, 1, item)
+    else operationsApiKeys.value.push(item)
+    setApiKeyVisible(item.id, true)
+    apiKeyDialogOpen.value = false
+    ElMessage.success(editingApiKeyId.value ? 'API Key 已更新' : 'API Key 已创建')
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '保存 API Key 失败')
+  } finally {
+    apiKeySaving.value = false
+  }
+}
+
+async function revokeOperationsApiKey(item) {
+  await ElMessageBox.confirm(
+    `撤销后“${item.name}”会立即失效，使用它的任务将无法继续调用 API。`,
+    '撤销 API Key',
+    {
+      type: 'warning',
+      confirmButtonText: '确认撤销',
+      cancelButtonText: '取消',
+      closeOnClickModal: false
+    }
+  )
+  try {
+    await galleryApi.revokeApiKey(item.id)
+    operationsApiKeys.value = operationsApiKeys.value.filter((key) => key.id !== item.id)
+    setApiKeyVisible(item.id, false)
+    ElMessage.success('API Key 已撤销')
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '撤销 API Key 失败')
+  }
+}
+
+async function rotateOperationsApiKey(item) {
+  await ElMessageBox.confirm(
+    `刷新后“${item.name}”的旧 Key 会立即失效，名称、权限和有效期保持不变。确认继续？`,
+    '刷新 API Key',
+    {
+      type: 'warning',
+      confirmButtonText: '确认刷新',
+      cancelButtonText: '取消',
+      closeOnClickModal: false
+    }
+  )
+  rotatingApiKeyId.value = item.id
+  try {
+    const refreshed = await galleryApi.rotateApiKey(item.id)
+    const index = operationsApiKeys.value.findIndex((key) => key.id === item.id)
+    if (index >= 0) operationsApiKeys.value.splice(index, 1, refreshed)
+    setApiKeyVisible(refreshed.id, true)
+    ElMessage.success('API Key 已刷新，请及时更新使用旧 Key 的任务')
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '刷新 API Key 失败')
+  } finally {
+    rotatingApiKeyId.value = null
+  }
 }
 
 function syncRandomApiSettings(data) {
@@ -315,7 +466,7 @@ function syncHeroBackgrounds(data) {
 }
 
 function heroBackgroundUrl(item) {
-  return storageUrl(item.image?.preview_path || item.image?.file_path || item.image?.thumbnail_path) || item.fallback
+  return mediaUrl(item.image, 'preview') || item.fallback
 }
 
 function imageDisplayName(image) {
@@ -323,7 +474,7 @@ function imageDisplayName(image) {
 }
 
 function imageThumbnailUrl(image) {
-  return storageUrl(image?.thumbnail_path || image?.preview_path || image?.file_path)
+  return mediaUrl(image, 'thumbnail')
 }
 
 function workOptionLabel(work) {
@@ -510,7 +661,11 @@ async function loadAdminSettings() {
     const data = await galleryApi.settings()
     imageManageViewMode.value = normalizeImageManageViewMode(data.image_manage_view_mode)
     uploadWorkerCount.value = data.upload_worker_count || 12
+    uploadWorkerLimit.value = data.upload_worker_limit || 96
+    databaseConcurrencyProfile.value = data.database_concurrency_profile || 'generic'
     uploadClaimBatchSize.value = data.upload_claim_batch_size || 1
+    uploadTaskMaxAttempts.value = data.upload_task_max_attempts || 3
+    uploadFailedRetentionDays.value = data.upload_failed_retention_days || 7
     githubProxyUrl.value = data.github_proxy_url || ''
     syncOperationsApiKeys(data)
     syncRandomApiSettings(data)
@@ -528,6 +683,10 @@ async function saveAdminPreferences() {
     ElMessage.warning('请输入用户名')
     return
   }
+  if (adminPasswordChangeRequired.value && !adminPassword.value) {
+    ElMessage.warning('请先设置新的管理员密码')
+    return
+  }
   settingsSaving.value = true
   try {
     const payload = {
@@ -541,6 +700,8 @@ async function saveAdminPreferences() {
       random_api_default_variant: randomApiDefaultVariant.value,
       upload_worker_count: uploadWorkerCount.value,
       upload_claim_batch_size: uploadClaimBatchSize.value,
+      upload_task_max_attempts: uploadTaskMaxAttempts.value,
+      upload_failed_retention_days: uploadFailedRetentionDays.value,
       github_proxy_url: githubProxyUrl.value.trim()
     }
     heroBackgroundItems.value.forEach((item) => {
@@ -551,7 +712,11 @@ async function saveAdminPreferences() {
     adminPassword.value = ''
     imageManageViewMode.value = normalizeImageManageViewMode(data.image_manage_view_mode)
     uploadWorkerCount.value = data.upload_worker_count
+    uploadWorkerLimit.value = data.upload_worker_limit || 96
+    databaseConcurrencyProfile.value = data.database_concurrency_profile || 'generic'
     uploadClaimBatchSize.value = data.upload_claim_batch_size
+    uploadTaskMaxAttempts.value = data.upload_task_max_attempts
+    uploadFailedRetentionDays.value = data.upload_failed_retention_days
     githubProxyUrl.value = data.github_proxy_url || ''
     syncOperationsApiKeys(data)
     syncRandomApiSettings(data)
@@ -661,10 +826,30 @@ async function rotateLoginSecret() {
 }
 
 async function copyApiKey(key) {
+  let copied = false
   try {
-    await navigator.clipboard.writeText(key)
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(key)
+      copied = true
+    }
+  } catch {
+    copied = false
+  }
+  if (!copied) {
+    const textarea = document.createElement('textarea')
+    textarea.value = key
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    copied = document.execCommand('copy')
+    textarea.remove()
+  }
+  if (copied) {
     ElMessage.success('API Key 已复制')
-  } catch (error) {
+  } else {
     ElMessage.error('复制失败，请手动选中复制')
   }
 }
@@ -684,7 +869,7 @@ async function resetOperationsApiKeys() {
   try {
     const data = await galleryApi.resetApiKeys()
     syncOperationsApiKeys(data)
-    apiKeysVisible.value = true
+    visibleApiKeyIds.value = new Set(operationsApiKeys.value.map((item) => item.id))
     ElMessage.success('API Key 已重置')
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || '重置 API Key 失败')
@@ -713,6 +898,13 @@ onMounted(async () => {
       <section class="admin-preferences-panel">
         <div class="admin-preferences-body">
           <div class="admin-preference-section admin-account-panel">
+            <el-alert
+              v-if="adminPasswordChangeRequired"
+              title="当前账号沿用了旧版默认密码，请设置新密码后再继续使用后台。"
+              type="warning"
+              show-icon
+              :closable="false"
+            />
             <div class="admin-preference-header">
               <div class="admin-preference-copy">
                 <strong>管理员资料</strong>
@@ -753,7 +945,7 @@ onMounted(async () => {
                     minlength="6"
                     maxlength="128"
                     autocomplete="new-password"
-                    placeholder="不修改则留空"
+                    :placeholder="adminPasswordChangeRequired ? '必须设置新密码' : '不修改则留空'"
                   />
                 </div>
               </div>
@@ -1014,12 +1206,12 @@ onMounted(async () => {
               <div class="upload-queue-control">
                 <div class="upload-queue-control__copy">
                   <strong>处理 worker</strong>
-                  <span>同一时间并发处理的上传任务数。</span>
+                  <span>{{ uploadWorkerHint }}</span>
                 </div>
                 <el-input-number
                   v-model="uploadWorkerCount"
                   :min="1"
-                  :max="96"
+                  :max="uploadWorkerLimit"
                   :step="1"
                   controls-position="right"
                 />
@@ -1033,6 +1225,32 @@ onMounted(async () => {
                   v-model="uploadClaimBatchSize"
                   :min="1"
                   :max="100"
+                  :step="1"
+                  controls-position="right"
+                />
+              </div>
+              <div class="upload-queue-control">
+                <div class="upload-queue-control__copy">
+                  <strong>最大尝试次数</strong>
+                  <span>新任务自动处理失败后的总尝试次数。</span>
+                </div>
+                <el-input-number
+                  v-model="uploadTaskMaxAttempts"
+                  :min="1"
+                  :max="10"
+                  :step="1"
+                  controls-position="right"
+                />
+              </div>
+              <div class="upload-queue-control">
+                <div class="upload-queue-control__copy">
+                  <strong>失败文件保留</strong>
+                  <span>失败任务可手动重试的保留天数。</span>
+                </div>
+                <el-input-number
+                  v-model="uploadFailedRetentionDays"
+                  :min="1"
+                  :max="90"
                   :step="1"
                   controls-position="right"
                 />
@@ -1060,33 +1278,109 @@ onMounted(async () => {
                 <span>用于脚本、监控和自动化任务调用后台 API；重置后旧 Key 立即失效。</span>
               </div>
               <div class="api-key-actions">
-                <el-button size="small" @click="apiKeysVisible = !apiKeysVisible">
-                  {{ apiKeysVisible ? '隐藏密钥' : '显示密钥' }}
-                </el-button>
+                <el-button size="small" type="primary" :icon="Plus" @click="openCreateApiKey">新建 Key</el-button>
                 <el-button size="small" plain :loading="resettingApiKeys" @click="resetOperationsApiKeys">
-                  重置 API Key
+                  全部重置
                 </el-button>
               </div>
             </div>
             <div v-if="operationsApiKeys.length" class="api-key-list">
-              <div v-for="item in operationsApiKeys" :key="item.name" class="api-key-row">
-                <span class="api-key-row__name">{{ item.name }}</span>
-                <el-input
-                  :model-value="item.key"
-                  :type="apiKeysVisible ? 'text' : 'password'"
-                  readonly
-                  spellcheck="false"
-                />
-                <el-button size="small" :disabled="!apiKeysVisible" @click="copyApiKey(item.key)">复制</el-button>
+              <div v-for="item in operationsApiKeys" :key="item.id" class="api-key-row">
+                <div class="api-key-row__heading">
+                  <strong class="api-key-row__name">{{ item.name }}</strong>
+                  <el-tag v-if="item.full_access" size="small" type="danger">全部权限</el-tag>
+                  <el-tag v-else-if="item.status === 'expired'" size="small" type="warning">已过期</el-tag>
+                  <el-tag v-else size="small" type="success">使用中</el-tag>
+                </div>
+                <div class="api-key-row__secret">
+                  <el-input
+                    :model-value="item.key"
+                    :type="isApiKeyVisible(item.id) ? 'text' : 'password'"
+                    readonly
+                    spellcheck="false"
+                    title="双击复制 API Key"
+                    @dblclick="copyApiKey(item.key)"
+                  />
+                  <el-button
+                    size="small"
+                    :title="isApiKeyVisible(item.id) ? '隐藏 Key' : '显示 Key'"
+                    @click="toggleApiKeyVisible(item.id)"
+                  >
+                    {{ isApiKeyVisible(item.id) ? '隐藏' : '显示' }}
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :icon="Refresh"
+                    :loading="rotatingApiKeyId === item.id"
+                    title="重新生成 Key"
+                    @click="rotateOperationsApiKey(item)"
+                  />
+                  <el-button size="small" :icon="Edit" title="修改 Key" @click="openEditApiKey(item)" />
+                  <el-button size="small" :icon="Delete" title="撤销 Key" @click="revokeOperationsApiKey(item)" />
+                </div>
+                <div class="api-key-row__meta">
+                  <span>权限：{{ item.full_access ? '全部系统权限' : item.scopes.map(apiKeyScopeLabel).join('、') }}</span>
+                  <span>有效期：{{ formatApiKeyTime(item.expires_at) }}</span>
+                  <span>最近调用：{{ formatApiKeyTime(item.last_used_at, '尚未调用') }}<template v-if="item.last_used_ip"> · {{ item.last_used_ip }}</template></span>
+                </div>
               </div>
             </div>
             <div v-else class="api-key-empty">
-              当前未配置 API Key，点击重置会生成一个新的默认 Key。
+              当前未配置 API Key，点击“新建 Key”后按用途授予权限。
             </div>
           </div>
         </div>
       </section>
     </div>
+
+    <el-dialog
+      v-model="apiKeyDialogOpen"
+      :title="editingApiKeyId ? '修改 API Key' : '新建 API Key'"
+      width="min(620px, calc(100vw - 32px))"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="api-key-editor">
+        <label class="api-key-editor__field">
+          <span>名称</span>
+          <el-input v-model="apiKeyForm.name" maxlength="80" placeholder="例如：上传节点、只读监控" />
+        </label>
+        <div class="api-key-editor__field">
+          <div class="api-key-editor__label">
+            <span>权限</span>
+            <el-button link type="primary" @click="selectAllApiKeyScopes">选择全部权限</el-button>
+          </div>
+          <el-checkbox-group v-model="apiKeyForm.scopes" class="api-key-scope-grid">
+            <el-checkbox v-for="scope in apiKeyScopes" :key="scope.value" :value="scope.value" border>
+              <span class="api-key-scope-option">
+                <strong>{{ scope.label }}</strong>
+                <small>{{ scope.description }}</small>
+              </span>
+            </el-checkbox>
+          </el-checkbox-group>
+          <el-alert
+            v-if="apiKeyForm.scopes.length === apiKeyScopes.length && apiKeyScopes.length"
+            title="已选择全部权限，此 Key 可以控制整个系统。"
+            type="warning"
+            :closable="false"
+            show-icon
+          />
+        </div>
+        <label class="api-key-editor__field">
+          <span>有效期</span>
+          <el-date-picker
+            v-model="apiKeyForm.expires_at"
+            type="datetime"
+            placeholder="留空表示永不过期"
+            :disabled-date="(date) => date.getTime() < Date.now() - 86400000"
+          />
+        </label>
+      </div>
+      <template #footer>
+        <el-button @click="apiKeyDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="apiKeySaving" @click="saveApiKey">保存</el-button>
+      </template>
+    </el-dialog>
 
     <div class="section-title">
       <div>

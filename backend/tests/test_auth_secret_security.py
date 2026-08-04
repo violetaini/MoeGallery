@@ -19,7 +19,8 @@ from app.api import auth as auth_api
 from app.config import generate_api_key, generate_auth_secret, is_weak_auth_secret, settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import AdminSession
+from app.models import AdminSession, AppSetting
+from app.services.admin_account_service import ADMIN_PASSWORD_HASH_KEY, ADMIN_USERNAME_KEY, hash_password
 
 
 class _FakeClient:
@@ -149,6 +150,15 @@ class CookieSessionTests(unittest.TestCase):
         )
         Base.metadata.create_all(bind=self.engine)
         self.SessionTesting = sessionmaker(bind=self.engine, autoflush=False, autocommit=False, future=True)
+        self.admin_password = "test-admin-password"
+        with self.SessionTesting() as db:
+            db.add_all(
+                [
+                    AppSetting(key=ADMIN_USERNAME_KEY, value=settings.admin_username),
+                    AppSetting(key=ADMIN_PASSWORD_HASH_KEY, value=hash_password(self.admin_password)),
+                ]
+            )
+            db.commit()
 
         def override_get_db():
             db = self.SessionTesting()
@@ -179,7 +189,7 @@ class CookieSessionTests(unittest.TestCase):
     def test_login_sets_httponly_cookie_and_me_uses_session(self):
         response = self.client.post(
             "/api/auth/login",
-            json={"username": settings.admin_username, "password": settings.admin_password},
+            json={"username": settings.admin_username, "password": self.admin_password},
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("agms_admin_session=", response.headers.get("set-cookie", ""))
@@ -193,7 +203,7 @@ class CookieSessionTests(unittest.TestCase):
     def test_write_request_requires_csrf_header(self):
         login = self.client.post(
             "/api/auth/login",
-            json={"username": settings.admin_username, "password": settings.admin_password},
+            json={"username": settings.admin_username, "password": self.admin_password},
         )
         self.assertEqual(login.status_code, 200)
 
@@ -203,7 +213,7 @@ class CookieSessionTests(unittest.TestCase):
     def test_logout_revokes_session(self):
         login = self.client.post(
             "/api/auth/login",
-            json={"username": settings.admin_username, "password": settings.admin_password},
+            json={"username": settings.admin_username, "password": self.admin_password},
         )
         self.assertEqual(login.status_code, 200)
         csrf = self.client.cookies.get("agms_admin_csrf")
@@ -216,7 +226,7 @@ class CookieSessionTests(unittest.TestCase):
     def test_rotate_secret_revokes_active_sessions(self):
         login = self.client.post(
             "/api/auth/login",
-            json={"username": settings.admin_username, "password": settings.admin_password},
+            json={"username": settings.admin_username, "password": self.admin_password},
         )
         self.assertEqual(login.status_code, 200)
         old_session_cookie = self.client.cookies.get("agms_admin_session")
@@ -252,13 +262,16 @@ class CookieSessionTests(unittest.TestCase):
         settings.api_keys = f"ops:{old_api_key}"
         login = self.client.post(
             "/api/auth/login",
-            json={"username": settings.admin_username, "password": settings.admin_password},
+            json={"username": settings.admin_username, "password": self.admin_password},
         )
         self.assertEqual(login.status_code, 200)
 
         settings_response = self.client.get("/api/settings")
         self.assertEqual(settings_response.status_code, 200)
-        self.assertEqual(settings_response.json()["operations_api_keys"], [{"name": "ops", "key": old_api_key}])
+        shown_key = settings_response.json()["operations_api_keys"][0]
+        self.assertEqual(shown_key["name"], "ops")
+        self.assertEqual(shown_key["key"], old_api_key)
+        self.assertTrue(shown_key["full_access"])
 
         csrf = self.client.cookies.get("agms_admin_csrf")
         reset = self.client.post("/api/settings/api-keys/reset", headers={"X-CSRF-Token": csrf})

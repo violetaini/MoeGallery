@@ -3,6 +3,7 @@ import os
 import secrets
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -118,12 +119,12 @@ def auth_secret_health(value: str) -> dict:
 
 class Settings(BaseSettings):
     app_name: str = "Anime Gallery Media Server"
-    app_version: str = "0.1.5"
+    # VERSION is the normal source of truth. Keep this fallback aligned for source-only runs.
+    app_version: str = "v0.3.0"
     api_prefix: str = "/api"
     database_url: str = f"sqlite:///{(ROOT_DIR / 'backend' / 'anime_gallery.db').as_posix()}"
     storage_path: Path = ROOT_DIR / "storage"
     admin_username: str = "admin"
-    admin_password: str = "admin123"
     auth_secret: str = Field(default_factory=generate_auth_secret, min_length=AUTH_SECRET_MIN_LENGTH)
     api_keys: str = ""
     auth_token_ttl_seconds: int = 12 * 60 * 60
@@ -132,11 +133,33 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     login_rate_limit_window_seconds: int = 300
     login_rate_limit_max_attempts: int = 8
+    install_token_ttl_seconds: int = 2 * 60 * 60
+    install_rate_limit_window_seconds: int = 300
+    install_rate_limit_max_attempts: int = 8
     max_upload_size: int = 100 * 1024 * 1024
     preview_max_size: int = 1600
     thumbnail_max_size: int = 480
+    media_public_browser_cache_seconds: int = Field(default=60, ge=0, le=86400)
+    media_public_shared_cache_seconds: int = Field(default=300, ge=0, le=604800)
+    media_accel_redirect_prefix: str = ""
+    sqlite_busy_timeout_ms: int = Field(default=8000, ge=1000, le=60000)
+    sqlite_synchronous: Literal["NORMAL", "FULL"] = "NORMAL"
+    sqlite_upload_worker_limit: int = Field(default=4, ge=1, le=16)
+    mysql_pool_size: int = Field(default=24, ge=1, le=96)
+    mysql_max_overflow: int = Field(default=40, ge=0, le=192)
+    mysql_pool_timeout_seconds: int = Field(default=30, ge=1, le=300)
+    mysql_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
+    mysql_connect_timeout_seconds: int = Field(default=10, ge=1, le=120)
+    mysql_read_timeout_seconds: int = Field(default=60, ge=1, le=600)
+    mysql_write_timeout_seconds: int = Field(default=60, ge=1, le=600)
     upload_worker_count: int = 12
     upload_claim_batch_size: int = 1
+    upload_task_max_attempts: int = 3
+    upload_task_retry_base_seconds: int = 10
+    upload_task_heartbeat_seconds: int = 30
+    upload_task_lease_seconds: int = 10 * 60
+    upload_task_failed_retention_days: int = 7
+    upload_task_history_retention_days: int = 90
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -158,6 +181,9 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"AGMS_API_KEYS contains weak keys: {', '.join(weak_api_keys)}; each key must be at least {API_KEY_MIN_LENGTH} characters"
             )
+        accel_prefix = self.media_accel_redirect_prefix.strip()
+        if accel_prefix and (not accel_prefix.startswith("/") or ".." in accel_prefix.split("/")):
+            raise ValueError("AGMS_MEDIA_ACCEL_REDIRECT_PREFIX must be an absolute internal URI prefix")
         return self
 
 

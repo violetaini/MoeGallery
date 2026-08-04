@@ -97,8 +97,13 @@ class ApiAuthorizationTests(unittest.TestCase):
             ("post", "/api/auth/logout", None),
             ("post", "/api/settings/auth-secret/rotate", None),
             ("post", "/api/settings/api-keys/reset", None),
+            ("post", "/api/settings/api-keys/1/rotate", None),
+            ("post", "/api/upload-tasks/1/retry", None),
+            ("post", "/api/upload-tasks/1/cancel", None),
+            ("post", "/api/upload-tasks/batch/actions", {"ids": [1], "action": "cancel"}),
             ("post", "/api/updates/tasks", {"dry_run": True, "force": True}),
             ("delete", "/api/images/1", None),
+            ("delete", "/api/upload-tasks/1", None),
             ("delete", "/api/works/1", None),
             ("delete", "/api/characters/1", None),
         ]

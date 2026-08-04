@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { storageUrl } from '../api/client'
+import { mediaUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
 import { ratingOptions } from '../constants/ratings'
 import ImageMasonry from '../components/ImageMasonry.vue'
@@ -17,7 +17,7 @@ const publicSettings = ref(null)
 const fallbackHeroBackdrop = '/hero/ratings-bg.png'
 const heroBackdrop = computed(() => {
   const image = publicSettings.value?.ratings_hero_image
-  return storageUrl(image?.preview_path || image?.file_path || image?.thumbnail_path) || fallbackHeroBackdrop
+  return mediaUrl(image, 'preview') || fallbackHeroBackdrop
 })
 
 const activeRating = computed(() => {

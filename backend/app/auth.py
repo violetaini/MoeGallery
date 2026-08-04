@@ -8,13 +8,21 @@ import time
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.config import auth_secret_fingerprint, parse_api_keys, settings
+from app.config import auth_secret_fingerprint, settings
 from app.database import get_db
 from app.models import AdminSession
+from app.services.api_key_service import (
+    ALL_API_KEY_SCOPES,
+    configured_api_key,
+    find_active_api_key_policy,
+    policy_scopes,
+    record_api_key_use,
+)
+from app.utils.request_ip import client_ip
 
 
 security = HTTPBearer(auto_error=False)
@@ -53,15 +61,15 @@ def _invalid_token() -> HTTPException:
 def verify_api_key(token: str) -> dict | None:
     if not token or len(token) > MAX_BEARER_TOKEN_LENGTH:
         return None
-    for name, api_key in parse_api_keys(settings.api_keys):
-        if hmac.compare_digest(token, api_key):
-            return {
-                "sub": settings.admin_username,
-                "typ": API_KEY_TOKEN_TYPE,
-                "api_key_name": name,
-                "auth_type": "api_key",
-            }
-    return None
+    matched = configured_api_key(token)
+    if matched is None:
+        return None
+    return {
+        "sub": settings.admin_username,
+        "typ": API_KEY_TOKEN_TYPE,
+        "api_key_name": matched[0],
+        "auth_type": "api_key",
+    }
 
 
 def create_access_token(username: str) -> str:
@@ -144,15 +152,48 @@ def _extract_token(
     return None
 
 
-def require_admin(
+def _api_key_admin(
+    db: Session,
+    token: str,
+    required_scopes: tuple[str, ...],
+    ip_address: str | None,
+) -> dict:
+    policy = find_active_api_key_policy(db, token)
+    if policy is None:
+        raise _invalid_token()
+    scopes = policy_scopes(policy)
+    missing = [scope for scope in required_scopes if scope not in scopes]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"API Key lacks required permission: {missing[0]}",
+        )
+    record_api_key_use(db, policy, ip_address)
+    return {
+        "sub": settings.admin_username,
+        "typ": API_KEY_TOKEN_TYPE,
+        "api_key_id": policy.id,
+        "api_key_name": policy.name,
+        "api_key_scopes": scopes,
+        "auth_type": "api_key",
+    }
+
+
+def _require_admin(
+    required_scopes: tuple[str, ...],
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
     session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
 ) -> dict:
     if credentials and credentials.scheme.lower() == "bearer":
-        api_key_admin = verify_api_key(credentials.credentials)
-        if api_key_admin:
-            return api_key_admin
+        if verify_api_key(credentials.credentials):
+            return _api_key_admin(
+                db,
+                credentials.credentials,
+                required_scopes,
+                client_ip(request),
+            )
 
     token = _extract_token(credentials, session_cookie)
     if not token:
@@ -170,15 +211,73 @@ def require_admin(
     return {**data, "session_id": session.id}
 
 
-def optional_admin(
+def require_api_scopes(*required_scopes: str):
+    scopes = tuple(required_scopes)
+
+    def dependency(
+        request: Request,
+        db: Annotated[Session, Depends(get_db)],
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
+        session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
+    ) -> dict:
+        return _require_admin(scopes, request, db, credentials, session_cookie)
+
+    dependency.__name__ = "require_api_scopes_" + ("_".join(scope.replace(":", "_") for scope in scopes) or "authenticated")
+    return dependency
+
+
+def optional_api_scopes(*required_scopes: str):
+    scopes = tuple(required_scopes)
+
+    def dependency(
+        request: Request,
+        db: Annotated[Session, Depends(get_db)],
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
+        session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
+    ) -> dict | None:
+        return _optional_admin(scopes, request, db, credentials, session_cookie)
+
+    dependency.__name__ = "optional_api_scopes_" + ("_".join(scope.replace(":", "_") for scope in scopes) or "authenticated")
+    return dependency
+
+
+def authenticate_optional_request(
+    request: Request,
+    db: Session,
+    *required_scopes: str,
+) -> dict | None:
+    credentials = None
+    authorization = request.headers.get("authorization", "").strip()
+    if authorization:
+        scheme, separator, token = authorization.partition(" ")
+        token = token.strip()
+        if scheme.lower() != "bearer" or not separator or not token:
+            raise _invalid_token()
+        credentials = HTTPAuthorizationCredentials(scheme=scheme, credentials=token)
+    return _optional_admin(
+        tuple(required_scopes),
+        request,
+        db,
+        credentials,
+        request.cookies.get(ADMIN_SESSION_COOKIE),
+    )
+
+
+def _optional_admin(
+    required_scopes: tuple[str, ...],
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
     session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
 ) -> dict | None:
     if credentials and credentials.scheme.lower() == "bearer":
-        api_key_admin = verify_api_key(credentials.credentials)
-        if api_key_admin:
-            return api_key_admin
+        if verify_api_key(credentials.credentials):
+            return _api_key_admin(
+                db,
+                credentials.credentials,
+                required_scopes,
+                client_ip(request),
+            )
         data = verify_access_token(credentials.credentials)
         session = (
             db.query(AdminSession)
@@ -204,3 +303,19 @@ def optional_admin(
         return {**data, "session_id": session.id}
     except HTTPException:
         return None
+
+
+require_authenticated_admin = require_api_scopes()
+require_library_read = require_api_scopes("library:read")
+require_uploads_manage = require_api_scopes("uploads:manage")
+require_library_write = require_api_scopes("library:write")
+require_library_delete = require_api_scopes("library:delete")
+require_system_read = require_api_scopes("system:read")
+require_settings_manage = require_api_scopes("settings:manage")
+require_updates_read = require_api_scopes("updates:read")
+require_updates_run = require_api_scopes("updates:run")
+require_api_keys_manage = require_api_scopes("api_keys:manage")
+optional_admin = optional_api_scopes("library:read")
+
+# Conservative fallback for any protected route that has not been assigned a narrower scope.
+require_admin = require_api_scopes(*ALL_API_KEY_SCOPES)

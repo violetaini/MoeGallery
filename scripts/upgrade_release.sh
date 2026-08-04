@@ -245,8 +245,22 @@ fi
 
 if [[ "$DRY_RUN" -eq 0 && "$NO_SERVICE_CONTROL" -eq 0 ]]; then
   if command -v curl >/dev/null 2>&1; then
-    sleep 2
-    curl -fsS "$HEALTH_URL" >/dev/null
+    HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-20}"
+    HEALTH_CHECK_INTERVAL="${HEALTH_CHECK_INTERVAL:-1}"
+    HEALTH_CHECK_PASSED=0
+    for ((attempt = 1; attempt <= HEALTH_CHECK_ATTEMPTS; attempt++)); do
+      if curl --connect-timeout 2 --max-time 5 -fsS "$HEALTH_URL" >/dev/null; then
+        HEALTH_CHECK_PASSED=1
+        break
+      fi
+      if [[ "$attempt" -lt "$HEALTH_CHECK_ATTEMPTS" ]]; then
+        sleep "$HEALTH_CHECK_INTERVAL"
+      fi
+    done
+    if [[ "$HEALTH_CHECK_PASSED" -ne 1 ]]; then
+      echo "Health check failed after ${HEALTH_CHECK_ATTEMPTS} attempts: $HEALTH_URL" >&2
+      exit 1
+    fi
     echo "Health check passed: $HEALTH_URL"
   else
     echo "curl not found; skipped health check"

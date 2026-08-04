@@ -137,6 +137,14 @@ class ReleaseScriptSafetyTests(unittest.TestCase):
                 self.assertIn("--require-hashes", script)
                 self.assertIn('PIP_BOOTSTRAP_VERSION="26.2"', script)
 
+    def test_panel_upgrade_retries_health_check_before_failing(self):
+        script = (ROOT_DIR / "scripts" / "upgrade_release.sh").read_text(encoding="utf-8")
+
+        self.assertIn('HEALTH_CHECK_ATTEMPTS="${HEALTH_CHECK_ATTEMPTS:-20}"', script)
+        self.assertIn('for ((attempt = 1; attempt <= HEALTH_CHECK_ATTEMPTS; attempt++))', script)
+        self.assertIn('curl --connect-timeout 2 --max-time 5 -fsS "$HEALTH_URL"', script)
+        self.assertIn('Health check failed after ${HEALTH_CHECK_ATTEMPTS} attempts', script)
+
     def test_release_packager_requires_dependency_locks(self):
         script = (ROOT_DIR / "scripts" / "package_release.py").read_text(encoding="utf-8")
         self.assertIn('("requirements.lock.txt", "requirements-test.lock.txt")', script)

@@ -78,6 +78,16 @@ AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=300
 AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=
 ```
 
+When Nginx serves `frontend/dist` directly and uses `try_files` to fall back to `index.html`, proxy `/media/` to the application before that frontend fallback. Otherwise image requests are returned as HTML:
+
+```nginx
+location ^~ /media/ {
+    proxy_pass http://127.0.0.1:8111/media/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
 For larger libraries or higher concurrency, Nginx can send the files through an internal location. This is an optional optimization and does not configure a domain:
 
 ```nginx

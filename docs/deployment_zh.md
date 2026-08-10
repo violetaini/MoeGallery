@@ -78,6 +78,16 @@ AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=300
 AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=
 ```
 
+如果 Nginx 直接托管 `frontend/dist`，并通过 `try_files` 把前端路由回退到 `index.html`，必须在前端回退规则之前把 `/media/` 转发给应用，否则图片请求会被错误地返回为 HTML：
+
+```nginx
+location ^~ /media/ {
+    proxy_pass http://127.0.0.1:8111/media/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
 如图片数量和并发访问明显增加，可让 Nginx 通过内部地址发送文件。该模式是可选优化，不影响首次安装，也不涉及域名配置：
 
 ```nginx

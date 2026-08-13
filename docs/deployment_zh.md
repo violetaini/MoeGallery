@@ -68,6 +68,34 @@ sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
 
 安装器不会自动开放服务器或云平台防火墙端口。
 
+## 反向代理与真实客户端 IP
+
+后端默认只信任来自本机回环地址（`127.0.0.0/8`、`::1/128`）的客户端 IP 转发头，适用于同机部署的宝塔或 Nginx。反向代理必须覆盖外部请求携带的转发头，不能原样透传：
+
+```nginx
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header Ali-Real-Client-IP "";
+proxy_set_header Ali-Cdn-Real-Ip "";
+proxy_set_header True-Client-IP "";
+```
+
+如果反向代理位于另一台服务器或容器网络中，把它的精确网段加入 `.env`，然后重启服务：
+
+```env
+AGMS_TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,10.20.30.0/24
+```
+
+不要配置 `0.0.0.0/0` 或 `::/0`，否则任意访问者都可以伪造 IP，削弱登录和首次安装限速。接入 CDN 时，应在 Nginx 的 `http` 或 `server` 配置中使用 CDN 官方公布的出口网段和 `real_ip` 模块，例如：
+
+```nginx
+set_real_ip_from 203.0.113.0/24; # 替换为 CDN 官方网段，可配置多行
+real_ip_header True-Client-IP;   # 替换为 CDN 官方指定的请求头
+real_ip_recursive on;
+```
+
+只有来自 `set_real_ip_from` 网段的请求头才会被 Nginx 接受；随后仍使用上面的 `$remote_addr` 规则转发给 MoeGallery。不要直接根据一个非空请求头改写客户端 IP。
+
 ## 图片发送与缓存
 
 默认配置无需额外组件，FastAPI 会直接发送图片。公开图片默认允许浏览器缓存 60 秒、共享缓存或 CDN 缓存 300 秒；私有和隐藏图片禁止共享缓存。可在 `.env` 中调整：
@@ -84,6 +112,11 @@ AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=
 location ^~ /media/ {
     proxy_pass http://127.0.0.1:8111/media/;
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Ali-Real-Client-IP "";
+    proxy_set_header Ali-Cdn-Real-Ip "";
+    proxy_set_header True-Client-IP "";
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
@@ -98,6 +131,13 @@ location ^~ /_agms_media/ {
 
 location / {
     proxy_pass http://127.0.0.1:8111;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Ali-Real-Client-IP "";
+    proxy_set_header Ali-Cdn-Real-Ip "";
+    proxy_set_header True-Client-IP "";
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 

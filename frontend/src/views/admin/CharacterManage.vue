@@ -7,16 +7,26 @@ import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import { imageUploadAccept } from '../../constants/uploadFormats'
 import { displayId } from '../../utils/displayId'
+import { mergeSelectedOptions } from '../../utils/remoteOptions'
 
 const characters = ref([])
 const works = ref([])
 const avatarImages = ref([])
+const total = ref(0)
 const router = useRouter()
 const q = ref('')
 const workId = ref()
 const dialog = ref(false)
 const loading = ref(false)
+const saving = ref(false)
+const workLoading = ref(false)
+const avatarImageLoading = ref(false)
 const uploadingAvatar = ref(false)
+const page = ref(1)
+const pageSize = 50
+let listRequestSeq = 0
+let workRequestSeq = 0
+let avatarImageRequestSeq = 0
 const form = reactive({
   id: null,
   work_id: null,
@@ -38,20 +48,68 @@ function imageOptionLabel(image) {
   return `${image.original_filename || image.filename || '未命名图片'} · 序号 ${avatarImageDisplayIds.value.get(image.id) || '-'}`
 }
 
-async function loadOptions() {
-  const [workData, imageData] = await Promise.all([
-    galleryApi.works({ page_size: 100 }),
-    galleryApi.images({ page_size: 100, public_only: false })
-  ])
-  works.value = workData.items
-  avatarImages.value = imageData.items
+async function loadWorks(query = '') {
+  const seq = ++workRequestSeq
+  workLoading.value = true
+  try {
+    const value = query.trim()
+    const data = await galleryApi.works({ page_size: 100, ...(value ? { q: value } : {}) })
+    if (seq !== workRequestSeq) return
+    works.value = mergeSelectedOptions(works.value, [workId.value, form.work_id], data.items)
+  } catch (error) {
+    if (seq === workRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载作品选项失败')
+  } finally {
+    if (seq === workRequestSeq) workLoading.value = false
+  }
 }
 
-async function load() {
+async function loadAvatarImages(query = '') {
+  const seq = ++avatarImageRequestSeq
+  avatarImageLoading.value = true
+  try {
+    const value = query.trim()
+    const data = await galleryApi.images({
+      page_size: 100,
+      public_only: false,
+      ...(value ? { q: value } : {})
+    })
+    if (seq !== avatarImageRequestSeq) return
+    avatarImages.value = mergeSelectedOptions(avatarImages.value, [form.avatar_image_id], data.items)
+  } catch (error) {
+    if (seq === avatarImageRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载头像选项失败')
+  } finally {
+    if (seq === avatarImageRequestSeq) avatarImageLoading.value = false
+  }
+}
+
+async function loadOptions() {
+  await Promise.all([loadWorks(), loadAvatarImages()])
+}
+
+async function load(resetPage = false) {
+  const seq = ++listRequestSeq
+  if (resetPage) page.value = 1
   loading.value = true
-  const data = await galleryApi.characters({ q: q.value, work_id: workId.value, page_size: 100 })
-  characters.value = data.items
-  loading.value = false
+  try {
+    const data = await galleryApi.characters({
+      q: q.value,
+      work_id: workId.value,
+      page: page.value,
+      page_size: pageSize
+    })
+    if (seq !== listRequestSeq) return
+    characters.value = data.items
+    total.value = data.total
+  } catch (error) {
+    if (seq === listRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载角色失败')
+  } finally {
+    if (seq === listRequestSeq) loading.value = false
+  }
+}
+
+function changePage(value) {
+  page.value = value
+  void load()
 }
 
 function create() {
@@ -77,6 +135,9 @@ function edit(row) {
     description: row.description || '',
     avatar_image_id: row.avatar_image_id
   })
+  if (row.work && !works.value.some((work) => work.id === row.work.id)) {
+    works.value.unshift(row.work)
+  }
   if (row.avatar_image && !avatarImages.value.some((image) => image.id === row.avatar_image.id)) {
     avatarImages.value.unshift(row.avatar_image)
   }
@@ -112,19 +173,37 @@ async function uploadAvatar(upload) {
 }
 
 async function save() {
-  const payload = { ...form, avatar_image_id: form.avatar_image_id || null }
-  if (form.id) await galleryApi.updateCharacter(form.id, payload)
-  else await galleryApi.createCharacter(payload)
-  dialog.value = false
-  ElMessage.success('已保存')
-  await load()
+  const { id, ...fields } = form
+  const payload = { ...fields, avatar_image_id: form.avatar_image_id || null }
+  saving.value = true
+  try {
+    if (id) await galleryApi.updateCharacter(id, payload)
+    else await galleryApi.createCharacter(payload)
+    dialog.value = false
+    ElMessage.success('已保存')
+    await load()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '保存角色失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`删除角色 ${row.name}？`, '确认删除', { type: 'warning' })
-  await galleryApi.deleteCharacter(row.id)
-  ElMessage.success('已删除')
-  await load()
+  const confirmed = await ElMessageBox.confirm(
+    `删除角色 ${row.name}？`,
+    '确认删除',
+    { type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
+  try {
+    await galleryApi.deleteCharacter(row.id)
+    ElMessage.success('已删除')
+    if (characters.value.length === 1 && page.value > 1) page.value -= 1
+    await load()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '删除角色失败')
+  }
 }
 
 onMounted(async () => {
@@ -136,11 +215,23 @@ onMounted(async () => {
 <template>
   <div class="admin-card">
     <div class="admin-toolbar">
-      <el-input v-model="q" clearable placeholder="搜索角色" :prefix-icon="Search" style="width: 220px" @keyup.enter="load" />
-      <el-select v-model="workId" clearable filterable placeholder="作品" style="width: 220px" @change="load">
+      <el-input v-model="q" clearable placeholder="搜索角色" :prefix-icon="Search" style="width: 220px" @clear="load(true)" @keyup.enter="load(true)" />
+      <el-select
+        v-model="workId"
+        clearable
+        filterable
+        remote
+        reserve-keyword
+        placeholder="搜索作品"
+        style="width: 220px"
+        :loading="workLoading"
+        :remote-method="loadWorks"
+        @change="load(true)"
+        @visible-change="(visible) => visible && loadWorks()"
+      >
         <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
       </el-select>
-      <el-button @click="load">搜索</el-button>
+      <el-button @click="load(true)">搜索</el-button>
       <el-button type="primary" :icon="Plus" @click="create">新增角色</el-button>
     </div>
     <el-table v-loading="loading" :data="characters" row-key="id">
@@ -156,7 +247,7 @@ onMounted(async () => {
         </template>
       </el-table-column>
       <el-table-column label="序号" width="80">
-        <template #default="{ $index }">{{ displayId($index) }}</template>
+        <template #default="{ $index }">{{ displayId($index, page, pageSize) }}</template>
       </el-table-column>
       <el-table-column label="中文名" min-width="160">
         <template #default="{ row }">
@@ -187,11 +278,29 @@ onMounted(async () => {
         </template>
       </el-table-column>
     </el-table>
+    <div v-if="total > pageSize" class="pagination-bar">
+      <el-pagination
+        :current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next, total"
+        @current-change="changePage"
+      />
+    </div>
 
     <el-dialog v-model="dialog" :title="form.id ? '编辑角色' : '新增角色'" width="680px">
       <el-form label-width="96px">
         <el-form-item label="所属作品">
-          <el-select v-model="form.work_id" filterable style="width: 100%">
+          <el-select
+            v-model="form.work_id"
+            filterable
+            remote
+            reserve-keyword
+            style="width: 100%"
+            :loading="workLoading"
+            :remote-method="loadWorks"
+            @visible-change="(visible) => visible && loadWorks()"
+          >
             <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
           </el-select>
         </el-form-item>
@@ -204,7 +313,18 @@ onMounted(async () => {
             <img v-if="currentAvatar" :src="currentAvatar" alt="" class="avatar-preview" />
             <div v-else class="avatar-preview"></div>
             <div class="avatar-controls">
-              <el-select v-model="form.avatar_image_id" clearable filterable placeholder="选择已上传图片" style="width: 100%">
+              <el-select
+                v-model="form.avatar_image_id"
+                clearable
+                filterable
+                remote
+                reserve-keyword
+                placeholder="搜索已上传图片"
+                style="width: 100%"
+                :loading="avatarImageLoading"
+                :remote-method="loadAvatarImages"
+                @visible-change="(visible) => visible && loadAvatarImages()"
+              >
                 <el-option
                   v-for="image in avatarImages"
                   :key="image.id"
@@ -221,7 +341,7 @@ onMounted(async () => {
       </el-form>
       <template #footer>
         <el-button @click="dialog = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>

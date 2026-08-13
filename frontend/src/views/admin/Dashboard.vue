@@ -1,11 +1,14 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { FolderOpened, Picture, Upload, User } from '@element-plus/icons-vue'
 import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 
 const stats = ref(null)
 const recentImages = ref([])
+const loading = ref(false)
+const loadError = ref('')
 
 function imageTitle(image) {
   return image.original_filename || image.filename || '图片'
@@ -25,22 +28,32 @@ function formatBytes(value) {
 }
 
 onMounted(async () => {
-  const [nextStats, imageData] = await Promise.all([
+  loading.value = true
+  loadError.value = ''
+  const [statsResult, imagesResult] = await Promise.allSettled([
     galleryApi.stats(),
     galleryApi.images({
       page_size: 12,
       public_only: false,
       exclude_cover_images: true,
+      exclude_backdrop_images: true,
       exclude_avatar_images: true
     })
   ])
-  stats.value = nextStats
-  recentImages.value = imageData.items
+  if (statsResult.status === 'fulfilled') stats.value = statsResult.value
+  if (imagesResult.status === 'fulfilled') recentImages.value = imagesResult.value.items
+  const failures = [statsResult, imagesResult].filter((result) => result.status === 'rejected')
+  if (failures.length) {
+    loadError.value = '部分首页数据加载失败，请稍后刷新'
+    ElMessage.error(failures[0].reason?.response?.data?.detail || loadError.value)
+  }
+  loading.value = false
 })
 </script>
 
 <template>
-  <div class="admin-dashboard">
+  <div v-loading="loading" class="admin-dashboard">
+    <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false" />
     <section class="admin-dashboard__section">
       <div class="admin-dashboard__section-title">
         <h3>快捷操作</h3>

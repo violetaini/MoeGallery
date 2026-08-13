@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Edit, UploadFilled } from '@element-plus/icons-vue'
@@ -41,30 +41,44 @@ const sourceWorkId = computed(() => {
 })
 const backButtonLabel = computed(() => (sourceWorkId.value ? '返回作品管理' : '返回角色管理'))
 const backTarget = computed(() => (sourceWorkId.value ? `/admin/works/${sourceWorkId.value}` : '/admin/characters'))
+let characterRequestSeq = 0
+let imageRequestSeq = 0
 
 async function loadCharacter() {
+  const seq = ++characterRequestSeq
+  const requestedCharacterId = characterId.value
   pageLoading.value = true
   try {
-    character.value = await galleryApi.character(characterId.value)
+    const data = await galleryApi.character(requestedCharacterId)
+    if (seq !== characterRequestSeq) return
+    character.value = data
     imageTotal.value = character.value.image_count || 0
+  } catch (error) {
+    if (seq === characterRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载角色详情失败')
   } finally {
-    pageLoading.value = false
+    if (seq === characterRequestSeq) pageLoading.value = false
   }
 }
 
 async function loadImages() {
+  const seq = ++imageRequestSeq
+  const requestedCharacterId = characterId.value
+  const requestedPage = imagePage.value
   imageLoading.value = true
   try {
     const data = await galleryApi.images({
-      page: imagePage.value,
+      page: requestedPage,
       page_size: imagePageSize,
       public_only: false,
-      character_id: characterId.value
+      character_id: requestedCharacterId
     })
+    if (seq !== imageRequestSeq) return
     images.value = data.items
     imageTotal.value = data.total
+  } catch (error) {
+    if (seq === imageRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载角色图片失败')
   } finally {
-    imageLoading.value = false
+    if (seq === imageRequestSeq) imageLoading.value = false
   }
 }
 
@@ -130,7 +144,6 @@ async function submitUpload() {
     await Promise.all([loadCharacter(), loadImages()])
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || '上传失败')
-    throw error
   } finally {
     uploading.value = false
   }
@@ -138,9 +151,17 @@ async function submitUpload() {
 
 watch(characterId, async () => {
   if (!Number.isFinite(characterId.value) || characterId.value <= 0) return
+  character.value = null
+  images.value = []
+  imageTotal.value = 0
   imagePage.value = 1
   await Promise.all([loadCharacter(), loadImages()])
 }, { immediate: true })
+
+onBeforeUnmount(() => {
+  characterRequestSeq += 1
+  imageRequestSeq += 1
+})
 </script>
 
 <template>

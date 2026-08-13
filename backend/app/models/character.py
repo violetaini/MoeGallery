@@ -15,9 +15,10 @@ class Character(Base, TimestampMixin):
     original_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aliases: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    avatar_image_id: Mapped[int | None] = mapped_column(ForeignKey("images.id", ondelete="SET NULL"), nullable=True)
+    avatar_image_id: Mapped[int | None] = mapped_column(
+        ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     work = relationship("Work", back_populates="characters", lazy="selectin")
     avatar_image = relationship("Image", foreign_keys=[avatar_image_id], lazy="selectin")
     images = relationship("Image", secondary=image_characters, back_populates="characters", lazy="selectin")
-

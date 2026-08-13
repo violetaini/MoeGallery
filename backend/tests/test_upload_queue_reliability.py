@@ -37,6 +37,7 @@ from app.services.upload_task_service import (
     renew_task_lease,
     retry_upload_task,
 )
+from app.utils.time import utcnow_naive
 
 
 def png_bytes() -> bytes:
@@ -165,7 +166,7 @@ class UploadQueueReliabilityTests(unittest.TestCase):
                 status=TASK_STATUS_PROCESSING,
                 attempt_count=1,
                 lease_token="attempt-one",
-                lease_expires_at=datetime.utcnow() + timedelta(minutes=5),
+                lease_expires_at=utcnow_naive() + timedelta(minutes=5),
             )
             with patch.object(ImageService, "create_from_bytes", side_effect=OSError("disk busy")):
                 process_task(db, task)
@@ -178,7 +179,7 @@ class UploadQueueReliabilityTests(unittest.TestCase):
             task.status = TASK_STATUS_PROCESSING
             task.attempt_count = 3
             task.lease_token = "attempt-three"
-            task.lease_expires_at = datetime.utcnow() + timedelta(minutes=5)
+            task.lease_expires_at = utcnow_naive() + timedelta(minutes=5)
             db.commit()
             with patch.object(ImageService, "create_from_bytes", side_effect=OSError("disk busy")):
                 process_task(db, task)
@@ -209,7 +210,7 @@ class UploadQueueReliabilityTests(unittest.TestCase):
                 status=TASK_STATUS_PROCESSING,
                 attempt_count=1,
                 lease_token="old-lease",
-                lease_expires_at=datetime.utcnow() + timedelta(minutes=5),
+                lease_expires_at=utcnow_naive() + timedelta(minutes=5),
             )
             task_id = task.id
 
@@ -248,7 +249,7 @@ class UploadQueueReliabilityTests(unittest.TestCase):
                 status=TASK_STATUS_PROCESSING,
                 attempt_count=1,
                 lease_token="processing",
-                lease_expires_at=datetime.utcnow() + timedelta(minutes=5),
+                lease_expires_at=utcnow_naive() + timedelta(minutes=5),
             )
             self.assertTrue(cancel_upload_task(db, processing))
             db.refresh(processing)
@@ -259,7 +260,7 @@ class UploadQueueReliabilityTests(unittest.TestCase):
                 db,
                 status=TASK_STATUS_FAILED,
                 attempt_count=3,
-                finished_at=datetime.utcnow(),
+                finished_at=utcnow_naive(),
             )
             self.assertTrue(retry_upload_task(db, failed))
             db.refresh(failed)
@@ -267,7 +268,7 @@ class UploadQueueReliabilityTests(unittest.TestCase):
             self.assertEqual(failed.attempt_count, 0)
             self.assertIsNone(failed.finished_at)
             failed.status = TASK_STATUS_FAILED
-            failed.finished_at = datetime.utcnow()
+            failed.finished_at = utcnow_naive()
             db.commit()
             self.assertFalse(cancel_upload_task(db, failed))
 

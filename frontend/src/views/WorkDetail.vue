@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Calendar, Collection, Link, Picture, Star, Timer, User } from '@element-plus/icons-vue'
 import { mediaUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
@@ -8,6 +9,7 @@ import CharacterCard from '../components/CharacterCard.vue'
 import ImageMasonry from '../components/ImageMasonry.vue'
 import ResponsiveImage from '../components/ResponsiveImage.vue'
 import { canUseHdrOriginal } from '../utils/imageDisplay'
+import { safeExternalUrl } from '../utils/urls'
 
 const CHARACTER_CARD_MIN_WIDTH = 180
 const CHARACTER_GRID_GAP = 16
@@ -51,6 +53,7 @@ const ratingText = computed(() => {
   if (!work.value?.community_rating) return ''
   return Number(work.value.community_rating).toFixed(1)
 })
+const officialSiteUrl = computed(() => safeExternalUrl(work.value?.official_site))
 const characterPageSize = computed(() => {
   return Math.min(CHARACTER_MAX_PAGE_SIZE, Math.max(1, characterColumnCount.value))
 })
@@ -58,6 +61,9 @@ const characterPageSize = computed(() => {
 let characterResizeObserver
 let characterResizeFallbackActive = false
 let hdrMediaQuery
+let workRequestSeq = 0
+let characterRequestSeq = 0
+let imageRequestSeq = 0
 
 function splitList(value) {
   return String(value || '')
@@ -67,43 +73,65 @@ function splitList(value) {
 }
 
 async function loadWork() {
+  const seq = ++workRequestSeq
+  const requestedWorkId = workId.value
   pageLoading.value = true
   try {
-    work.value = await galleryApi.work(workId.value)
+    const data = await galleryApi.work(requestedWorkId)
+    if (seq !== workRequestSeq) return
+    work.value = data
     characterTotal.value = work.value.character_count || 0
     imageTotal.value = work.value.image_count || 0
+  } catch (error) {
+    if (seq === workRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载作品详情失败')
   } finally {
-    pageLoading.value = false
+    if (seq === workRequestSeq) pageLoading.value = false
   }
 }
 
 async function loadCharacters() {
+  const seq = ++characterRequestSeq
+  const requestedWorkId = workId.value
+  const requestedPage = characterPage.value
+  const requestedPageSize = characterPageSize.value
   characterLoading.value = true
   try {
     const data = await galleryApi.characters({
-      work_id: workId.value,
-      page: characterPage.value,
-      page_size: characterPageSize.value
+      work_id: requestedWorkId,
+      page: requestedPage,
+      page_size: requestedPageSize
     })
+    if (seq !== characterRequestSeq) return
     characters.value = data.items
     characterTotal.value = data.total
+  } catch (error) {
+    if (seq === characterRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载角色列表失败')
   } finally {
-    characterLoading.value = false
+    if (seq === characterRequestSeq) characterLoading.value = false
   }
 }
 
 async function loadImages() {
+  const seq = ++imageRequestSeq
+  const requestedWorkId = workId.value
+  const requestedPage = imagePage.value
   imageLoading.value = true
   try {
     const data = await galleryApi.images({
-      work_id: workId.value,
-      page: imagePage.value,
-      page_size: IMAGE_PAGE_SIZE
+      work_id: requestedWorkId,
+      page: requestedPage,
+      page_size: IMAGE_PAGE_SIZE,
+      exclude_cover_images: true,
+      exclude_backdrop_images: true,
+      exclude_avatar_images: true
     })
+    if (seq !== imageRequestSeq) return
     images.value = data.items
     imageTotal.value = data.total
+  } catch (error) {
+    if (seq === imageRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载作品图片失败')
   } finally {
-    imageLoading.value = false
+    if (seq === imageRequestSeq) imageLoading.value = false
   }
 }
 
@@ -182,6 +210,9 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  workRequestSeq += 1
+  characterRequestSeq += 1
+  imageRequestSeq += 1
   stopCharacterObserver()
   if (hdrMediaQuery?.removeEventListener) {
     hdrMediaQuery.removeEventListener('change', updateDynamicRangePreference)
@@ -261,7 +292,7 @@ watch(characterPageSize, async (nextSize, previousSize) => {
           </el-tag>
         </div>
         <div class="work-actions">
-          <el-button v-if="work.official_site" tag="a" :href="work.official_site" target="_blank" rel="noreferrer" type="primary" :icon="Link">
+          <el-button v-if="officialSiteUrl" tag="a" :href="officialSiteUrl" target="_blank" rel="noreferrer" type="primary" :icon="Link">
             外部资料
           </el-button>
           <el-button text bg>

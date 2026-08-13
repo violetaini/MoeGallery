@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import ImageSummary, OrmModel, PageResponse
+from app.utils.urls import normalize_http_url
 
 
 class WorkBase(BaseModel):
@@ -22,6 +23,11 @@ class WorkBase(BaseModel):
     official_site: str | None = None
     status: str | None = None
     sort_order: int = 0
+
+    @field_validator("official_site")
+    @classmethod
+    def validate_official_site(cls, value: str | None) -> str | None:
+        return normalize_http_url(value)
 
 
 class WorkCreate(WorkBase):
@@ -45,6 +51,11 @@ class WorkUpdate(BaseModel):
     official_site: str | None = None
     status: str | None = None
     sort_order: int | None = None
+
+    @field_validator("official_site")
+    @classmethod
+    def validate_official_site(cls, value: str | None) -> str | None:
+        return normalize_http_url(value)
 
 
 class WorkRead(WorkBase, OrmModel):

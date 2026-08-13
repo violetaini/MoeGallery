@@ -7,6 +7,7 @@ import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import { imageUploadAccept } from '../../constants/uploadFormats'
 import { displayId } from '../../utils/displayId'
+import { mergeSelectedOptions } from '../../utils/remoteOptions'
 
 const works = ref([])
 const mediaImages = ref([])
@@ -15,8 +16,14 @@ const router = useRouter()
 const q = ref('')
 const dialog = ref(false)
 const loading = ref(false)
+const saving = ref(false)
+const mediaImageLoading = ref(false)
 const uploadingCover = ref(false)
 const uploadingBackdrop = ref(false)
+const page = ref(1)
+const pageSize = 50
+let listRequestSeq = 0
+let mediaImageRequestSeq = 0
 const form = reactive({
   id: null,
   name: '',
@@ -53,17 +60,50 @@ function imageOptionLabel(image) {
   return `${image.original_filename || image.filename || '未命名图片'} · 序号 ${mediaImageDisplayIds.value.get(image.id) || '-'}`
 }
 
-async function loadOptions() {
-  const data = await galleryApi.images({ page_size: 100, public_only: false })
-  mediaImages.value = data.items
+async function loadMediaImages(query = '') {
+  const seq = ++mediaImageRequestSeq
+  mediaImageLoading.value = true
+  try {
+    const value = query.trim()
+    const data = await galleryApi.images({
+      page_size: 100,
+      public_only: false,
+      ...(value ? { q: value } : {})
+    })
+    if (seq !== mediaImageRequestSeq) return
+    mediaImages.value = mergeSelectedOptions(
+      mediaImages.value,
+      [form.cover_image_id, form.backdrop_image_id],
+      data.items
+    )
+  } catch (error) {
+    if (seq === mediaImageRequestSeq) {
+      ElMessage.error(error?.response?.data?.detail || '加载图片选项失败')
+    }
+  } finally {
+    if (seq === mediaImageRequestSeq) mediaImageLoading.value = false
+  }
 }
 
-async function load() {
+async function load(resetPage = false) {
+  const seq = ++listRequestSeq
+  if (resetPage) page.value = 1
   loading.value = true
-  const data = await galleryApi.works({ q: q.value, page_size: 100 })
-  works.value = data.items
-  total.value = data.total
-  loading.value = false
+  try {
+    const data = await galleryApi.works({ q: q.value, page: page.value, page_size: pageSize })
+    if (seq !== listRequestSeq) return
+    works.value = data.items
+    total.value = data.total
+  } catch (error) {
+    if (seq === listRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载作品失败')
+  } finally {
+    if (seq === listRequestSeq) loading.value = false
+  }
+}
+
+function changePage(value) {
+  page.value = value
+  void load()
 }
 
 function create() {
@@ -157,38 +197,56 @@ function uploadBackdrop(upload) {
 }
 
 async function save() {
+  const { id, ...fields } = form
   const payload = {
-    ...form,
+    ...fields,
     cover_image_id: form.cover_image_id || null,
     backdrop_image_id: form.backdrop_image_id || null,
     production_year: form.production_year || null,
     run_time_minutes: form.run_time_minutes || null,
     community_rating: form.community_rating || null
   }
-  if (form.id) await galleryApi.updateWork(form.id, payload)
-  else await galleryApi.createWork(payload)
-  dialog.value = false
-  ElMessage.success('已保存')
-  await load()
+  saving.value = true
+  try {
+    if (id) await galleryApi.updateWork(id, payload)
+    else await galleryApi.createWork(payload)
+    dialog.value = false
+    ElMessage.success('已保存')
+    await load()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '保存作品失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`删除作品 ${row.name}？`, '确认删除', { type: 'warning' })
-  await galleryApi.deleteWork(row.id)
-  ElMessage.success('已删除')
-  await load()
+  const confirmed = await ElMessageBox.confirm(
+    `删除作品 ${row.name}？`,
+    '确认删除',
+    { type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
+  try {
+    await galleryApi.deleteWork(row.id)
+    ElMessage.success('已删除')
+    if (works.value.length === 1 && page.value > 1) page.value -= 1
+    await load()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '删除作品失败')
+  }
 }
 
 onMounted(async () => {
-  await Promise.all([loadOptions(), load()])
+  await Promise.all([loadMediaImages(), load()])
 })
 </script>
 
 <template>
   <div class="admin-card">
     <div class="admin-toolbar">
-      <el-input v-model="q" clearable placeholder="搜索作品" :prefix-icon="Search" style="width: 260px" @keyup.enter="load" />
-      <el-button @click="load">搜索</el-button>
+      <el-input v-model="q" clearable placeholder="搜索作品" :prefix-icon="Search" style="width: 260px" @clear="load(true)" @keyup.enter="load(true)" />
+      <el-button @click="load(true)">搜索</el-button>
       <el-button type="primary" :icon="Plus" @click="create">新增作品</el-button>
       <span class="muted">共 {{ total }} 个</span>
     </div>
@@ -205,7 +263,7 @@ onMounted(async () => {
         </template>
       </el-table-column>
       <el-table-column label="序号" width="80">
-        <template #default="{ $index }">{{ displayId($index) }}</template>
+        <template #default="{ $index }">{{ displayId($index, page, pageSize) }}</template>
       </el-table-column>
       <el-table-column label="中文名" min-width="180">
         <template #default="{ row }">
@@ -225,6 +283,15 @@ onMounted(async () => {
         </template>
       </el-table-column>
     </el-table>
+    <div v-if="total > pageSize" class="pagination-bar">
+      <el-pagination
+        :current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next, total"
+        @current-change="changePage"
+      />
+    </div>
 
     <el-dialog v-model="dialog" :title="form.id ? '编辑作品' : '新增作品'" width="820px">
       <el-form label-width="96px">
@@ -238,7 +305,18 @@ onMounted(async () => {
             <img v-if="currentCover" :src="currentCover" alt="" class="avatar-preview" />
             <div v-else class="avatar-preview"></div>
             <div class="avatar-controls">
-              <el-select v-model="form.cover_image_id" clearable filterable placeholder="选择已上传图片" style="width: 100%">
+              <el-select
+                v-model="form.cover_image_id"
+                clearable
+                filterable
+                remote
+                reserve-keyword
+                placeholder="搜索已上传图片"
+                style="width: 100%"
+                :loading="mediaImageLoading"
+                :remote-method="loadMediaImages"
+                @visible-change="(visible) => visible && loadMediaImages()"
+              >
                 <el-option
                   v-for="image in mediaImages"
                   :key="image.id"
@@ -257,7 +335,18 @@ onMounted(async () => {
             <img v-if="currentBackdrop" :src="currentBackdrop" alt="" class="avatar-preview" />
             <div v-else class="avatar-preview"></div>
             <div class="avatar-controls">
-              <el-select v-model="form.backdrop_image_id" clearable filterable placeholder="选择已上传图片" style="width: 100%">
+              <el-select
+                v-model="form.backdrop_image_id"
+                clearable
+                filterable
+                remote
+                reserve-keyword
+                placeholder="搜索已上传图片"
+                style="width: 100%"
+                :loading="mediaImageLoading"
+                :remote-method="loadMediaImages"
+                @visible-change="(visible) => visible && loadMediaImages()"
+              >
                 <el-option
                   v-for="image in mediaImages"
                   :key="image.id"
@@ -285,7 +374,7 @@ onMounted(async () => {
       </el-form>
       <template #footer>
         <el-button @click="dialog = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>

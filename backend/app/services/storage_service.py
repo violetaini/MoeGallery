@@ -3,6 +3,7 @@ from typing import TypedDict
 from uuid import uuid4
 
 from app.config import settings
+from app.services.storage_stats_service import invalidate_storage_stats_cache
 from app.utils.image_process import (
     AVIF_EXTENSION,
     AVIF_MIME_TYPE,
@@ -118,6 +119,7 @@ def save_image_files(
 
     preview_relative_path = f"preview/{preview_filename}" if preview_filename else None
 
+    invalidate_storage_stats_cache(settings.storage_path)
     return {
         "filename": original_filename_on_disk,
         "original_filename": clean_name,
@@ -157,3 +159,6 @@ def delete_storage_file(relative_path: str | None) -> None:
         return
     if target.exists() and target.is_file():
         target.unlink()
+        parts = PurePosixPath(normalize_storage_relative_path(relative_path)).parts
+        if parts and parts[0] in {"original", "preview", "thumbnail"}:
+            invalidate_storage_stats_cache(settings.storage_path)

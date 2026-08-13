@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search as SearchIcon } from '@element-plus/icons-vue'
 import { galleryApi } from '../api/gallery'
@@ -11,19 +11,35 @@ const route = useRoute()
 const router = useRouter()
 const q = ref(route.query.q || '')
 const result = ref({ images: [], works: [], characters: [], tags: [] })
+let searchRequestSeq = 0
 
-async function run() {
-  if (!q.value.trim()) return
-  result.value = await galleryApi.search({ q: q.value.trim() })
-  router.replace({ path: '/search', query: { q: q.value.trim() } })
+function clearResults() {
+  result.value = { images: [], works: [], characters: [], tags: [] }
 }
 
-watch(() => route.query.q, (value) => {
-  q.value = value || ''
-  run()
-})
+async function loadFromRoute(value) {
+  const seq = ++searchRequestSeq
+  const normalized = String(value || '').trim()
+  q.value = normalized
+  if (!normalized) {
+    if (seq === searchRequestSeq) clearResults()
+    return
+  }
+  const data = await galleryApi.search({ q: normalized })
+  if (seq === searchRequestSeq) result.value = data
+}
 
-onMounted(run)
+async function submit() {
+  const normalized = q.value.trim()
+  const current = String(route.query.q || '').trim()
+  if (normalized === current) {
+    await loadFromRoute(normalized)
+    return
+  }
+  await router.replace({ path: '/search', query: normalized ? { q: normalized } : {} })
+}
+
+watch(() => route.query.q, loadFromRoute, { immediate: true })
 </script>
 
 <template>
@@ -36,8 +52,8 @@ onMounted(run)
     <div class="listing-hero__meta">{{ result.images.length + result.works.length + result.characters.length }} 个结果</div>
   </section>
   <div class="toolbar search-toolbar">
-    <el-input v-model="q" clearable placeholder="关键词" :prefix-icon="SearchIcon" @keyup.enter="run" />
-    <el-button @click="run">搜索</el-button>
+    <el-input v-model="q" clearable placeholder="关键词" :prefix-icon="SearchIcon" @clear="submit" @keyup.enter="submit" />
+    <el-button @click="submit">搜索</el-button>
   </div>
   <div class="section-title"><h2>图片</h2></div>
   <ImageMasonry :images="result.images" />

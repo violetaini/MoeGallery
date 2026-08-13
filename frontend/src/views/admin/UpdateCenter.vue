@@ -11,6 +11,11 @@ const updateInfo = ref(null)
 const tasks = ref([])
 const selectedTaskId = ref('')
 let pollingTimer = null
+let pollingActive = false
+let pollingGeneration = 0
+let taskRequestSeq = 0
+let taskLoadingSeq = 0
+let updateCheckRequestSeq = 0
 
 const runningStatuses = new Set(['queued', 'starting', 'downloading', 'verifying', 'prepared', 'backup', 'upgrading', 'restarting'])
 const latestRelease = computed(() => updateInfo.value?.latest_release || {})
@@ -74,28 +79,34 @@ function formatTime(value) {
 }
 
 async function loadUpdateCheck() {
+  const seq = ++updateCheckRequestSeq
   checkLoading.value = true
   try {
-    updateInfo.value = await galleryApi.checkUpdates()
+    const data = await galleryApi.checkUpdates()
+    if (seq !== updateCheckRequestSeq) return
+    updateInfo.value = data
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || '检查更新失败')
+    if (seq === updateCheckRequestSeq) ElMessage.error(error?.response?.data?.detail || '检查更新失败')
   } finally {
-    checkLoading.value = false
+    if (seq === updateCheckRequestSeq) checkLoading.value = false
   }
 }
 
-async function loadTasks() {
-  taskLoading.value = true
+async function loadTasks({ silent = false } = {}) {
+  const seq = ++taskRequestSeq
+  const loadingSeq = silent ? null : ++taskLoadingSeq
+  if (loadingSeq !== null) taskLoading.value = true
   try {
     const data = await galleryApi.updateTasks({ limit: 20 })
+    if (seq !== taskRequestSeq) return
     tasks.value = data.items || []
     if (!selectedTaskId.value || !tasks.value.some((task) => task.id === selectedTaskId.value)) {
       selectedTaskId.value = tasks.value[0]?.id || ''
     }
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || '加载更新任务失败')
+    if (!silent && seq === taskRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载更新任务失败')
   } finally {
-    taskLoading.value = false
+    if (loadingSeq !== null && loadingSeq === taskLoadingSeq) taskLoading.value = false
   }
 }
 
@@ -121,7 +132,7 @@ async function createTask(dryRun) {
     return
   }
   if (!dryRun) {
-    await ElMessageBox.confirm(
+    const confirmed = await ElMessageBox.confirm(
       '更新会先备份并校验安装包，然后替换程序文件、执行数据库迁移并重启服务。执行期间后台可能短暂断开。',
       '确认开始更新',
       {
@@ -129,7 +140,8 @@ async function createTask(dryRun) {
         cancelButtonText: '取消',
         type: 'warning'
       }
-    )
+    ).then(() => true).catch(() => false)
+    if (!confirmed) return
   }
   starting.value = true
   try {
@@ -143,7 +155,6 @@ async function createTask(dryRun) {
     tasks.value = [task, ...tasks.value.filter((item) => item.id !== task.id)]
     startPolling()
   } catch (error) {
-    if (error === 'cancel') return
     ElMessage.error(error?.response?.data?.detail || '创建更新任务失败')
     await loadTasks()
   } finally {
@@ -151,16 +162,29 @@ async function createTask(dryRun) {
   }
 }
 
+function stopPolling() {
+  pollingActive = false
+  pollingGeneration += 1
+  if (pollingTimer) window.clearTimeout(pollingTimer)
+  pollingTimer = null
+}
+
 function startPolling() {
-  if (pollingTimer) return
-  pollingTimer = window.setInterval(async () => {
-    await loadTasks()
+  if (pollingActive) return
+  pollingActive = true
+  const generation = pollingGeneration
+  const poll = async () => {
+    pollingTimer = null
+    await loadTasks({ silent: true })
+    if (!pollingActive || generation !== pollingGeneration) return
     if (!runningTask.value) {
-      window.clearInterval(pollingTimer)
-      pollingTimer = null
+      pollingActive = false
       await loadUpdateCheck()
+      return
     }
-  }, 2000)
+    pollingTimer = window.setTimeout(poll, 2000)
+  }
+  pollingTimer = window.setTimeout(poll, 2000)
 }
 
 onMounted(async () => {
@@ -169,7 +193,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (pollingTimer) window.clearInterval(pollingTimer)
+  taskRequestSeq += 1
+  updateCheckRequestSeq += 1
+  stopPolling()
 })
 </script>
 

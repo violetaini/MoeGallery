@@ -13,6 +13,7 @@ from app.utils.image_process import (
     render_webp_preview_bytes,
     validate_upload_filename,
 )
+from app.utils.urls import normalize_http_url
 
 
 def _delete_generated_files(paths: tuple[str | None, ...]) -> None:
@@ -50,11 +51,13 @@ class ImageService:
         merge_duplicate_relations: bool = False,
         precomputed_sha256: str | None = None,
         precomputed_inspection: ImageInspection | None = None,
+        commit: bool = True,
     ) -> tuple[Image, bool]:
         if not data:
             raise ValueError("Empty upload")
         if len(data) > settings.max_upload_size:
             raise ValueError("File is larger than configured upload limit")
+        source_url = normalize_http_url(source_url)
 
         validate_upload_filename(original_filename)
         sha256 = precomputed_sha256 or sha256_bytes(data)
@@ -62,8 +65,11 @@ class ImageService:
         if existing:
             if merge_duplicate_relations:
                 self._apply_relations(existing, work_ids, character_ids, tag_ids)
-                self.db.commit()
-                self.db.refresh(existing)
+                if commit:
+                    self.db.commit()
+                    self.db.refresh(existing)
+                else:
+                    self.db.flush()
             return existing, True
 
         inspection = precomputed_inspection or inspect_image(data)
@@ -95,10 +101,15 @@ class ImageService:
         try:
             self._apply_relations(image, work_ids, character_ids, tag_ids)
             self.db.add(image)
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
         except IntegrityError:
             self.db.rollback()
             _delete_generated_files((paths["file_path"], paths["preview_path"], paths["thumbnail_path"]))
+            if not commit:
+                raise
             existing = self.db.scalar(select(Image).where(Image.sha256 == sha256))
             if not existing:
                 raise
@@ -111,7 +122,8 @@ class ImageService:
             self.db.rollback()
             _delete_generated_files((paths["file_path"], paths["preview_path"], paths["thumbnail_path"]))
             raise
-        self.db.refresh(image)
+        if commit:
+            self.db.refresh(image)
         return image, False
 
     def _create_phash(self, data: bytes) -> str | None:

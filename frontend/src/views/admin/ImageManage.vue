@@ -10,6 +10,7 @@ import { orientationLabel, orientationOptions } from '../../constants/orientatio
 import { ratingOptions } from '../../constants/ratings'
 import { getImageManageViewMode, normalizeImageManageViewMode, setImageManageViewMode } from '../../utils/adminPreferences'
 import { displayId } from '../../utils/displayId'
+import { mergeSelectedOptions } from '../../utils/remoteOptions'
 
 const tableRef = ref()
 const images = ref([])
@@ -26,6 +27,9 @@ const q = ref('')
 const page = ref(1)
 const pageSize = ref(50)
 const pageSizeOptions = [20, 50, 100]
+const optionLoading = reactive({ works: false, characters: false })
+const optionRequestSeq = { works: 0, characters: 0 }
+let listRequestSeq = 0
 const filters = reactive({
   work_id: undefined,
   character_id: undefined,
@@ -106,18 +110,54 @@ function openBatchDialog() {
   if (!selectedRows.value.length) {
     return
   }
-  applyRowToForm(selectedRows.value[0], batchForm)
+  const source = selectedRows.value[0]
+  applyRowToForm(source, batchForm)
+  works.value = mergeSelectedOptions(works.value, batchForm.work_ids, source.works || [])
+  characters.value = mergeSelectedOptions(characters.value, batchForm.character_ids, source.characters || [])
   resetBatchFlags()
   batchDialog.value = true
 }
 
+async function loadWorks(query = '') {
+  const seq = ++optionRequestSeq.works
+  optionLoading.works = true
+  try {
+    const value = query.trim()
+    const data = await galleryApi.works({ page_size: 100, ...(value ? { q: value } : {}) })
+    if (seq !== optionRequestSeq.works) return
+    works.value = mergeSelectedOptions(
+      works.value,
+      [filters.work_id, ...batchForm.work_ids],
+      data.items
+    )
+  } catch (error) {
+    if (seq === optionRequestSeq.works) ElMessage.error(error?.response?.data?.detail || '加载作品选项失败')
+  } finally {
+    if (seq === optionRequestSeq.works) optionLoading.works = false
+  }
+}
+
+async function loadCharacters(query = '') {
+  const seq = ++optionRequestSeq.characters
+  optionLoading.characters = true
+  try {
+    const value = query.trim()
+    const data = await galleryApi.characters({ page_size: 100, ...(value ? { q: value } : {}) })
+    if (seq !== optionRequestSeq.characters) return
+    characters.value = mergeSelectedOptions(
+      characters.value,
+      [filters.character_id, ...batchForm.character_ids],
+      data.items
+    )
+  } catch (error) {
+    if (seq === optionRequestSeq.characters) ElMessage.error(error?.response?.data?.detail || '加载角色选项失败')
+  } finally {
+    if (seq === optionRequestSeq.characters) optionLoading.characters = false
+  }
+}
+
 async function loadOptions() {
-  const [workData, characterData] = await Promise.all([
-    galleryApi.works({ page_size: 100 }),
-    galleryApi.characters({ page_size: 100 })
-  ])
-  works.value = workData.items
-  characters.value = characterData.items
+  await Promise.all([loadWorks(), loadCharacters()])
 }
 
 async function loadAdminSettings() {
@@ -131,6 +171,7 @@ async function loadAdminSettings() {
 }
 
 async function load() {
+  const seq = ++listRequestSeq
   loading.value = true
   try {
     const data = await galleryApi.images({
@@ -139,17 +180,19 @@ async function load() {
       q: q.value,
       public_only: false,
       exclude_cover_images: true,
+      exclude_backdrop_images: true,
       exclude_avatar_images: true,
       ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined))
     })
+    if (seq !== listRequestSeq) return
     images.value = data.items
     total.value = data.total
     await nextTick()
     clearSelection()
   } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || '加载图片失败')
+    if (seq === listRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载图片失败')
   } finally {
-    loading.value = false
+    if (seq === listRequestSeq) loading.value = false
   }
 }
 
@@ -206,7 +249,12 @@ async function handleEditorSaved() {
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`删除图片 ${imageLabel(row)}？`, '确认删除', { type: 'warning' })
+  const confirmed = await ElMessageBox.confirm(
+    `删除图片 ${imageLabel(row)}？`,
+    '确认删除',
+    { type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
   try {
     await galleryApi.deleteImage(row.id)
     ElMessage.success('已删除')
@@ -252,7 +300,12 @@ async function removeSelected() {
   if (!selectedRows.value.length) {
     return
   }
-  await ElMessageBox.confirm(`删除选中的 ${selectedRows.value.length} 张图片？`, '确认批量删除', { type: 'warning' })
+  const confirmed = await ElMessageBox.confirm(
+    `删除选中的 ${selectedRows.value.length} 张图片？`,
+    '确认批量删除',
+    { type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
   try {
     const result = await galleryApi.deleteImagesBatch({
       image_ids: selectedRows.value.map((row) => row.id)
@@ -274,10 +327,34 @@ onMounted(async () => {
   <div class="admin-card">
     <div class="admin-toolbar">
       <el-input v-model="q" clearable placeholder="搜索图片" :prefix-icon="Search" style="width: 220px" @keyup.enter="reloadFromFirstPage" />
-      <el-select v-model="filters.work_id" clearable filterable placeholder="作品" style="width: 190px" @change="reloadFromFirstPage">
+      <el-select
+        v-model="filters.work_id"
+        clearable
+        filterable
+        remote
+        reserve-keyword
+        placeholder="搜索作品"
+        style="width: 190px"
+        :loading="optionLoading.works"
+        :remote-method="loadWorks"
+        @change="reloadFromFirstPage"
+        @visible-change="(visible) => visible && loadWorks()"
+      >
         <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
       </el-select>
-      <el-select v-model="filters.character_id" clearable filterable placeholder="角色" style="width: 190px" @change="reloadFromFirstPage">
+      <el-select
+        v-model="filters.character_id"
+        clearable
+        filterable
+        remote
+        reserve-keyword
+        placeholder="搜索角色"
+        style="width: 190px"
+        :loading="optionLoading.characters"
+        :remote-method="loadCharacters"
+        @change="reloadFromFirstPage"
+        @visible-change="(visible) => visible && loadCharacters()"
+      >
         <el-option v-for="character in characters" :key="character.id" :label="character.name" :value="character.id" />
       </el-select>
       <el-select v-model="filters.rating" clearable placeholder="分级" style="width: 190px" @change="reloadFromFirstPage">
@@ -411,7 +488,19 @@ onMounted(async () => {
           <div class="batch-field__head">
             <el-checkbox v-model="batchEnabled.work_ids">作品</el-checkbox>
           </div>
-          <el-select v-model="batchForm.work_ids" multiple filterable clearable style="width: 100%" :disabled="!batchEnabled.work_ids">
+          <el-select
+            v-model="batchForm.work_ids"
+            multiple
+            filterable
+            remote
+            reserve-keyword
+            clearable
+            style="width: 100%"
+            :disabled="!batchEnabled.work_ids"
+            :loading="optionLoading.works"
+            :remote-method="loadWorks"
+            @visible-change="(visible) => visible && loadWorks()"
+          >
             <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
           </el-select>
         </div>
@@ -419,7 +508,19 @@ onMounted(async () => {
           <div class="batch-field__head">
             <el-checkbox v-model="batchEnabled.character_ids">角色</el-checkbox>
           </div>
-          <el-select v-model="batchForm.character_ids" multiple filterable clearable style="width: 100%" :disabled="!batchEnabled.character_ids">
+          <el-select
+            v-model="batchForm.character_ids"
+            multiple
+            filterable
+            remote
+            reserve-keyword
+            clearable
+            style="width: 100%"
+            :disabled="!batchEnabled.character_ids"
+            :loading="optionLoading.characters"
+            :remote-method="loadCharacters"
+            @visible-change="(visible) => visible && loadCharacters()"
+          >
             <el-option v-for="character in characters" :key="character.id" :label="character.name" :value="character.id" />
           </el-select>
         </div>

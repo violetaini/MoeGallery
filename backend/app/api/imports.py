@@ -15,6 +15,7 @@ from app.auth import require_library_write
 from app.database import get_db
 from app.models import Character, Work
 from app.schemas.imports import MetadataImportRow, MetadataImportSummary
+from app.utils.urls import normalize_http_url
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -165,6 +166,8 @@ def _normalize_row(raw: dict[str, Any], row_number: int) -> dict[str, Any]:
             result["work"][int_field] = _number(result["work"][int_field], int)
     if "community_rating" in result["work"]:
         result["work"]["community_rating"] = _number(result["work"]["community_rating"], float)
+    if "official_site" in result["work"]:
+        result["work"]["official_site"] = normalize_http_url(result["work"]["official_site"])
     return result
 
 

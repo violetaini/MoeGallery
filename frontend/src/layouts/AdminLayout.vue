@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   DataBoard,
@@ -15,7 +15,7 @@ import {
   Upload,
   User
 } from '@element-plus/icons-vue'
-import { adminAvatarUrlFromImage, clearAuthSession, getAuthAvatar, getAuthUser, setAuthSession } from '../api/client'
+import { AUTH_SESSION_CHANGED_EVENT, clearAuthSession, getAuthAvatar, getAuthUser } from '../api/client'
 import { galleryApi } from '../api/gallery'
 
 const router = useRouter()
@@ -38,16 +38,9 @@ const activeMenu = computed(() => {
   return '/admin'
 })
 
-async function refreshAdminProfile() {
-  try {
-    const profile = await galleryApi.me()
-    username.value = profile.username || 'admin'
-    avatarUrl.value = adminAvatarUrlFromImage(profile.avatar_image) || '/avatar.webp'
-    setAuthSession({ username: profile.username, avatar_image: profile.avatar_image })
-  } catch {
-    username.value = getAuthUser() || 'admin'
-    avatarUrl.value = getAuthAvatar() || '/avatar.webp'
-  }
+function syncAdminProfile() {
+  username.value = getAuthUser() || 'admin'
+  avatarUrl.value = getAuthAvatar() || '/avatar.webp'
 }
 
 async function logout() {
@@ -66,7 +59,8 @@ watch(
   }
 )
 
-onMounted(refreshAdminProfile)
+onMounted(() => window.addEventListener(AUTH_SESSION_CHANGED_EVENT, syncAdminProfile))
+onBeforeUnmount(() => window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, syncAdminProfile))
 </script>
 
 <template>

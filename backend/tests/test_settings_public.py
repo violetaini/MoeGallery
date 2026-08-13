@@ -1,7 +1,6 @@
 import sys
 import tempfile
 import unittest
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -19,6 +18,7 @@ from app.services.app_setting_service import (
     RANDOM_API_DEFAULT_RATING_KEY,
     RANDOM_API_DESKTOP_ORIENTATION_KEY,
 )
+from app.utils.time import utcnow_naive
 
 
 class PublicSettingsTests(unittest.TestCase):
@@ -36,28 +36,32 @@ class PublicSettingsTests(unittest.TestCase):
         self.engine.dispose()
         self.temp_dir.cleanup()
 
+    @staticmethod
+    def _new_image(filename: str, *, rating: str = "safe", is_public: bool = True) -> Image:
+        return Image(
+            filename=filename,
+            original_filename=filename,
+            file_path=f"original/{filename}",
+            thumbnail_path=f"thumbnail/{filename}",
+            preview_path=f"preview/{filename}",
+            width=1600,
+            height=720,
+            file_size=1234,
+            mime_type="image/webp",
+            sha256=(filename[0] if filename else "a") * 64,
+            rating=rating,
+            is_public=is_public,
+            dynamic_range="sdr",
+            bit_depth=8,
+            is_animated=False,
+            favorite_count=0,
+            created_at=utcnow_naive(),
+            updated_at=utcnow_naive(),
+        )
+
     def test_public_hero_image_settings(self):
         with self.SessionTesting() as db:
-            image = Image(
-                filename="hero.webp",
-                original_filename="hero.png",
-                file_path="original/hero.webp",
-                thumbnail_path="thumbnail/hero.webp",
-                preview_path="preview/hero.webp",
-                width=1600,
-                height=720,
-                file_size=1234,
-                mime_type="image/webp",
-                sha256="a" * 64,
-                rating="safe",
-                is_public=True,
-                dynamic_range="sdr",
-                bit_depth=8,
-                is_animated=False,
-                favorite_count=0,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
+            image = self._new_image("hero.webp")
             db.add(image)
             db.commit()
             db.refresh(image)
@@ -84,6 +88,58 @@ class PublicSettingsTests(unittest.TestCase):
                 with self.subTest(key=key):
                     with self.assertRaises(HTTPException):
                         settings_api._set_image_setting(db, key, 999)
+
+    def test_public_settings_hide_stale_private_and_hidden_images(self):
+        with self.SessionTesting() as db:
+            private_image = self._new_image("private.webp", is_public=False)
+            hidden_image = self._new_image("hidden.webp", rating="hidden")
+            db.add_all([private_image, hidden_image])
+            db.commit()
+
+            settings_api._set_value(db, settings_api.HOME_HERO_IMAGE_ID_KEY, str(private_image.id))
+            settings_api._set_value(
+                db,
+                settings_api.HOME_SLIDESHOW_IMAGE_IDS_KEY,
+                f"[{private_image.id},{hidden_image.id}]",
+            )
+            db.commit()
+
+            public_settings = settings_api._read_public_settings(db)
+            self.assertIsNone(public_settings["home_hero_image_id"])
+            self.assertIsNone(public_settings["home_hero_image"])
+            self.assertEqual(public_settings["home_slideshow_image_ids"], [])
+            self.assertEqual(public_settings["home_slideshow_images"], [])
+
+            admin_settings = settings_api._read_settings(db)
+            self.assertEqual(admin_settings["home_hero_image_id"], private_image.id)
+            self.assertEqual(
+                admin_settings["home_slideshow_image_ids"],
+                [private_image.id, hidden_image.id],
+            )
+
+    def test_public_image_settings_reject_private_and_hidden_images(self):
+        with self.SessionTesting() as db:
+            private_image = self._new_image("private.webp", is_public=False)
+            hidden_image = self._new_image("hidden.webp", rating="hidden")
+            db.add_all([private_image, hidden_image])
+            db.commit()
+
+            for image in (private_image, hidden_image):
+                with self.subTest(image_id=image.id):
+                    with self.assertRaises(HTTPException):
+                        settings_api._set_image_setting(
+                            db,
+                            settings_api.HOME_HERO_IMAGE_ID_KEY,
+                            image.id,
+                            public_only=True,
+                        )
+                    with self.assertRaises(HTTPException):
+                        settings_api._set_image_list_setting(
+                            db,
+                            settings_api.HOME_SLIDESHOW_IMAGE_IDS_KEY,
+                            [image.id],
+                            public_only=True,
+                        )
 
     def test_random_api_admin_defaults_are_normalized(self):
         with self.SessionTesting() as db:

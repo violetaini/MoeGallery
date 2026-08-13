@@ -147,9 +147,9 @@ def update_execution_status() -> dict:
     }
 
 
-def check_for_updates(db: Session) -> dict:
+def check_for_updates(db: Session, *, force_refresh: bool = True) -> dict:
     current_version = current_app_version()
-    latest_release = latest_release_info(db)
+    latest_release = latest_release_info(db, force_refresh=force_refresh)
     status = update_execution_status()
     return {
         "current_version": current_version,
@@ -258,7 +258,7 @@ def create_update_task(db: Session, version: str | None = None, dry_run: bool = 
         problems = status["issues"] or status["warnings"] or [status["message"]]
         raise ValueError("正式更新未就绪：" + "；".join(problems))
     current_version = current_app_version()
-    release = latest_release_info(db)
+    release = latest_release_info(db, force_refresh=True)
     if not release.get("available"):
         raise ValueError("无法获取最新 Release")
     if version and version != release.get("version"):

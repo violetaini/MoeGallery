@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.common import CharacterSummary, ImageSummary, OrmModel, PageResponse, TagSummary, WorkSummary
+from app.utils.urls import normalize_http_url
 
 
 class ImageUpdate(BaseModel):
@@ -15,6 +16,11 @@ class ImageUpdate(BaseModel):
     work_ids: list[int] | None = None
     character_ids: list[int] | None = None
 
+    @field_validator("source_url")
+    @classmethod
+    def validate_source_url(cls, value: str | None) -> str | None:
+        return normalize_http_url(value)
+
 
 class ImageBatchItemUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -25,6 +31,11 @@ class ImageBatchItemUpdate(BaseModel):
     favorite_count: int | None = Field(default=None, ge=0)
     work_ids: list[int] | None = None
     character_ids: list[int] | None = None
+
+    @field_validator("source_url")
+    @classmethod
+    def validate_source_url(cls, value: str | None) -> str | None:
+        return normalize_http_url(value)
 
 
 class ImageBatchUpdate(BaseModel):
@@ -69,7 +80,7 @@ class ImageUploadResponse(BaseModel):
 
 
 class ImageListResponse(PageResponse[ImageRead]):
-    pass
+    random_seed: int | None = Field(default=None, ge=1, le=2_147_483_646)
 
 
 class RandomImageResponse(BaseModel):

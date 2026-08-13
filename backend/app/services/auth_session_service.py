@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import Response
 from sqlalchemy import update
@@ -8,6 +8,7 @@ from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, create_access_toke
 from app.config import generate_auth_secret, settings
 from app.models import AdminSession
 from app.services.install_service import write_env
+from app.utils.time import utcnow_naive
 
 
 def create_admin_session(
@@ -18,7 +19,7 @@ def create_admin_session(
     ip_address: str | None,
 ) -> tuple[str, AdminSession]:
     token = create_access_token(username)
-    now = datetime.utcnow()
+    now = utcnow_naive()
     session = AdminSession(
         token_hash=session_token_hash(token),
         username=username,
@@ -60,7 +61,7 @@ def clear_admin_session_cookie(response: Response) -> None:
 
 
 def revoke_session(db: Session, token: str | None = None, session_id: int | None = None) -> int:
-    now = datetime.utcnow()
+    now = utcnow_naive()
     query = db.query(AdminSession).filter(AdminSession.revoked_at.is_(None))
     if token:
         query = query.filter(AdminSession.token_hash == session_token_hash(token))
@@ -76,7 +77,7 @@ def revoke_session(db: Session, token: str | None = None, session_id: int | None
 
 
 def revoke_all_sessions(db: Session) -> int:
-    now = datetime.utcnow()
+    now = utcnow_naive()
     result = db.execute(
         update(AdminSession)
         .where(AdminSession.revoked_at.is_(None))

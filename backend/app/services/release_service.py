@@ -13,6 +13,7 @@ from app.services.app_setting_service import get_github_release_proxy_url
 
 LATEST_RELEASE_URL = "https://api.github.com/repos/violetaini/MoeGallery/releases/latest"
 LATEST_RELEASE_CACHE_SECONDS = 30 * 60
+LATEST_RELEASE_ERROR_CACHE_SECONDS = 60
 _latest_release_cache: dict[str, dict[str, object]] = {}
 
 
@@ -61,14 +62,20 @@ def _asset_summary(asset: dict[str, Any], proxy_url: str = "") -> dict[str, obje
     }
 
 
-def latest_release_info(db: Session) -> dict:
+def latest_release_info(db: Session, *, force_refresh: bool = False) -> dict:
     now = time.time()
     proxy_url = get_github_release_proxy_url(db)
     request_url = build_latest_release_url(proxy_url)
     cached = _latest_release_cache.get(request_url) or {}
     cached_data = cached.get("data")
-    if cached_data and now - float(cached.get("checked_at") or 0) < LATEST_RELEASE_CACHE_SECONDS:
-        return dict(cached_data)
+    if cached_data and not force_refresh:
+        cache_seconds = (
+            LATEST_RELEASE_CACHE_SECONDS
+            if cached_data.get("available")
+            else LATEST_RELEASE_ERROR_CACHE_SECONDS
+        )
+        if now - float(cached.get("checked_at") or 0) < cache_seconds:
+            return dict(cached_data)
     request = urllib.request.Request(
         request_url,
         headers={

@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import PublicLayout from '../layouts/PublicLayout.vue'
 import Home from '../views/Home.vue'
-import { clearAuthSession, setAuthSession } from '../api/client'
+import { clearAuthSession, hasAuthSession, setAuthSession } from '../api/client'
 import { galleryApi } from '../api/gallery'
 import {
   loadAdminCharacterDetail,
@@ -33,6 +33,11 @@ export { warmPublicRoutes } from './preload'
 
 let installStatusCache = null
 let authProbePromise = null
+let authProbeResult = null
+let authProbeSessionFlag = null
+let authProbeCheckedAt = 0
+const AUTH_PROBE_SUCCESS_TTL_MS = 60_000
+const AUTH_PROBE_FAILURE_TTL_MS = 5_000
 
 export function clearInstallStatusCache() {
   installStatusCache = null
@@ -46,6 +51,15 @@ async function getInstallStatus() {
 }
 
 async function ensureAuthSession() {
+  const sessionFlag = hasAuthSession()
+  const cacheTtl = authProbeResult ? AUTH_PROBE_SUCCESS_TTL_MS : AUTH_PROBE_FAILURE_TTL_MS
+  if (
+    authProbeCheckedAt
+    && authProbeSessionFlag === sessionFlag
+    && Date.now() - authProbeCheckedAt < cacheTtl
+  ) {
+    return authProbeResult
+  }
   if (!authProbePromise) {
     authProbePromise = galleryApi.me()
       .then((profile) => {
@@ -55,6 +69,12 @@ async function ensureAuthSession() {
       .catch(() => {
         clearAuthSession()
         return null
+      })
+      .then((profile) => {
+        authProbeResult = profile
+        authProbeSessionFlag = hasAuthSession()
+        authProbeCheckedAt = Date.now()
+        return profile
       })
       .finally(() => {
         authProbePromise = null

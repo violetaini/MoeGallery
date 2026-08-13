@@ -91,7 +91,16 @@ def _delete_value(db: Session, key: str) -> None:
         db.delete(setting)
 
 
-def _read_image_setting(db: Session, key: str) -> tuple[int | None, Image | None]:
+def _is_public_image(image: Image) -> bool:
+    return bool(image.is_public and image.rating != "hidden")
+
+
+def _read_image_setting(
+    db: Session,
+    key: str,
+    *,
+    public_only: bool = False,
+) -> tuple[int | None, Image | None]:
     setting = db.get(AppSetting, key)
     if not setting:
         return None, None
@@ -102,15 +111,26 @@ def _read_image_setting(db: Session, key: str) -> tuple[int | None, Image | None
     image = db.get(Image, image_id)
     if not image:
         return None, None
+    if public_only and not _is_public_image(image):
+        return None, None
     return image_id, image
 
 
-def _set_image_setting(db: Session, key: str, image_id: int | None) -> None:
+def _set_image_setting(
+    db: Session,
+    key: str,
+    image_id: int | None,
+    *,
+    public_only: bool = False,
+) -> None:
     if image_id is None:
         _delete_value(db, key)
         return
-    if not db.get(Image, image_id):
+    image = db.get(Image, image_id)
+    if not image:
         raise HTTPException(status_code=422, detail=f"Image {image_id} not found")
+    if public_only and not _is_public_image(image):
+        raise HTTPException(status_code=422, detail=f"Image {image_id} is not available to the public")
     _set_value(db, key, str(image_id))
 
 
@@ -151,24 +171,44 @@ def _read_image_list_setting(db: Session, key: str, public_only: bool = False) -
     return [image.id for image in ordered_images], ordered_images
 
 
-def _set_image_list_setting(db: Session, key: str, image_ids: list[int] | None) -> None:
+def _set_image_list_setting(
+    db: Session,
+    key: str,
+    image_ids: list[int] | None,
+    *,
+    public_only: bool = False,
+) -> None:
     normalized_ids = _normalize_image_id_list(image_ids)
     if not normalized_ids:
         _delete_value(db, key)
         return
-    existing_ids = set(db.scalars(select(Image.id).where(Image.id.in_(normalized_ids))).all())
+    images = db.scalars(select(Image).where(Image.id.in_(normalized_ids))).all()
+    image_by_id = {image.id: image for image in images}
+    existing_ids = set(image_by_id)
     missing_ids = [image_id for image_id in normalized_ids if image_id not in existing_ids]
     if missing_ids:
         raise HTTPException(status_code=422, detail=f"Image {missing_ids[0]} not found")
+    if public_only:
+        unavailable_ids = [image_id for image_id in normalized_ids if not _is_public_image(image_by_id[image_id])]
+        if unavailable_ids:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Image {unavailable_ids[0]} is not available to the public",
+            )
     _set_value(db, key, json.dumps(normalized_ids, separators=(",", ":")))
 
 
-def _read_public_settings(db: Session) -> dict[str, object]:
+def _read_hero_settings(db: Session, *, public_only: bool) -> dict[str, object]:
     result: dict[str, object] = {}
     for prefix, key in PUBLIC_HERO_IMAGE_SETTINGS.items():
-        image_id, image = _read_image_setting(db, key)
+        image_id, image = _read_image_setting(db, key, public_only=public_only)
         result[f"{prefix}_image_id"] = image_id
         result[f"{prefix}_image"] = image
+    return result
+
+
+def _read_public_settings(db: Session) -> dict[str, object]:
+    result = _read_hero_settings(db, public_only=True)
     slideshow_image_ids, slideshow_images = _read_image_list_setting(
         db,
         HOME_SLIDESHOW_IMAGE_IDS_KEY,
@@ -209,7 +249,7 @@ def _read_settings(db: Session, *, include_api_keys: bool = True) -> dict[str, o
         "admin_password_change_required": account.password_change_required,
         "operations_api_keys": list_configured_api_keys(db) if include_api_keys else [],
         "api_key_scopes": api_key_scope_catalog(),
-        **_read_public_settings(db),
+        **_read_hero_settings(db, public_only=False),
         "home_slideshow_image_ids": slideshow_image_ids,
         "home_slideshow_images": slideshow_images,
     }
@@ -274,7 +314,12 @@ def update_settings(
             _delete_value(db, GITHUB_RELEASE_PROXY_URL_KEY)
     try:
         if "home_slideshow_image_ids" in data:
-            _set_image_list_setting(db, HOME_SLIDESHOW_IMAGE_IDS_KEY, data.get("home_slideshow_image_ids"))
+            _set_image_list_setting(
+                db,
+                HOME_SLIDESHOW_IMAGE_IDS_KEY,
+                data.get("home_slideshow_image_ids"),
+                public_only=True,
+            )
         for prefix, key in PUBLIC_HERO_IMAGE_SETTINGS.items():
             id_field = f"{prefix}_image_id"
             clear_field = f"clear_{prefix}_image"
@@ -283,6 +328,7 @@ def update_settings(
                     db,
                     key,
                     None if data.get(clear_field) else data.get(id_field),
+                    public_only=True,
                 )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

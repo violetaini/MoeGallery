@@ -2,7 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,6 +24,7 @@ from app.services.api_key_service import (
     api_key_hash,
     policy_scopes,
 )
+from app.utils.time import utcnow_naive
 
 
 class ApiKeyPermissionTests(unittest.TestCase):
@@ -112,14 +113,14 @@ class ApiKeyPermissionTests(unittest.TestCase):
         self.assertEqual(response.json()["operations_api_keys"], [])
 
     def test_expired_and_revoked_keys_are_rejected(self):
-        expired = self._add_key(["system:read"], expires_at=datetime.utcnow() - timedelta(seconds=1), name="expired")
+        expired = self._add_key(["system:read"], expires_at=utcnow_naive() - timedelta(seconds=1), name="expired")
         self.assertEqual(self.client.get("/api/stats", headers=self._headers(expired)).status_code, 401)
 
         with self.SessionTesting() as db:
             db.query(ApiKeyPolicy).delete()
             db.query(AppSetting).delete()
             db.commit()
-        revoked = self._add_key(["system:read"], revoked_at=datetime.utcnow(), name="revoked")
+        revoked = self._add_key(["system:read"], revoked_at=utcnow_naive(), name="revoked")
         self.assertEqual(self.client.get("/api/stats", headers=self._headers(revoked)).status_code, 401)
 
     def test_all_permissions_cover_every_control_category(self):

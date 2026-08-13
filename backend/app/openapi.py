@@ -338,6 +338,7 @@ PARAMETER_DESCRIPTIONS = {
     "require_work_related": "只返回至少绑定一个作品的图片。",
     "require_character_related": "只返回至少绑定一个角色的图片。",
     "exclude_cover_images": "排除已作为作品封面的图片。",
+    "exclude_backdrop_images": "排除已作为作品背景的图片。",
     "exclude_avatar_images": "排除已作为角色头像的图片。",
     "format": "模板格式：`csv`、`json`、`xlsx` 或 `xlsm`。",
     "dry_run": "为 true 时只校验和预览导入变更，不正式写入。",

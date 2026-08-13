@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.helpers import LIKE_ESCAPE, contains_like_pattern, non_structural_image_conditions
 from app.auth import optional_admin, require_library_delete, require_library_write
 from app.database import get_db
 from app.models import Character, Image, Work
@@ -42,14 +43,16 @@ def _serialize_work(
 
 
 def _work_image_count(db: Session, work_id: int, admin: bool) -> int:
-    if admin:
-        stmt = select(func.count()).select_from(image_works).where(image_works.c.work_id == work_id)
-    else:
-        stmt = (
-            select(func.count())
-            .select_from(image_works.join(Image, image_works.c.image_id == Image.id))
-            .where(image_works.c.work_id == work_id, Image.is_public.is_(True), Image.rating != "hidden")
+    stmt = (
+        select(func.count())
+        .select_from(image_works.join(Image, image_works.c.image_id == Image.id))
+        .where(
+            image_works.c.work_id == work_id,
+            *non_structural_image_conditions(),
         )
+    )
+    if not admin:
+        stmt = stmt.where(Image.is_public.is_(True), Image.rating != "hidden")
     return db.scalar(stmt) or 0
 
 
@@ -70,15 +73,23 @@ def list_works(
     admin: Annotated[dict | None, Depends(optional_admin)],
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
-    q: str | None = None,
+    q: str | None = Query(None, max_length=255),
 ):
     stmt = select(Work).options(*_work_options())
-    if q:
-        needle = f"%{q.strip()}%"
-        stmt = stmt.where(or_(Work.name.ilike(needle), Work.original_name.ilike(needle), Work.aliases.ilike(needle)))
+    if q and q.strip():
+        needle = contains_like_pattern(q)
+        stmt = stmt.where(
+            or_(
+                Work.name.ilike(needle, escape=LIKE_ESCAPE),
+                Work.original_name.ilike(needle, escape=LIKE_ESCAPE),
+                Work.aliases.ilike(needle, escape=LIKE_ESCAPE),
+            )
+        )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     items = db.scalars(
-        stmt.order_by(Work.sort_order.asc(), Work.name.asc()).offset((page - 1) * page_size).limit(page_size)
+        stmt.order_by(Work.sort_order.asc(), Work.name.asc(), Work.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
     return {
         "items": [_serialize_work(item, admin=bool(admin)) for item in items],

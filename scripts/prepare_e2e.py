@@ -62,23 +62,22 @@ def main() -> int:
     thumbnail_dir = storage_path / "thumbnail"
     original_dir.mkdir(parents=True, exist_ok=True)
     thumbnail_dir.mkdir(parents=True, exist_ok=True)
-    image_buffer = BytesIO()
-    PillowImage.new("RGB", (160, 90), color=(91, 153, 219)).save(image_buffer, format="WEBP", quality=82)
-    image_bytes = image_buffer.getvalue()
-    original_file = original_dir / "e2e-gallery.webp"
-    thumbnail_file = thumbnail_dir / "e2e-gallery.webp"
-    original_file.write_bytes(image_bytes)
-    thumbnail_file.write_bytes(image_bytes)
-
-    engine = create_database_engine(database_url)
-    Session = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
-    try:
-        with Session() as db:
-            image = Image(
-                filename="e2e-gallery.webp",
-                original_filename="e2e-gallery.webp",
-                file_path="original/e2e-gallery.webp",
-                thumbnail_path="thumbnail/e2e-gallery.webp",
+    fixture_images = []
+    for filename, color in (
+        ("e2e-work-only.webp", (91, 153, 219)),
+        ("e2e-character.webp", (220, 126, 162)),
+    ):
+        image_buffer = BytesIO()
+        PillowImage.new("RGB", (160, 90), color=color).save(image_buffer, format="WEBP", quality=82)
+        image_bytes = image_buffer.getvalue()
+        (original_dir / filename).write_bytes(image_bytes)
+        (thumbnail_dir / filename).write_bytes(image_bytes)
+        fixture_images.append(
+            Image(
+                filename=filename,
+                original_filename=filename,
+                file_path=f"original/{filename}",
+                thumbnail_path=f"thumbnail/{filename}",
                 preview_path=None,
                 width=160,
                 height=90,
@@ -89,16 +88,23 @@ def main() -> int:
                 rating="safe",
                 is_public=True,
             )
-            db.add(image)
+        )
+
+    engine = create_database_engine(database_url)
+    Session = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    try:
+        with Session() as db:
+            db.add_all(fixture_images)
             db.flush()
-            work = Work(name="E2E 作品", original_name="E2E Work", cover_image_id=image.id)
+            work = Work(name="E2E 作品", original_name="E2E Work")
             db.add(work)
             db.flush()
             character = Character(work_id=work.id, name="E2E 角色", original_name="E2E Character")
             db.add(character)
             db.flush()
-            image.works.append(work)
-            image.characters.append(character)
+            fixture_images[0].works.append(work)
+            fixture_images[1].works.append(work)
+            fixture_images[1].characters.append(character)
             db.commit()
     finally:
         engine.dispose()

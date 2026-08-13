@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Close, Delete, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import { galleryApi } from '../../api/gallery'
 import { imageUploadAccept, imageUploadSupportText } from '../../constants/uploadFormats'
+import { mergeSelectedOptions } from '../../utils/remoteOptions'
 
 const fileList = ref([])
 const nativeFileInput = ref(null)
@@ -20,10 +21,15 @@ const selectedTaskIds = ref([])
 const taskLoading = ref(false)
 const taskActionLoading = ref(false)
 const taskPollingTimer = ref(null)
+let taskPollingGeneration = 0
+let taskRequestSeq = 0
+let taskLoadingSeq = 0
 const previewItems = ref([])
 const previewPage = ref(1)
 const previewPageSize = 12
 const activePreviewUid = ref(null)
+const optionLoading = reactive({ works: false, characters: false })
+const optionRequestSeq = { works: 0, characters: 0 }
 const form = reactive({
   work_ids: [],
   character_ids: [],
@@ -58,6 +64,9 @@ const taskStatusOptions = [
   { value: 'canceled', label: '已取消' }
 ]
 const duplicateHashConcurrency = 8
+const previewConcurrency = 6
+const previewQueue = []
+let activePreviewRequests = 0
 const uploadingLabel = computed(() => {
   if (checkingDuplicates.value) return '校验重复中'
   if (uploading.value) return '提交任务中'
@@ -130,6 +139,7 @@ function revokePreview(url) {
 }
 
 function cleanupPreviewItems() {
+  previewQueue.length = 0
   previewItems.value.forEach((item) => revokePreview(item.previewUrl))
   previewItems.value = []
   activePreviewUid.value = null
@@ -137,31 +147,81 @@ function cleanupPreviewItems() {
 }
 
 function stopTaskPolling() {
+  taskPollingGeneration += 1
   if (taskPollingTimer.value) {
-    window.clearInterval(taskPollingTimer.value)
+    window.clearTimeout(taskPollingTimer.value)
     taskPollingTimer.value = null
   }
 }
 
+async function loadWorks(query = '') {
+  const seq = ++optionRequestSeq.works
+  optionLoading.works = true
+  try {
+    const value = query.trim()
+    const data = await galleryApi.works({ page_size: 100, ...(value ? { q: value } : {}) })
+    if (seq !== optionRequestSeq.works) return
+    works.value = mergeSelectedOptions(works.value, form.work_ids, data.items)
+  } catch (error) {
+    if (seq === optionRequestSeq.works) ElMessage.error(error?.response?.data?.detail || '加载作品选项失败')
+  } finally {
+    if (seq === optionRequestSeq.works) optionLoading.works = false
+  }
+}
+
+async function loadCharacters(query = '') {
+  const seq = ++optionRequestSeq.characters
+  optionLoading.characters = true
+  try {
+    const value = query.trim()
+    const data = await galleryApi.characters({ page_size: 100, ...(value ? { q: value } : {}) })
+    if (seq !== optionRequestSeq.characters) return
+    characters.value = mergeSelectedOptions(characters.value, form.character_ids, data.items)
+  } catch (error) {
+    if (seq === optionRequestSeq.characters) ElMessage.error(error?.response?.data?.detail || '加载角色选项失败')
+  } finally {
+    if (seq === optionRequestSeq.characters) optionLoading.characters = false
+  }
+}
+
 async function loadOptions() {
-  const [workData, characterData] = await Promise.all([
-    galleryApi.works({ page_size: 100 }),
-    galleryApi.characters({ page_size: 100 })
-  ])
-  works.value = workData.items
-  characters.value = characterData.items
+  await Promise.all([loadWorks(), loadCharacters()])
 }
 
 async function createPreview(item) {
-  item.previewStatus = 'loading'
   try {
     const blob = await galleryApi.previewUploadImage(item.raw)
-    item.previewUrl = URL.createObjectURL(blob)
+    if (!previewItems.value.some((candidate) => candidate.uid === item.uid)) return
+    const url = URL.createObjectURL(blob)
+    if (!previewItems.value.some((candidate) => candidate.uid === item.uid)) {
+      revokePreview(url)
+      return
+    }
+    item.previewUrl = url
     item.previewStatus = 'ready'
   } catch (error) {
     item.previewStatus = 'error'
     item.errorMessage = error?.response?.data?.detail || '预览失败'
   }
+}
+
+function pumpPreviewQueue() {
+  while (activePreviewRequests < previewConcurrency && previewQueue.length) {
+    const item = previewQueue.shift()
+    if (!item || !previewItems.value.some((candidate) => candidate.uid === item.uid)) continue
+    activePreviewRequests += 1
+    item.previewStatus = 'loading'
+    void createPreview(item).finally(() => {
+      activePreviewRequests -= 1
+      pumpPreviewQueue()
+    })
+  }
+}
+
+function enqueuePreview(item) {
+  item.previewStatus = 'queued'
+  previewQueue.push(item)
+  pumpPreviewQueue()
 }
 
 function syncPreviewItems(files) {
@@ -184,11 +244,11 @@ function syncPreviewItems(files) {
       extension: `.${String(file.name || '').split('.').pop() || ''}`.toLowerCase(),
       raw: file.raw,
       previewUrl: '',
-      previewStatus: 'loading',
+      previewStatus: 'queued',
       errorMessage: ''
     })
     previewItems.value.push(previewItem)
-    createPreview(previewItem)
+    enqueuePreview(previewItem)
   }
 
   if (activePreviewUid.value && !previewItems.value.some((item) => item.uid === activePreviewUid.value)) {
@@ -457,31 +517,41 @@ async function submitUpload() {
 }
 
 async function loadUploadTasks({ silent = false } = {}) {
-  if (!silent) taskLoading.value = true
+  const seq = ++taskRequestSeq
+  const requestedPage = taskPage.value
+  const requestedStatus = taskStatusFilter.value
+  const loadingSeq = silent ? null : ++taskLoadingSeq
+  if (loadingSeq !== null) taskLoading.value = true
   try {
     const data = await galleryApi.uploadTasks({
-      page: taskPage.value,
+      page: requestedPage,
       page_size: taskPageSize,
-      status: taskStatusFilter.value || undefined
+      status: requestedStatus || undefined
     })
+    if (seq !== taskRequestSeq) return
     taskItems.value = data.items || []
     taskTotal.value = Number(data.total || 0)
     selectedTaskIds.value = selectedTaskIds.value.filter((id) => taskItems.value.some((task) => task.id === id))
   } catch (error) {
-    if (!silent) ElMessage.error(error?.response?.data?.detail || '刷新上传任务失败')
+    if (!silent && seq === taskRequestSeq) ElMessage.error(error?.response?.data?.detail || '刷新上传任务失败')
   } finally {
-    if (!silent) taskLoading.value = false
+    if (loadingSeq !== null && loadingSeq === taskLoadingSeq) taskLoading.value = false
   }
 }
 
-async function refreshUploadTasks() {
+async function refreshUploadTasks(generation = taskPollingGeneration) {
+  taskPollingTimer.value = null
   await loadUploadTasks({ silent: true })
-  if (!activeTasks.value.length) stopTaskPolling()
+  if (generation !== taskPollingGeneration) return
+  if (activeTasks.value.length) {
+    taskPollingTimer.value = window.setTimeout(() => refreshUploadTasks(generation), 2000)
+  }
 }
 
 function startTaskPolling() {
   stopTaskPolling()
-  taskPollingTimer.value = window.setInterval(refreshUploadTasks, 2000)
+  const generation = taskPollingGeneration
+  taskPollingTimer.value = window.setTimeout(() => refreshUploadTasks(generation), 2000)
 }
 
 async function changeTaskStatusFilter() {
@@ -546,6 +616,7 @@ onMounted(async () => {
   if (activeTasks.value.length) startTaskPolling()
 })
 onBeforeUnmount(() => {
+  taskRequestSeq += 1
   cleanupPreviewItems()
   stopTaskPolling()
 })
@@ -594,7 +665,8 @@ onBeforeUnmount(() => {
               <button class="upload-preview-card__media" type="button" @click="openPreview(item)">
                 <img v-if="item.previewUrl" :src="item.previewUrl" :alt="item.name" />
                 <div v-else class="upload-preview-card__fallback">
-                  <span v-if="item.previewStatus === 'loading'">解析中</span>
+                  <span v-if="item.previewStatus === 'queued'">等待预览</span>
+                  <span v-else-if="item.previewStatus === 'loading'">解析中</span>
                   <span v-else>预览失败</span>
                 </div>
               </button>
@@ -699,12 +771,34 @@ onBeforeUnmount(() => {
       </el-form-item>
       <div class="admin-form-workbench">
         <el-form-item label="作品">
-          <el-select v-model="form.work_ids" multiple filterable clearable style="width: 100%">
+          <el-select
+            v-model="form.work_ids"
+            multiple
+            filterable
+            remote
+            reserve-keyword
+            clearable
+            style="width: 100%"
+            :loading="optionLoading.works"
+            :remote-method="loadWorks"
+            @visible-change="(visible) => visible && loadWorks()"
+          >
             <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="form.character_ids" multiple filterable clearable style="width: 100%">
+          <el-select
+            v-model="form.character_ids"
+            multiple
+            filterable
+            remote
+            reserve-keyword
+            clearable
+            style="width: 100%"
+            :loading="optionLoading.characters"
+            :remote-method="loadCharacters"
+            @visible-change="(visible) => visible && loadCharacters()"
+          >
             <el-option v-for="character in characters" :key="character.id" :label="character.name" :value="character.id" />
           </el-select>
         </el-form-item>

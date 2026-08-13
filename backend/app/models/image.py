@@ -28,7 +28,7 @@ class Image(Base, TimestampMixin):
     dynamic_range: Mapped[str] = mapped_column(String(20), default="sdr", nullable=False, index=True)
     bit_depth: Mapped[int] = mapped_column(Integer, default=8, nullable=False)
     color_profile: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    sha256: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    sha256: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     phash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     rating: Mapped[str] = mapped_column(String(20), default="safe", nullable=False, index=True)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)

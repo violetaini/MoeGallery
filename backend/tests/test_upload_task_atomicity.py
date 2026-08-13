@@ -101,6 +101,43 @@ class UploadTaskAtomicityTests(unittest.TestCase):
         self.assertEqual(self._stored_files("tasks"), [])
         worker.assert_not_called()
 
+    def test_direct_upload_invalid_file_rolls_back_entire_batch(self):
+        response = self.client.post(
+            "/api/images/upload",
+            files=self._files(("valid.png", png_bytes()), ("broken.png", b"not-an-image")),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._counts(), (0, 0))
+        self.assertEqual(self._stored_files("original"), [])
+        self.assertEqual(self._stored_files("thumbnail"), [])
+
+    def test_direct_upload_rejects_missing_relations_before_writing_files(self):
+        response = self.client.post(
+            "/api/images/upload",
+            data={"character_ids": "999999"},
+            files=self._files(("valid.png", png_bytes())),
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self._counts(), (0, 0))
+        self.assertEqual(self._stored_files("original"), [])
+
+    def test_direct_upload_commits_valid_batch_together(self):
+        response = self.client.post(
+            "/api/images/upload",
+            files=self._files(
+                ("one.png", png_bytes()),
+                ("two.png", png_bytes((32, 64, 96))),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(len(response.json()["items"]), 2)
+        self.assertEqual(self._counts(), (0, 2))
+        self.assertEqual(len(self._stored_files("original")), 2)
+        self.assertEqual(len(self._stored_files("thumbnail")), 2)
+
     def test_task_insert_failure_removes_all_staged_files(self):
         with (
             patch("app.api.upload_tasks.create_upload_task_batch", side_effect=RuntimeError("database unavailable")),

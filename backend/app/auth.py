@@ -5,7 +5,6 @@ import hmac
 import json
 import secrets
 import time
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
@@ -23,6 +22,7 @@ from app.services.api_key_service import (
     record_api_key_use,
 )
 from app.utils.request_ip import client_ip
+from app.utils.time import utcnow_naive
 
 
 security = HTTPBearer(auto_error=False)
@@ -136,7 +136,7 @@ def _session_is_active(session: AdminSession | None) -> bool:
         return False
     if session.revoked_at is not None:
         return False
-    if session.expires_at < datetime.utcnow():
+    if session.expires_at < utcnow_naive():
         return False
     return True
 
@@ -206,7 +206,7 @@ def _require_admin(
     session = db.query(AdminSession).filter(AdminSession.token_hash == session_token_hash(token)).first()
     if not _session_is_active(session):
         raise _invalid_token()
-    session.last_seen_at = datetime.utcnow()
+    session.last_seen_at = utcnow_naive()
     db.commit()
     return {**data, "session_id": session.id}
 
@@ -286,7 +286,7 @@ def _optional_admin(
         )
         if not _session_is_active(session):
             raise _invalid_token()
-        session.last_seen_at = datetime.utcnow()
+        session.last_seen_at = utcnow_naive()
         db.commit()
         return {**data, "session_id": session.id}
 
@@ -298,7 +298,7 @@ def _optional_admin(
         session = db.query(AdminSession).filter(AdminSession.token_hash == session_token_hash(token)).first()
         if not _session_is_active(session):
             return None
-        session.last_seen_at = datetime.utcnow()
+        session.last_seen_at = utcnow_naive()
         db.commit()
         return {**data, "session_id": session.id}
     except HTTPException:

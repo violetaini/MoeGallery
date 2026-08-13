@@ -9,6 +9,8 @@ import ResponsiveImage from '../../components/ResponsiveImage.vue'
 import ImageMasonry from '../../components/ImageMasonry.vue'
 import { imageUploadAccept } from '../../constants/uploadFormats'
 import { displayId } from '../../utils/displayId'
+import { mergeSelectedOptions } from '../../utils/remoteOptions'
+import { safeExternalUrl } from '../../utils/urls'
 
 const CHARACTER_CARD_MIN_WIDTH = 180
 const CHARACTER_GRID_GAP = 16
@@ -31,6 +33,7 @@ const imagePageSize = 24
 const pageLoading = ref(false)
 const characterLoading = ref(false)
 const imageLoading = ref(false)
+const avatarImageLoading = ref(false)
 const uploading = ref(false)
 const uploadingAvatar = ref(false)
 const uploadFiles = ref([])
@@ -80,6 +83,7 @@ const ratingText = computed(() => {
   if (!work.value?.community_rating) return ''
   return Number(work.value.community_rating).toFixed(1)
 })
+const officialSiteUrl = computed(() => safeExternalUrl(work.value?.official_site))
 const characterPageSize = computed(() => {
   const availableSlots = Math.max(1, characterColumnCount.value * CHARACTER_GRID_ROWS - 1)
   return Math.min(CHARACTER_MAX_PAGE_SIZE, availableSlots)
@@ -92,55 +96,97 @@ const avatarImageDisplayIds = computed(() => new Map(avatarImages.value.map((ima
 
 let characterResizeObserver
 let characterResizeFallbackActive = false
+let workRequestSeq = 0
+let imageRequestSeq = 0
+let avatarImageRequestSeq = 0
+let characterRequestSeq = 0
 
 function avatarImageOptionLabel(image) {
   return `${image.original_filename || image.filename || '未命名图片'} · 序号 ${avatarImageDisplayIds.value.get(image.id) || '-'}`
 }
 
 async function loadWork() {
+  const seq = ++workRequestSeq
+  const requestedWorkId = workId.value
   pageLoading.value = true
   try {
-    work.value = await galleryApi.work(workId.value)
+    const data = await galleryApi.work(requestedWorkId)
+    if (seq !== workRequestSeq) return
+    work.value = data
     characterTotal.value = work.value.character_count || 0
     imageTotal.value = work.value.image_count || 0
+  } catch (error) {
+    if (seq === workRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载作品详情失败')
   } finally {
-    pageLoading.value = false
+    if (seq === workRequestSeq) pageLoading.value = false
   }
 }
 
 async function loadImages() {
+  const seq = ++imageRequestSeq
+  const requestedWorkId = workId.value
+  const requestedPage = imagePage.value
   imageLoading.value = true
   try {
     const data = await galleryApi.images({
-      page: imagePage.value,
+      page: requestedPage,
       page_size: imagePageSize,
       public_only: false,
-      work_id: workId.value
+      work_id: requestedWorkId
     })
+    if (seq !== imageRequestSeq) return
     images.value = data.items
     imageTotal.value = data.total
+  } catch (error) {
+    if (seq === imageRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载作品图片失败')
   } finally {
-    imageLoading.value = false
+    if (seq === imageRequestSeq) imageLoading.value = false
   }
 }
 
-async function loadAvatarImages() {
-  const data = await galleryApi.images({ page_size: 100, public_only: false })
-  avatarImages.value = data.items
+async function loadAvatarImages(query = '') {
+  const seq = ++avatarImageRequestSeq
+  avatarImageLoading.value = true
+  try {
+    const data = await galleryApi.images({
+      page: 1,
+      page_size: 50,
+      public_only: false,
+      q: query.trim() || undefined,
+      sort: 'latest'
+    })
+    if (seq !== avatarImageRequestSeq) return
+    avatarImages.value = mergeSelectedOptions(
+      avatarImages.value,
+      [characterForm.avatar_image_id],
+      data.items
+    )
+  } catch (error) {
+    if (seq === avatarImageRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载头像选项失败')
+  } finally {
+    if (seq === avatarImageRequestSeq) avatarImageLoading.value = false
+  }
 }
 
 async function loadCharacters() {
+  const seq = ++characterRequestSeq
+  const requestedWorkId = workId.value
+  const requestedPage = characterPage.value
+  const requestedPageSize = characterPageSize.value
   characterLoading.value = true
   try {
     const data = await galleryApi.characters({
-      page: characterPage.value,
-      page_size: characterPageSize.value,
-      work_id: workId.value
+      page: requestedPage,
+      page_size: requestedPageSize,
+      work_id: requestedWorkId
     })
+    if (seq !== characterRequestSeq) return
     characters.value = data.items
     characterTotal.value = data.total
+  } catch (error) {
+    if (seq === characterRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载角色失败')
   } finally {
-    characterLoading.value = false
+    if (seq === characterRequestSeq) characterLoading.value = false
   }
 }
 
@@ -198,9 +244,7 @@ function openCreateCharacter() {
     description: '',
     avatar_image_id: null
   })
-  if (!avatarImages.value.length) {
-    loadAvatarImages()
-  }
+  void loadAvatarImages()
   characterDialog.value = true
 }
 
@@ -322,7 +366,6 @@ async function submitUpload() {
     await Promise.all([loadWork(), loadImages()])
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || '上传失败')
-    throw error
   } finally {
     uploading.value = false
   }
@@ -345,11 +388,19 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopCharacterObserver()
+  workRequestSeq += 1
+  imageRequestSeq += 1
+  avatarImageRequestSeq += 1
+  characterRequestSeq += 1
 })
 
 watch(workId, async () => {
   if (!Number.isFinite(workId.value) || workId.value <= 0) return
+  work.value = null
+  images.value = []
   characters.value = []
+  imageTotal.value = 0
+  characterTotal.value = 0
   characterPage.value = 1
   imagePage.value = 1
   await Promise.all([loadWork(), loadImages(), loadCharacters()])
@@ -402,7 +453,7 @@ watch(characterPageSize, async (nextSize, previousSize) => {
         </div>
         <div class="work-actions">
           <el-button type="primary" :icon="Edit" @click="openEditWork">编辑资料</el-button>
-          <el-button v-if="work.official_site" tag="a" :href="work.official_site" target="_blank" rel="noreferrer" type="primary" :icon="Link">
+          <el-button v-if="officialSiteUrl" tag="a" :href="officialSiteUrl" target="_blank" rel="noreferrer" type="primary" :icon="Link">
             外部资料
           </el-button>
         </div>
@@ -572,7 +623,17 @@ watch(characterPageSize, async (nextSize, previousSize) => {
             <img v-if="currentCharacterAvatar" :src="currentCharacterAvatar" alt="" class="avatar-preview" />
             <div v-else class="avatar-preview"></div>
             <div class="avatar-controls">
-              <el-select v-model="characterForm.avatar_image_id" clearable filterable placeholder="选择已上传图片" style="width: 100%">
+              <el-select
+                v-model="characterForm.avatar_image_id"
+                clearable
+                filterable
+                remote
+                remote-show-suffix
+                :remote-method="loadAvatarImages"
+                :loading="avatarImageLoading"
+                placeholder="搜索并选择已上传图片"
+                style="width: 100%"
+              >
                 <el-option
                   v-for="image in avatarImages"
                   :key="image.id"

@@ -68,6 +68,34 @@ Open `http://SERVER_IP:8111`. Plain HTTP does not encrypt admin credentials or c
 
 The installer does not open the selected port in the server firewall or cloud security group.
 
+## Reverse Proxies And Client IPs
+
+By default, the backend accepts forwarded client-IP headers only from loopback (`127.0.0.0/8` and `::1/128`), which covers a same-host Nginx or hosting-panel proxy. The proxy must overwrite incoming forwarding headers instead of passing user-supplied values through:
+
+```nginx
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header Ali-Real-Client-IP "";
+proxy_set_header Ali-Cdn-Real-Ip "";
+proxy_set_header True-Client-IP "";
+```
+
+If the proxy runs on another host or container network, add only its exact network to `.env`, then restart the service:
+
+```env
+AGMS_TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,10.20.30.0/24
+```
+
+Never use `0.0.0.0/0` or `::/0`; doing so lets arbitrary clients spoof their IP and weakens login and installation rate limits. With a CDN, configure Nginx's `real_ip` module using the provider's published egress networks and documented header, for example:
+
+```nginx
+set_real_ip_from 203.0.113.0/24; # Replace with an official CDN network; repeat as needed.
+real_ip_header True-Client-IP;   # Replace with the header documented by the CDN.
+real_ip_recursive on;
+```
+
+Nginx then accepts that header only from a listed network. Continue forwarding the resulting `$remote_addr` with the rules above. Do not rewrite the client IP merely because a request header is non-empty.
+
 ## Media Delivery And Caching
 
 No additional component is required by default; FastAPI sends image files directly. Public images allow 60 seconds of browser caching and 300 seconds of shared/CDN caching by default. Private and hidden images are never shared-cacheable. These values can be adjusted in `.env`:
@@ -84,6 +112,11 @@ When Nginx serves `frontend/dist` directly and uses `try_files` to fall back to 
 location ^~ /media/ {
     proxy_pass http://127.0.0.1:8111/media/;
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Ali-Real-Client-IP "";
+    proxy_set_header Ali-Cdn-Real-Ip "";
+    proxy_set_header True-Client-IP "";
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
@@ -98,6 +131,13 @@ location ^~ /_agms_media/ {
 
 location / {
     proxy_pass http://127.0.0.1:8111;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Ali-Real-Client-IP "";
+    proxy_set_header Ali-Cdn-Real-Ip "";
+    proxy_set_header True-Client-IP "";
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 

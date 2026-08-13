@@ -161,8 +161,8 @@ export const galleryApi = {
   revokeApiKey(id) {
     return api.delete(`/settings/api-keys/${id}`)
   },
-  systemHealth() {
-    return api.get('/system/health').then((r) => r.data)
+  systemHealth(params = {}) {
+    return api.get('/system/health', { params }).then((r) => r.data)
   },
   checkUpdates() {
     return api.get('/updates/check').then((r) => r.data)

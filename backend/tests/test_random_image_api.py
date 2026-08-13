@@ -1,7 +1,6 @@
 import sys
 import tempfile
 import unittest
-from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -17,6 +16,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import AppSetting, Character, Image, Work
 from app.services.app_setting_service import RANDOM_API_DESKTOP_ORIENTATION_KEY
+from app.utils.time import utcnow_naive
 
 
 class RandomImageApiTests(unittest.TestCase):
@@ -68,7 +68,7 @@ class RandomImageApiTests(unittest.TestCase):
         character: Character | None = None,
         preview: bool = True,
     ) -> Image:
-        now = datetime.utcnow()
+        now = utcnow_naive()
         original_path = f"original/{name}.webp"
         preview_path = f"preview/{name}.webp" if preview else None
         thumbnail_path = f"thumbnail/{name}.webp"
@@ -242,6 +242,28 @@ class RandomImageApiTests(unittest.TestCase):
         self.assertEqual(payload["image"]["id"], portrait.id)
         self.assertEqual(payload["requested_variant"], "preview")
         self.assertEqual(payload["served_variant"], "original")
+
+    def test_random_endpoint_excludes_cover_backdrop_and_avatar_artwork(self):
+        with self.SessionTesting() as db:
+            work = Work(name="Artwork Work")
+            db.add(work)
+            db.flush()
+            character = Character(name="Artwork Character", work_id=work.id)
+            db.add(character)
+            db.commit()
+            cover = self.add_image(db, "n", orientation="landscape")
+            backdrop = self.add_image(db, "o", orientation="landscape")
+            avatar = self.add_image(db, "p", orientation="landscape")
+            gallery = self.add_image(db, "q", orientation="landscape", work=work)
+            work.cover_image_id = cover.id
+            work.backdrop_image_id = backdrop.id
+            character.avatar_image_id = avatar.id
+            db.commit()
+
+        response = self.client.get("/api/images/random?orientation=landscape&response=json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["image"]["id"], gallery.id)
 
     def test_no_matching_public_image_returns_404(self):
         with self.SessionTesting() as db:

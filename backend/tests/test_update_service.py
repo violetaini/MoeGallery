@@ -168,6 +168,33 @@ class UpdateServiceTests(unittest.TestCase):
         self.assertEqual(status["mode"], "launcher")
         self.assertEqual(status["message"], "内置更新已就绪")
 
+    def test_manual_update_check_bypasses_release_cache(self):
+        with (
+            patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
+            patch("app.services.update_service.latest_release_info", return_value=self._fake_release()) as release,
+            patch(
+                "app.services.update_service.update_execution_status",
+                return_value={"available": True, "mode": "launcher"},
+            ),
+        ):
+            result = update_service.check_for_updates(None)
+
+        release.assert_called_once_with(None, force_refresh=True)
+        self.assertTrue(result["update_available"])
+
+    def test_background_update_check_can_use_release_cache(self):
+        with (
+            patch("app.services.update_service.current_app_version", return_value="v1.0.0"),
+            patch("app.services.update_service.latest_release_info", return_value=self._fake_release()) as release,
+            patch(
+                "app.services.update_service.update_execution_status",
+                return_value={"available": True, "mode": "launcher"},
+            ),
+        ):
+            update_service.check_for_updates(None, force_refresh=False)
+
+        release.assert_called_once_with(None, force_refresh=False)
+
 
 class UpdateApiTests(unittest.TestCase):
     def setUp(self):

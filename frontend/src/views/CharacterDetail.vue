@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { galleryApi } from '../api/gallery'
 import ImageMasonry from '../components/ImageMasonry.vue'
 import ResponsiveImage from '../components/ResponsiveImage.vue'
@@ -16,35 +17,54 @@ const pageLoading = ref(false)
 const imageLoading = ref(false)
 
 const characterId = computed(() => route.params.id)
+let characterRequestSeq = 0
+let imageRequestSeq = 0
 
 async function loadCharacter() {
+  const seq = ++characterRequestSeq
+  const requestedCharacterId = characterId.value
   pageLoading.value = true
   try {
-    character.value = await galleryApi.character(characterId.value)
+    const data = await galleryApi.character(requestedCharacterId)
+    if (seq !== characterRequestSeq) return
+    character.value = data
     imageTotal.value = character.value.image_count || 0
+  } catch (error) {
+    if (seq === characterRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载角色详情失败')
   } finally {
-    pageLoading.value = false
+    if (seq === characterRequestSeq) pageLoading.value = false
   }
 }
 
 async function loadImages() {
+  const seq = ++imageRequestSeq
+  const requestedCharacterId = characterId.value
+  const requestedPage = imagePage.value
   imageLoading.value = true
   try {
     const data = await galleryApi.images({
-      character_id: characterId.value,
-      page: imagePage.value,
-      page_size: IMAGE_PAGE_SIZE
+      character_id: requestedCharacterId,
+      page: requestedPage,
+      page_size: IMAGE_PAGE_SIZE,
+      exclude_cover_images: true,
+      exclude_backdrop_images: true,
+      exclude_avatar_images: true
     })
+    if (seq !== imageRequestSeq) return
     images.value = data.items
     imageTotal.value = data.total
+  } catch (error) {
+    if (seq === imageRequestSeq) ElMessage.error(error?.response?.data?.detail || '加载角色图片失败')
   } finally {
-    imageLoading.value = false
+    if (seq === imageRequestSeq) imageLoading.value = false
   }
 }
 
 async function loadPage() {
+  character.value = null
   imagePage.value = 1
   images.value = []
+  imageTotal.value = 0
   await Promise.all([loadCharacter(), loadImages()])
 }
 
@@ -55,6 +75,10 @@ function changeImagePage(nextPage) {
 
 onMounted(loadPage)
 watch(characterId, loadPage)
+onBeforeUnmount(() => {
+  characterRequestSeq += 1
+  imageRequestSeq += 1
+})
 </script>
 
 <template>

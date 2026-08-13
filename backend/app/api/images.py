@@ -4,16 +4,23 @@ from pathlib import PurePath
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import case, desc, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.helpers import parse_id_csv
+from app.api.helpers import (
+    LIKE_ESCAPE,
+    contains_like_pattern,
+    non_structural_image_conditions,
+    parse_id_csv,
+    validate_relation_ids,
+)
 from app.auth import (
     optional_admin,
     require_library_delete,
     require_library_write,
     require_uploads_manage,
 )
+from app.config import settings
 from app.database import get_db
 from app.models import Character, Image, Work
 from app.schemas.image import (
@@ -31,9 +38,12 @@ from app.services.image_service import ImageService
 from app.services.app_setting_service import get_random_api_defaults
 from app.services.media_delivery_service import build_media_url, resolve_media_variant
 from app.services.storage_service import delete_storage_file, resolve_storage_file
-from app.utils.image_process import InvalidImageError, render_webp_preview_bytes, validate_upload_filename
+from app.utils.hash import sha256_bytes
+from app.utils.image_process import InvalidImageError, inspect_image, render_webp_preview_bytes, validate_upload_filename
+from app.utils.urls import normalize_http_url
 
 router = APIRouter(prefix="/images", tags=["images"])
+RANDOM_SORT_MODULUS = 2_147_483_647
 
 
 def _filename_extension(filename: str | None) -> str:
@@ -61,85 +71,18 @@ def _image_options():
 
 
 def _character_name_filter(value: str):
-    escaped = value.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    needle = f"%{escaped}%"
+    needle = contains_like_pattern(value)
     return or_(
-        Character.name.ilike(needle, escape="\\"),
-        Character.original_name.ilike(needle, escape="\\"),
-        Character.aliases.ilike(needle, escape="\\"),
+        Character.name.ilike(needle, escape=LIKE_ESCAPE),
+        Character.original_name.ilike(needle, escape=LIKE_ESCAPE),
+        Character.aliases.ilike(needle, escape=LIKE_ESCAPE),
     )
 
 
-def _random_images_from_stmt(db: Session, stmt, page_size: int, total: int) -> list[Image]:
-    if total <= 0:
-        return []
-
-    filtered = stmt.order_by(None).subquery()
-    id_col = filtered.c.id
-    min_id, max_id = db.execute(select(func.min(id_col), func.max(id_col))).one()
-    if min_id is None or max_id is None:
-        return []
-
-    selected_ids: list[int] = []
-    seen_ids: set[int] = set()
-    batch_limit = min(max(page_size * 2, 12), 100)
-    attempts = min(max(page_size * 6, 24), 120)
-
-    def add_candidates(candidates: list[int]) -> None:
-        random.shuffle(candidates)
-        for image_id in candidates:
-            if image_id in seen_ids:
-                continue
-            seen_ids.add(image_id)
-            selected_ids.append(image_id)
-            if len(selected_ids) >= page_size:
-                break
-
-    for _ in range(attempts):
-        if len(selected_ids) >= page_size:
-            break
-        pivot = random.randint(int(min_id), int(max_id))
-        candidates = db.scalars(
-            select(id_col)
-            .where(id_col >= pivot)
-            .order_by(id_col.asc())
-            .limit(batch_limit)
-        ).all()
-        if not candidates:
-            candidates = db.scalars(
-                select(id_col)
-                .where(id_col < pivot)
-                .order_by(id_col.asc())
-                .limit(batch_limit)
-            ).all()
-        add_candidates(candidates)
-
-    if len(selected_ids) < page_size:
-        fallback = db.scalars(
-            select(id_col)
-            .order_by(id_col.asc())
-            .offset(random.randint(0, max(total - 1, 0)))
-            .limit(batch_limit)
-        ).all()
-        if len(fallback) < batch_limit:
-            fallback.extend(
-                db.scalars(
-                    select(id_col)
-                    .order_by(id_col.asc())
-                    .limit(batch_limit - len(fallback))
-                ).all()
-            )
-        add_candidates(fallback)
-
-    if not selected_ids:
-        return []
-    images = db.scalars(
-        select(Image)
-        .options(*_image_options())
-        .where(Image.id.in_(selected_ids))
-    ).unique().all()
-    image_by_id = {image.id: image for image in images}
-    return [image_by_id[image_id] for image_id in selected_ids if image_id in image_by_id]
+def _random_sort_expression(seed: int):
+    multiplier = ((seed * 1_103_515_245 + 12_345) % (RANDOM_SORT_MODULUS - 1)) + 1
+    offset = (seed * 1_013_904_223 + 1_013_904_223) % RANDOM_SORT_MODULUS
+    return (Image.id * multiplier + offset) % RANDOM_SORT_MODULUS
 
 
 def _random_image_candidates(db: Session, stmt, limit: int = 32) -> list[Image]:
@@ -201,6 +144,23 @@ def _rotate_media_version_if_access_changes(image: Image, data: dict) -> None:
         image.media_version = max(1, int(image.media_version or 1)) + 1
 
 
+def _update_public_image_counter(db: Session, image_id: int, values: dict) -> Image:
+    result = db.execute(
+        update(Image)
+        .where(Image.id == image_id, Image.is_public.is_(True), Image.rating != "hidden")
+        .values(values)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Image not found")
+    db.commit()
+    image = db.scalar(select(Image).options(*_image_options()).where(Image.id == image_id))
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return image
+
+
 @router.get(
     "/random",
     response_model=RandomImageResponse,
@@ -232,6 +192,7 @@ def random_image(
     stmt = select(Image).options(*_image_options()).where(
         Image.is_public.is_(True),
         Image.rating.in_(("safe", "sensitive")),
+        *non_structural_image_conditions(),
     )
     if work_id is not None:
         stmt = stmt.where(Image.works.any(Work.id == work_id))
@@ -299,20 +260,22 @@ def list_images(
     character: str | None = Query(None, min_length=1, max_length=255),
     rating: str | None = Query(None, pattern="^(safe|sensitive|hidden)$"),
     orientation: str | None = Query(None, pattern="^(landscape|portrait|square)$"),
-    q: str | None = None,
+    q: str | None = Query(None, max_length=255),
     sort: str = Query("latest", pattern="^(latest|random|favorites|resolution)$"),
+    random_seed: int | None = Query(None, ge=1, le=RANDOM_SORT_MODULUS - 1),
     public_only: bool = True,
     exclude_work_related: bool = False,
     exclude_character_related: bool = False,
     require_work_related: bool = False,
     require_character_related: bool = False,
     exclude_cover_images: bool = False,
+    exclude_backdrop_images: bool = False,
     exclude_avatar_images: bool = False,
 ):
     if not public_only and not admin:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-    stmt = select(Image).options(*_image_options()).distinct()
+    stmt = select(Image).options(*_image_options())
     if public_only:
         stmt = stmt.where(Image.is_public.is_(True), Image.rating != "hidden")
     if exclude_work_related:
@@ -323,10 +286,14 @@ def list_images(
         stmt = stmt.where(Image.works.any())
     if require_character_related:
         stmt = stmt.where(Image.characters.any())
-    if exclude_cover_images:
-        stmt = stmt.where(~select(Work.id).where(Work.cover_image_id == Image.id).exists())
-    if exclude_avatar_images:
-        stmt = stmt.where(~select(Character.id).where(Character.avatar_image_id == Image.id).exists())
+    if exclude_cover_images or exclude_backdrop_images or exclude_avatar_images:
+        cover_condition, backdrop_condition, avatar_condition = non_structural_image_conditions()
+        if exclude_cover_images:
+            stmt = stmt.where(cover_condition)
+        if exclude_backdrop_images:
+            stmt = stmt.where(backdrop_condition)
+        if exclude_avatar_images:
+            stmt = stmt.where(avatar_condition)
     if work_id:
         stmt = stmt.join(Image.works).where(Work.id == work_id)
     if character_id:
@@ -337,14 +304,14 @@ def list_images(
         stmt = stmt.where(Image.rating == rating)
     if orientation:
         stmt = stmt.where(Image.orientation == orientation)
-    if q:
-        needle = f"%{q.strip()}%"
+    if q and q.strip():
+        needle = contains_like_pattern(q)
         stmt = stmt.where(
             or_(
-                Image.filename.ilike(needle),
-                Image.original_filename.ilike(needle),
-                Image.artist_name.ilike(needle),
-                Image.source_url.ilike(needle),
+                Image.filename.ilike(needle, escape=LIKE_ESCAPE),
+                Image.original_filename.ilike(needle, escape=LIKE_ESCAPE),
+                Image.artist_name.ilike(needle, escape=LIKE_ESCAPE),
+                Image.source_url.ilike(needle, escape=LIKE_ESCAPE),
             )
         )
 
@@ -352,17 +319,23 @@ def list_images(
     total = db.scalar(count_stmt) or 0
 
     if sort == "random":
-        items = _random_images_from_stmt(db, stmt, page_size, total)
-        return {"items": items, "total": total, "page": page, "page_size": page_size}
+        random_seed = random_seed or random.randint(1, RANDOM_SORT_MODULUS - 1)
+        stmt = stmt.order_by(_random_sort_expression(random_seed).asc(), Image.id.asc())
     elif sort == "favorites":
-        stmt = stmt.order_by(desc(Image.favorite_count), desc(Image.created_at))
+        stmt = stmt.order_by(desc(Image.favorite_count), desc(Image.created_at), desc(Image.id))
     elif sort == "resolution":
-        stmt = stmt.order_by(desc(Image.width * Image.height), desc(Image.created_at))
+        stmt = stmt.order_by(desc(Image.width * Image.height), desc(Image.created_at), desc(Image.id))
     else:
-        stmt = stmt.order_by(desc(Image.created_at))
+        stmt = stmt.order_by(desc(Image.created_at), desc(Image.id))
 
     items = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).unique().all()
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "random_seed": random_seed if sort == "random" else None,
+    }
 
 
 @router.post("/upload", response_model=ImageUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -381,16 +354,40 @@ async def upload_images(
     if rating not in {"safe", "sensitive", "hidden"}:
         raise HTTPException(status_code=422, detail="rating must be safe, sensitive, or hidden")
 
-    service = ImageService(db)
-    results: list[ImageUploadResult] = []
     try:
+        source_url = normalize_http_url(source_url)
         parsed_work_ids = parse_id_csv(work_ids)
         parsed_character_ids = parse_id_csv(character_ids)
+        validate_relation_ids(db, parsed_work_ids, parsed_character_ids)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Relation ids must be comma separated integers") from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    prepared: list[dict] = []
     for upload in files:
         try:
+            validate_upload_filename(upload.filename)
+            data = await upload.read()
+            if not data:
+                raise InvalidImageError("Empty upload")
+            if len(data) > settings.max_upload_size:
+                raise InvalidImageError("File is larger than configured upload limit")
+            prepared.append(
+                {
+                    "upload": upload,
+                    "sha256": sha256_bytes(data),
+                    "inspection": inspect_image(data),
+                }
+            )
+            await upload.seek(0)
+        except (ValueError, InvalidImageError) as exc:
+            raise HTTPException(status_code=400, detail=f"{upload.filename}: {exc}") from exc
+
+    service = ImageService(db)
+    created_paths: list[str | None] = []
+    uploaded: list[tuple[Image, bool]] = []
+    try:
+        for item in prepared:
+            upload = item["upload"]
             data = await upload.read()
             image, duplicate = service.create_from_bytes(
                 data=data,
@@ -403,11 +400,26 @@ async def upload_images(
                 work_ids=parsed_work_ids,
                 character_ids=parsed_character_ids,
                 merge_duplicate_relations=merge_duplicate_relations,
+                precomputed_sha256=item["sha256"],
+                precomputed_inspection=item["inspection"],
+                commit=False,
             )
-        except (ValueError, InvalidImageError) as exc:
-            raise HTTPException(status_code=400, detail=f"{upload.filename}: {exc}") from exc
-        results.append(ImageUploadResult(image=image, duplicate=duplicate))
+            uploaded.append((image, duplicate))
+            if not duplicate:
+                created_paths.extend((image.file_path, image.preview_path, image.thumbnail_path))
+        db.commit()
+    except (ValueError, InvalidImageError) as exc:
+        db.rollback()
+        for path in created_paths:
+            delete_storage_file(path)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        for path in created_paths:
+            delete_storage_file(path)
+        raise HTTPException(status_code=500, detail="批量上传失败，本批图片未提交") from exc
 
+    results = [ImageUploadResult(image=image, duplicate=duplicate) for image, duplicate in uploaded]
     return {"items": results}
 
 
@@ -499,13 +511,11 @@ def track_image_view(
     image_id: int,
     db: Annotated[Session, Depends(get_db)],
 ):
-    image = db.scalar(select(Image).options(*_image_options()).where(Image.id == image_id))
-    if not image or not image.is_public or image.rating == "hidden":
-        raise HTTPException(status_code=404, detail="Image not found")
-    image.view_count += 1
-    db.commit()
-    db.refresh(image)
-    return image
+    return _update_public_image_counter(
+        db,
+        image_id,
+        {Image.view_count: Image.view_count + 1},
+    )
 
 
 @router.post("/{image_id}/favorite", response_model=ImageRead)
@@ -513,13 +523,11 @@ def favorite_image(
     image_id: int,
     db: Annotated[Session, Depends(get_db)],
 ):
-    image = db.scalar(select(Image).options(*_image_options()).where(Image.id == image_id))
-    if not image or not image.is_public or image.rating == "hidden":
-        raise HTTPException(status_code=404, detail="Image not found")
-    image.favorite_count += 1
-    db.commit()
-    db.refresh(image)
-    return image
+    return _update_public_image_counter(
+        db,
+        image_id,
+        {Image.favorite_count: Image.favorite_count + 1},
+    )
 
 
 @router.delete("/{image_id}/favorite", response_model=ImageRead)
@@ -527,13 +535,16 @@ def unfavorite_image(
     image_id: int,
     db: Annotated[Session, Depends(get_db)],
 ):
-    image = db.scalar(select(Image).options(*_image_options()).where(Image.id == image_id))
-    if not image or not image.is_public or image.rating == "hidden":
-        raise HTTPException(status_code=404, detail="Image not found")
-    image.favorite_count = max(0, image.favorite_count - 1)
-    db.commit()
-    db.refresh(image)
-    return image
+    return _update_public_image_counter(
+        db,
+        image_id,
+        {
+            Image.favorite_count: case(
+                (Image.favorite_count > 0, Image.favorite_count - 1),
+                else_=0,
+            )
+        },
+    )
 
 
 @router.put("/{image_id}", response_model=ImageRead)

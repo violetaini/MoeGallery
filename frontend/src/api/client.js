@@ -3,6 +3,11 @@ import axios from 'axios'
 const USER_KEY = 'agms-admin-user'
 const AVATAR_KEY = 'agms-admin-avatar'
 const SESSION_KEY = 'agms-admin-session'
+export const AUTH_SESSION_CHANGED_EVENT = 'agms-auth-session-changed'
+
+function notifyAuthSessionChanged() {
+  window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
+}
 
 export function hasAuthSession() {
   return localStorage.getItem(SESSION_KEY) === '1'
@@ -31,12 +36,14 @@ export function setAuthSession({ access_token, username, expires_in, avatar_imag
     if (avatarUrl) localStorage.setItem(AVATAR_KEY, avatarUrl)
     else localStorage.removeItem(AVATAR_KEY)
   }
+  notifyAuthSessionChanged()
 }
 
 export function clearAuthSession() {
   localStorage.removeItem(SESSION_KEY)
   localStorage.removeItem(USER_KEY)
   localStorage.removeItem(AVATAR_KEY)
+  notifyAuthSessionChanged()
 }
 
 export const api = axios.create({

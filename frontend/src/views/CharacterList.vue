@@ -10,6 +10,11 @@ const works = ref([])
 const total = ref(0)
 const q = ref('')
 const workId = ref()
+const page = ref(1)
+const pageSize = 48
+const workLoading = ref(false)
+let workSearchSeq = 0
+let listRequestSeq = 0
 const publicSettings = ref(null)
 const fallbackHeroBackdrop = '/hero/characters-bg.png'
 const heroBackdrop = computed(() => {
@@ -17,16 +22,45 @@ const heroBackdrop = computed(() => {
   return mediaUrl(image, 'preview') || fallbackHeroBackdrop
 })
 
-async function load() {
-  const data = await galleryApi.characters({ q: q.value, work_id: workId.value, page_size: 100 })
+async function load(resetPage = false) {
+  const seq = ++listRequestSeq
+  if (resetPage) page.value = 1
+  const data = await galleryApi.characters({
+    q: q.value,
+    work_id: workId.value,
+    page: page.value,
+    page_size: pageSize
+  })
+  if (seq !== listRequestSeq) return
   characters.value = data.items
   total.value = data.total
+}
+
+async function loadWorks(query = '') {
+  const seq = ++workSearchSeq
+  workLoading.value = true
+  try {
+    const selected = works.value.find((work) => work.id === workId.value)
+    const value = query.trim()
+    const data = await galleryApi.works({ page_size: 100, ...(value ? { q: value } : {}) })
+    if (seq !== workSearchSeq) return
+    works.value = selected && !data.items.some((work) => work.id === selected.id)
+      ? [selected, ...data.items]
+      : data.items
+  } finally {
+    if (seq === workSearchSeq) workLoading.value = false
+  }
+}
+
+function changePage(value) {
+  page.value = value
+  load()
 }
 
 onMounted(async () => {
   await Promise.all([
     galleryApi.publicSettings().then((data) => { publicSettings.value = data }).catch(() => { publicSettings.value = null }),
-    galleryApi.works({ page_size: 100 }).then((data) => { works.value = data.items })
+    loadWorks()
   ])
   await load()
 })
@@ -42,13 +76,40 @@ onMounted(async () => {
     <div class="listing-hero__meta">{{ total }} 位角色</div>
   </section>
   <div class="toolbar character-toolbar">
-    <el-input v-model="q" clearable placeholder="搜索角色" :prefix-icon="Search" @keyup.enter="load" />
-    <el-select v-model="workId" clearable filterable placeholder="作品" @change="load">
+    <el-input
+      v-model="q"
+      clearable
+      placeholder="搜索角色"
+      :prefix-icon="Search"
+      @clear="load(true)"
+      @keyup.enter="load(true)"
+    />
+    <el-select
+      v-model="workId"
+      clearable
+      filterable
+      remote
+      reserve-keyword
+      placeholder="作品"
+      :loading="workLoading"
+      :remote-method="loadWorks"
+      @change="load(true)"
+      @visible-change="(visible) => visible && loadWorks()"
+    >
       <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
     </el-select>
-    <el-button @click="load">搜索</el-button>
+    <el-button @click="load(true)">搜索</el-button>
   </div>
   <div class="grid-cards">
     <CharacterCard v-for="character in characters" :key="character.id" :character="character" />
+  </div>
+  <div v-if="total > pageSize" class="pagination-bar">
+    <el-pagination
+      :current-page="page"
+      :page-size="pageSize"
+      :total="total"
+      layout="prev, pager, next, total"
+      @current-change="changePage"
+    />
   </div>
 </template>

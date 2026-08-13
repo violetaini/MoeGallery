@@ -14,8 +14,12 @@ class Work(Base, TimestampMixin):
     original_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aliases: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    cover_image_id: Mapped[int | None] = mapped_column(ForeignKey("images.id", ondelete="SET NULL"), nullable=True)
-    backdrop_image_id: Mapped[int | None] = mapped_column(ForeignKey("images.id", ondelete="SET NULL"), nullable=True)
+    cover_image_id: Mapped[int | None] = mapped_column(
+        ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    backdrop_image_id: Mapped[int | None] = mapped_column(
+        ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     tagline: Mapped[str | None] = mapped_column(String(500), nullable=True)
     production_year: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     run_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -400,7 +400,7 @@ async function saveApiKey() {
 }
 
 async function revokeOperationsApiKey(item) {
-  await ElMessageBox.confirm(
+  const confirmed = await ElMessageBox.confirm(
     `撤销后“${item.name}”会立即失效，使用它的任务将无法继续调用 API。`,
     '撤销 API Key',
     {
@@ -409,7 +409,8 @@ async function revokeOperationsApiKey(item) {
       cancelButtonText: '取消',
       closeOnClickModal: false
     }
-  )
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
   try {
     await galleryApi.revokeApiKey(item.id)
     operationsApiKeys.value = operationsApiKeys.value.filter((key) => key.id !== item.id)
@@ -421,7 +422,7 @@ async function revokeOperationsApiKey(item) {
 }
 
 async function rotateOperationsApiKey(item) {
-  await ElMessageBox.confirm(
+  const confirmed = await ElMessageBox.confirm(
     `刷新后“${item.name}”的旧 Key 会立即失效，名称、权限和有效期保持不变。确认继续？`,
     '刷新 API Key',
     {
@@ -430,7 +431,8 @@ async function rotateOperationsApiKey(item) {
       cancelButtonText: '取消',
       closeOnClickModal: false
     }
-  )
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
   rotatingApiKeyId.value = item.id
   try {
     const refreshed = await galleryApi.rotateApiKey(item.id)
@@ -788,11 +790,11 @@ async function resetHeroBackground(item) {
   }
 }
 
-async function loadSystemHealth() {
+async function loadSystemHealth(forceRefresh = false) {
   healthLoading.value = true
   healthError.value = ''
   try {
-    health.value = await galleryApi.systemHealth()
+    health.value = await galleryApi.systemHealth(forceRefresh ? { refresh: true } : {})
   } catch (error) {
     healthError.value = error?.response?.data?.detail || error?.message || '加载系统健康检查失败'
     ElMessage.error(healthError.value)
@@ -802,7 +804,7 @@ async function loadSystemHealth() {
 }
 
 async function rotateLoginSecret() {
-  await ElMessageBox.confirm(
+  const confirmed = await ElMessageBox.confirm(
     '轮换后所有后台会话都会立即失效，需要重新登录。确认继续？',
     '轮换登录密钥',
     {
@@ -811,7 +813,8 @@ async function rotateLoginSecret() {
       cancelButtonText: '取消',
       closeOnClickModal: false
     }
-  )
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
   rotatingSecret.value = true
   try {
     const result = await galleryApi.rotateAuthSecret()
@@ -855,7 +858,7 @@ async function copyApiKey(key) {
 }
 
 async function resetOperationsApiKeys() {
-  await ElMessageBox.confirm(
+  const confirmed = await ElMessageBox.confirm(
     '重置后旧 API Key 会立即失效，依赖旧 Key 的脚本、监控和自动化任务都需要同步更新。确认继续？',
     '重置 API Key',
     {
@@ -864,7 +867,8 @@ async function resetOperationsApiKeys() {
       cancelButtonText: '取消',
       closeOnClickModal: false
     }
-  )
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
   resettingApiKeys.value = true
   try {
     const data = await galleryApi.resetApiKeys()
@@ -1388,7 +1392,7 @@ onMounted(async () => {
         <span class="muted">检查数据库、存储目录和图像处理依赖。</span>
       </div>
       <div class="system-health-actions">
-        <el-button :icon="Refresh" :loading="healthLoading" @click="loadSystemHealth">刷新</el-button>
+        <el-button :icon="Refresh" :loading="healthLoading" @click="loadSystemHealth(true)">刷新</el-button>
         <el-button plain :loading="rotatingSecret" @click="rotateLoginSecret">轮换登录密钥</el-button>
       </div>
     </div>
@@ -1397,7 +1401,7 @@ onMounted(async () => {
         <strong>系统健康信息加载失败</strong>
         <span>{{ healthError }}</span>
       </div>
-      <el-button :icon="Refresh" size="small" @click="loadSystemHealth">重试</el-button>
+      <el-button :icon="Refresh" size="small" @click="loadSystemHealth(true)">重试</el-button>
     </div>
     <div v-else-if="healthLoading && !health" class="system-health-state">
       <div>
@@ -1410,7 +1414,7 @@ onMounted(async () => {
         <strong>暂无系统健康信息</strong>
         <span>点击刷新重新获取后台环境状态。</span>
       </div>
-      <el-button :icon="Refresh" size="small" @click="loadSystemHealth">刷新</el-button>
+      <el-button :icon="Refresh" size="small" @click="loadSystemHealth(true)">刷新</el-button>
     </div>
     <div v-if="health" v-loading="healthLoading" class="system-health-grid">
       <div

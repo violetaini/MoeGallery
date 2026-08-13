@@ -7,6 +7,7 @@ import ResponsiveImage from './ResponsiveImage.vue'
 import { orientationLabel } from '../constants/orientations'
 import { ratingLabel, ratingTagType } from '../constants/ratings'
 import { isImageFavorited, setImageFavorited } from '../utils/favorites'
+import { safeExternalUrl } from '../utils/urls'
 
 const props = defineProps({
   image: { type: Object, default: null },
@@ -27,6 +28,7 @@ const bitDepthLabel = computed(() => {
   return value > 0 ? `${value}-bit` : '-'
 })
 const colorProfileLabel = computed(() => props.image?.color_profile || '-')
+const sourceUrl = computed(() => safeExternalUrl(props.image?.source_url))
 
 watch(() => props.image?.id, (id) => {
   favorited.value = id ? isImageFavorited(id) : false
@@ -127,7 +129,15 @@ async function toggleFavorite() {
         <el-tag :type="ratingTagType(image.rating)">{{ ratingLabel(image.rating) }}</el-tag>
       </div>
 
-      <el-button v-if="image.source_url" style="margin-top: 18px" :icon="Link" tag="a" :href="image.source_url" target="_blank">
+      <el-button
+        v-if="sourceUrl"
+        style="margin-top: 18px"
+        :icon="Link"
+        tag="a"
+        :href="sourceUrl"
+        target="_blank"
+        rel="noreferrer"
+      >
         来源链接
       </el-button>
     </aside>

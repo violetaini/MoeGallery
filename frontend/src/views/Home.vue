@@ -250,13 +250,19 @@ async function loadSlides() {
       page: 1,
       page_size: 12,
       orientation: 'landscape',
-      sort: 'random'
+      sort: 'random',
+      exclude_cover_images: true,
+      exclude_backdrop_images: true,
+      exclude_avatar_images: true
     })
     if (!data.items?.length) {
       data = await galleryApi.images({
         page: 1,
         page_size: 12,
-        sort: 'random'
+        sort: 'random',
+        exclude_cover_images: true,
+        exclude_backdrop_images: true,
+        exclude_avatar_images: true
       })
     }
     setSlides(data.items || [])

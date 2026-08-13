@@ -1,4 +1,5 @@
 import hashlib
+import ipaddress
 import os
 import secrets
 from functools import lru_cache
@@ -131,6 +132,7 @@ class Settings(BaseSettings):
     auth_issuer: str = "agms-admin"
     auth_audience: str = "agms-backend"
     cookie_secure: bool = False
+    trusted_proxy_cidrs: str = "127.0.0.0/8,::1/128"
     login_rate_limit_window_seconds: int = 300
     login_rate_limit_max_attempts: int = 8
     install_token_ttl_seconds: int = 2 * 60 * 60
@@ -184,6 +186,14 @@ class Settings(BaseSettings):
         accel_prefix = self.media_accel_redirect_prefix.strip()
         if accel_prefix and (not accel_prefix.startswith("/") or ".." in accel_prefix.split("/")):
             raise ValueError("AGMS_MEDIA_ACCEL_REDIRECT_PREFIX must be an absolute internal URI prefix")
+        for raw_cidr in self.trusted_proxy_cidrs.replace(";", ",").split(","):
+            cidr = raw_cidr.strip()
+            if not cidr:
+                continue
+            try:
+                ipaddress.ip_network(cidr, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"AGMS_TRUSTED_PROXY_CIDRS contains an invalid network: {cidr}") from exc
         return self
 
 

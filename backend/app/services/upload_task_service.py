@@ -25,6 +25,7 @@ from app.services.image_service import ImageService
 from app.services.storage_service import delete_storage_file, resolve_storage_file
 from app.utils.hash import sha256_bytes
 from app.utils.image_process import ImageInspection, InvalidImageError
+from app.utils.time import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class UploadTaskDraft:
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return utcnow_naive()
 
 
 def csv_to_ids(value: str | None) -> list[int]:

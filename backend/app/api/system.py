@@ -1,11 +1,13 @@
 import shutil
 import subprocess
+import time
 from pathlib import Path
+from threading import Lock
 from typing import Annotated
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
@@ -22,41 +24,46 @@ from app.services.app_setting_service import (
     get_upload_worker_profile,
 )
 from app.services.release_service import current_app_version, latest_release_info, parse_semver
+from app.services.storage_stats_service import media_storage_stats
 from app.services.upload_task_service import upload_queue_stats
 from app.utils import image_process
 
 router = APIRouter(prefix="/system", tags=["system"])
+FFMPEG_INFO_CACHE_SECONDS = 30 * 60
+_ffmpeg_cache_lock = Lock()
+_ffmpeg_cache: dict[str, object] = {}
 
 
-def _dir_stats(path: Path) -> dict:
-    count = 0
-    size = 0
-    exists = path.exists()
-    if exists:
-        for item in path.rglob("*"):
-            if item.is_file():
-                count += 1
-                size += item.stat().st_size
-    return {"path": str(path), "exists": exists, "file_count": count, "size_bytes": size}
-
-
-def _ffmpeg_info() -> dict:
+def _ffmpeg_info(*, force_refresh: bool = False) -> dict:
+    now = time.monotonic()
+    with _ffmpeg_cache_lock:
+        cached_data = _ffmpeg_cache.get("data")
+        if (
+            cached_data
+            and not force_refresh
+            and now - float(_ffmpeg_cache.get("checked_at") or 0) < FFMPEG_INFO_CACHE_SECONDS
+        ):
+            return dict(cached_data)
     executable = shutil.which("ffmpeg")
     if not executable:
-        return {"available": False, "path": "", "version": "", "avif_encoder": False, "message": "ffmpeg not found"}
-    try:
-        version = subprocess.run([executable, "-version"], capture_output=True, text=True, timeout=5)
-        encoders = subprocess.run([executable, "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=8)
-        output = f"{encoders.stdout}\n{encoders.stderr}".lower()
-        return {
-            "available": True,
-            "path": executable,
-            "version": (version.stdout.splitlines() or [""])[0],
-            "avif_encoder": "libaom-av1" in output or "av1" in output,
-            "message": "ok",
-        }
-    except Exception as exc:
-        return {"available": False, "path": executable, "version": "", "avif_encoder": False, "message": str(exc)}
+        data = {"available": False, "path": "", "version": "", "avif_encoder": False, "message": "ffmpeg not found"}
+    else:
+        try:
+            version = subprocess.run([executable, "-version"], capture_output=True, text=True, timeout=5)
+            encoders = subprocess.run([executable, "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=8)
+            output = f"{encoders.stdout}\n{encoders.stderr}".lower()
+            data = {
+                "available": True,
+                "path": executable,
+                "version": (version.stdout.splitlines() or [""])[0],
+                "avif_encoder": "libaom-av1" in output or "av1" in output,
+                "message": "ok",
+            }
+        except Exception as exc:
+            data = {"available": False, "path": executable, "version": "", "avif_encoder": False, "message": str(exc)}
+    with _ffmpeg_cache_lock:
+        _ffmpeg_cache.update({"checked_at": now, "data": data})
+    return dict(data)
 
 
 def _database_info(db: Session) -> dict:
@@ -134,17 +141,19 @@ def _application_info(db: Session) -> dict:
 def system_health(
     admin: Annotated[dict, Depends(require_system_read)],
     db: Annotated[Session, Depends(get_db)],
+    refresh: bool = Query(False),
 ):
     database_info = _database_info(db)
     application_info = _application_info(db)
-    ffmpeg = _ffmpeg_info()
+    ffmpeg = _ffmpeg_info(force_refresh=refresh)
     imagecodecs_available = image_process.imagecodecs is not None
     jpegxr_available = bool(
         imagecodecs_available and getattr(image_process.imagecodecs, "jpegxr_check", None)
     )
-    original_stats = _dir_stats(settings.storage_path / "original")
-    preview_stats = _dir_stats(settings.storage_path / "preview")
-    thumbnail_stats = _dir_stats(settings.storage_path / "thumbnail")
+    storage_stats = media_storage_stats(settings.storage_path, force_refresh=refresh)
+    original_stats = storage_stats["original"]
+    preview_stats = storage_stats["preview"]
+    thumbnail_stats = storage_stats["thumbnail"]
     image_count = db.scalar(select(func.count(Image.id))) or 0
     hdr_image_count = db.scalar(
         select(func.count(Image.id)).where(Image.dynamic_range == image_process.DYNAMIC_RANGE_HDR)

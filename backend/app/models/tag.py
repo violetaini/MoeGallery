@@ -10,9 +10,8 @@ class Tag(Base, TimestampMixin):
     __tablename__ = "tags"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     type: Mapped[str] = mapped_column(String(40), default="general", nullable=False, index=True)
     aliases: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     images = relationship("Image", secondary=image_tags, back_populates="tags", lazy="selectin")
-

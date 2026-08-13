@@ -19,6 +19,7 @@ const preloading = ref(false)
 const loadMoreSentinel = ref(null)
 const page = ref(1)
 const pageSize = 48
+const randomSeed = ref()
 const preloadedPage = ref(null)
 const preloadedItems = ref([])
 const preloadedTotal = ref(0)
@@ -113,10 +114,22 @@ function activeImageParams(targetPage) {
   return {
     page: targetPage,
     page_size: pageSize,
-    require_work_related: true,
-    require_character_related: true,
+    random_seed: filters.sort === 'random' ? randomSeed.value : undefined,
+    exclude_cover_images: true,
+    exclude_backdrop_images: true,
+    exclude_avatar_images: true,
     ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined))
   }
+}
+
+function nextRandomSeed() {
+  const maxSeed = 2_147_483_646
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const value = new Uint32Array(1)
+    crypto.getRandomValues(value)
+    return (value[0] % maxSeed) + 1
+  }
+  return Math.floor(Math.random() * maxSeed) + 1
 }
 
 function preloadSingleAsset(source) {
@@ -255,12 +268,13 @@ function schedulePreloadNextPage(delay = 0) {
 }
 
 async function loadImages(reset = false) {
-  if (loading.value) return
+  if (loading.value && !reset) return
   const seq = ++loadSeq
   let shouldPreload = false
   loading.value = true
   if (reset) {
     page.value = 1
+    randomSeed.value = filters.sort === 'random' ? nextRandomSeed() : undefined
     images.value = []
     total.value = 0
     clearPreload()
@@ -268,6 +282,7 @@ async function loadImages(reset = false) {
   try {
     const data = await galleryApi.images(activeImageParams(page.value))
     if (seq !== loadSeq) return
+    if (filters.sort === 'random' && data.random_seed) randomSeed.value = data.random_seed
     images.value = reset ? data.items : [...images.value, ...data.items]
     total.value = data.total
     await nextTick()

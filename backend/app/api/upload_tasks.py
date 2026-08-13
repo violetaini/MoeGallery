@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.helpers import parse_id_csv
+from app.api.helpers import parse_id_csv, validate_relation_ids
 from app.auth import require_uploads_manage
 from app.config import settings
 from app.database import get_db
@@ -38,6 +38,7 @@ from app.services.upload_task_service import (
 )
 from app.utils.hash import sha256_bytes
 from app.utils.image_process import InvalidImageError, inspect_image, validate_upload_filename
+from app.utils.urls import normalize_http_url
 
 router = APIRouter(prefix="/upload-tasks", tags=["upload-tasks"])
 logger = logging.getLogger(__name__)
@@ -112,19 +113,6 @@ def _duplicate_check_items(
     return result
 
 
-def _validate_relation_ids(db: Session, work_ids: list[int], character_ids: list[int]) -> None:
-    if work_ids:
-        found_work_ids = set(db.scalars(select(Work.id).where(Work.id.in_(work_ids))).all())
-        missing_work_ids = [work_id for work_id in work_ids if work_id not in found_work_ids]
-        if missing_work_ids:
-            raise HTTPException(status_code=422, detail=f"Works not found: {missing_work_ids}")
-    if character_ids:
-        found_character_ids = set(db.scalars(select(Character.id).where(Character.id.in_(character_ids))).all())
-        missing_character_ids = [character_id for character_id in character_ids if character_id not in found_character_ids]
-        if missing_character_ids:
-            raise HTTPException(status_code=422, detail=f"Characters not found: {missing_character_ids}")
-
-
 def _cleanup_staged_files(paths: list[str]) -> None:
     for path in paths:
         try:
@@ -151,11 +139,15 @@ async def create_upload_tasks(
     if rating not in {"safe", "sensitive", "hidden"}:
         raise HTTPException(status_code=422, detail="rating must be safe, sensitive, or hidden")
     try:
+        source_url = normalize_http_url(source_url)
         parsed_work_ids = parse_id_csv(work_ids)
         parsed_character_ids = parse_id_csv(character_ids)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Relation ids must be comma separated integers") from exc
-    _validate_relation_ids(db, parsed_work_ids, parsed_character_ids)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        validate_relation_ids(db, parsed_work_ids, parsed_character_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     staged_paths: list[str] = []
     prepared: list[dict] = []

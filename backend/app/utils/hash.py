@@ -24,7 +24,8 @@ def average_hash_bytes(data: bytes, hash_size: int = 8) -> str:
 
     resampling = getattr(PillowImage, "Resampling", PillowImage).LANCZOS
     normalized = normalized.resize((hash_size, hash_size), resampling)
-    pixels = list(normalized.getdata())
+    pixel_data = normalized.get_flattened_data() if hasattr(normalized, "get_flattened_data") else normalized.getdata()
+    pixels = list(pixel_data)
     average = sum(pixels) / len(pixels)
     value = 0
     for pixel in pixels:

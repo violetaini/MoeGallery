@@ -80,13 +80,16 @@ class LoginRateLimitTests(unittest.TestCase):
     def setUp(self):
         self.original_max_attempts = settings.login_rate_limit_max_attempts
         self.original_window_seconds = settings.login_rate_limit_window_seconds
+        self.original_trusted_proxy_cidrs = settings.trusted_proxy_cidrs
         settings.login_rate_limit_max_attempts = 2
         settings.login_rate_limit_window_seconds = 300
+        settings.trusted_proxy_cidrs = "127.0.0.0/8,::1/128"
         auth_api._login_attempts.clear()
 
     def tearDown(self):
         settings.login_rate_limit_max_attempts = self.original_max_attempts
         settings.login_rate_limit_window_seconds = self.original_window_seconds
+        settings.trusted_proxy_cidrs = self.original_trusted_proxy_cidrs
         auth_api._login_attempts.clear()
 
     def test_trusted_proxy_uses_rightmost_forwarded_ip(self):
@@ -116,6 +119,32 @@ class LoginRateLimitTests(unittest.TestCase):
         )
 
         self.assertEqual(auth_api._client_ip(request), "9.9.9.9")
+
+    def test_private_peer_is_not_implicitly_trusted(self):
+        request = _FakeRequest(
+            headers={"x-forwarded-for": "1.1.1.1"},
+            client_host="10.20.30.40",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "10.20.30.40")
+
+    def test_configured_private_proxy_is_trusted(self):
+        settings.trusted_proxy_cidrs = "127.0.0.0/8,::1/128,10.20.30.0/24"
+        request = _FakeRequest(
+            headers={"x-forwarded-for": "1.1.1.1"},
+            client_host="10.20.30.40",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "1.1.1.1")
+
+    def test_forwarded_chain_skips_configured_proxy_hops(self):
+        settings.trusted_proxy_cidrs = "127.0.0.0/8,::1/128,203.0.113.0/24"
+        request = _FakeRequest(
+            headers={"x-forwarded-for": "7.7.7.7, 1.1.1.1, 203.0.113.5"},
+            client_host="127.0.0.1",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "1.1.1.1")
 
     def test_rate_limit_applies_to_username_across_ips(self):
         for ip in ("1.1.1.1", "8.8.8.8"):

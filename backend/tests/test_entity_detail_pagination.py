@@ -111,16 +111,16 @@ class EntityDetailPaginationTests(unittest.TestCase):
         self.assertIsNone(character["avatar_image"])
         self.assertNotIn("images", character)
 
-    def test_admin_details_count_private_and_hidden_images(self):
+    def test_admin_details_count_private_images_but_exclude_structural_artwork(self):
         app.dependency_overrides[optional_admin] = lambda: {"method": "test-admin"}
 
         work = self.client.get(f"/api/works/{self.work_id}").json()
         character = self.client.get(f"/api/characters/{self.character_id}").json()
 
-        self.assertEqual(work["image_count"], 3)
+        self.assertEqual(work["image_count"], 2)
         self.assertEqual(work["character_count"], 3)
         self.assertIsNotNone(work["cover_image"])
-        self.assertEqual(character["image_count"], 3)
+        self.assertEqual(character["image_count"], 2)
         self.assertIsNotNone(character["avatar_image"])
 
     def test_existing_list_endpoints_page_relationships(self):

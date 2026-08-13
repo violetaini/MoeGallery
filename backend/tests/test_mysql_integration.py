@@ -3,7 +3,6 @@ import sys
 import threading
 import time
 import unittest
-from datetime import datetime
 from pathlib import Path
 
 from alembic.config import Config
@@ -19,6 +18,7 @@ if str(BACKEND_DIR) not in sys.path:
 from app.database import create_database_engine
 from app.models import UploadTask
 from app.services.upload_task_service import TASK_STATUS_PROCESSING, TASK_STATUS_QUEUED, claim_next_task
+from app.utils.time import utcnow_naive
 
 
 MYSQL_DATABASE_URL = os.environ.get("AGMS_DATABASE_URL", "")
@@ -46,7 +46,7 @@ class MysqlIntegrationTests(unittest.TestCase):
         with self.engine.begin() as connection:
             connection.execute(text("DELETE FROM upload_tasks"))
 
-    def test_migrations_reach_head_and_create_claim_index(self):
+    def test_migrations_reach_head_and_create_required_indexes(self):
         config = Config(str(ROOT_DIR / "backend" / "alembic.ini"))
         config.set_main_option("script_location", str(ROOT_DIR / "backend" / "alembic"))
         expected_head = ScriptDirectory.from_config(config).get_current_head()
@@ -54,8 +54,24 @@ class MysqlIntegrationTests(unittest.TestCase):
             current_head = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
 
         indexes = {item["name"] for item in inspect(self.engine).get_indexes("upload_tasks")}
+        work_index_columns = {
+            tuple(item["column_names"]) for item in inspect(self.engine).get_indexes("works")
+        }
+        character_index_columns = {
+            tuple(item["column_names"]) for item in inspect(self.engine).get_indexes("characters")
+        }
+        backdrop_foreign_keys = [
+            item
+            for item in inspect(self.engine).get_foreign_keys("works")
+            if item["constrained_columns"] == ["backdrop_image_id"]
+        ]
         self.assertEqual(current_head, expected_head)
         self.assertIn("ix_upload_tasks_claim_ready", indexes)
+        self.assertIn(("cover_image_id",), work_index_columns)
+        self.assertIn(("backdrop_image_id",), work_index_columns)
+        self.assertIn(("avatar_image_id",), character_index_columns)
+        self.assertEqual(len(backdrop_foreign_keys), 1)
+        self.assertEqual(backdrop_foreign_keys[0]["referred_table"], "images")
         self.assertTrue(self.server_version)
 
     def test_parallel_mysql_claims_are_unique(self):
@@ -90,7 +106,7 @@ class MysqlIntegrationTests(unittest.TestCase):
                     barrier.wait(timeout=10)
                     deadline = time.monotonic() + 3
                     while time.monotonic() < deadline:
-                        task = claim_next_task(db, worker_id=f"mysql-ci-{slot}", now=datetime.utcnow())
+                        task = claim_next_task(db, worker_id=f"mysql-ci-{slot}", now=utcnow_naive())
                         if task:
                             with result_lock:
                                 claimed_ids.append(task.id)

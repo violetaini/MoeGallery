@@ -140,6 +140,7 @@ character=伊蕾娜|イレイナ|别名
 rating=safe|sensitive|hidden
 sort=latest|random|favorites|resolution
 exclude_cover_images=true
+exclude_backdrop_images=true
 exclude_avatar_images=true
 require_work_related=true
 require_character_related=true
@@ -459,7 +460,7 @@ Recommended production checks:
 
 - Force HTTPS and set `AGMS_COOKIE_SECURE=true`.
 - Keep `/api-docs` internal or behind administrator/API-key authentication.
-- Pass real client IP safely and prevent spoofed `X-Forwarded-For`.
+- Pass real client IP safely, overwrite spoofed forwarding headers, and restrict `AGMS_TRUSTED_PROXY_CIDRS` to the actual proxy networks.
 - Increase upload body limits for large image batches.
 - Preserve `Authorization` headers.
 - Do not cache protected `/storage/*`, `/api/*`, or `/api-docs/*` responses globally.

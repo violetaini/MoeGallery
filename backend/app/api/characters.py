@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.helpers import LIKE_ESCAPE, contains_like_pattern, non_structural_image_conditions
 from app.auth import optional_admin, require_library_delete, require_library_write
 from app.database import get_db
-from app.models import Character, Image
+from app.models import Character, Image, Work
 from app.models.associations import image_characters
 from app.schemas.character import CharacterCreate, CharacterDetail, CharacterListResponse, CharacterRead, CharacterUpdate
 
@@ -33,20 +34,16 @@ def _serialize_character(character: Character, admin: bool, *, image_count: int 
 
 
 def _character_image_count(db: Session, character_id: int, admin: bool) -> int:
-    if admin:
-        stmt = select(func.count()).select_from(image_characters).where(
-            image_characters.c.character_id == character_id
+    stmt = (
+        select(func.count())
+        .select_from(image_characters.join(Image, image_characters.c.image_id == Image.id))
+        .where(
+            image_characters.c.character_id == character_id,
+            *non_structural_image_conditions(),
         )
-    else:
-        stmt = (
-            select(func.count())
-            .select_from(image_characters.join(Image, image_characters.c.image_id == Image.id))
-            .where(
-                image_characters.c.character_id == character_id,
-                Image.is_public.is_(True),
-                Image.rating != "hidden",
-            )
-        )
+    )
+    if not admin:
+        stmt = stmt.where(Image.is_public.is_(True), Image.rating != "hidden")
     return db.scalar(stmt) or 0
 
 
@@ -64,18 +61,24 @@ def list_characters(
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
     work_id: int | None = None,
-    q: str | None = None,
+    q: str | None = Query(None, max_length=255),
 ):
     stmt = select(Character).options(*_character_options())
     if work_id:
         stmt = stmt.where(Character.work_id == work_id)
-    if q:
-        needle = f"%{q.strip()}%"
+    if q and q.strip():
+        needle = contains_like_pattern(q)
         stmt = stmt.where(
-            or_(Character.name.ilike(needle), Character.original_name.ilike(needle), Character.aliases.ilike(needle))
+            or_(
+                Character.name.ilike(needle, escape=LIKE_ESCAPE),
+                Character.original_name.ilike(needle, escape=LIKE_ESCAPE),
+                Character.aliases.ilike(needle, escape=LIKE_ESCAPE),
+            )
         )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
-    items = db.scalars(stmt.order_by(Character.name.asc()).offset((page - 1) * page_size).limit(page_size)).all()
+    items = db.scalars(
+        stmt.order_by(Character.name.asc(), Character.id.asc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
     return {
         "items": [_serialize_character(item, admin=bool(admin)) for item in items],
         "total": total,

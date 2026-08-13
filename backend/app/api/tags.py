@@ -5,6 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import optional_admin, require_library_delete, require_library_write
+from app.api.helpers import LIKE_ESCAPE, contains_like_pattern
 from app.database import get_db
 from app.models import Tag
 from app.schemas.common import ImageSummary
@@ -19,17 +20,21 @@ def list_tags(
     admin: Annotated[dict | None, Depends(optional_admin)],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    q: str | None = None,
-    type: str | None = None,
+    q: str | None = Query(None, max_length=255),
+    type: str | None = Query(None, max_length=40),
 ):
     stmt = select(Tag)
     if type:
         stmt = stmt.where(Tag.type == type)
-    if q:
-        needle = f"%{q.strip()}%"
-        stmt = stmt.where(or_(Tag.name.ilike(needle), Tag.aliases.ilike(needle)))
+    if q and q.strip():
+        needle = contains_like_pattern(q)
+        stmt = stmt.where(
+            or_(Tag.name.ilike(needle, escape=LIKE_ESCAPE), Tag.aliases.ilike(needle, escape=LIKE_ESCAPE))
+        )
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
-    items = db.scalars(stmt.order_by(Tag.type.asc(), Tag.name.asc()).offset((page - 1) * page_size).limit(page_size)).all()
+    items = db.scalars(
+        stmt.order_by(Tag.type.asc(), Tag.name.asc(), Tag.id.asc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 

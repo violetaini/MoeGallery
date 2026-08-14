@@ -38,7 +38,7 @@ const slideshowStyle = computed(() => ({
 }))
 
 function imageSrc(image) {
-  return mediaUrl(image, 'original') || fallbackImage
+  return mediaUrl(image, 'preview') || mediaUrl(image, 'original') || fallbackImage
 }
 
 function thumbnailSrc(image) {
@@ -66,13 +66,17 @@ function handleActiveImageError() {
   }, 260)
 }
 
-function preloadHomeImage(source) {
+function preloadHomeImage(source, priority = 'low') {
   if (exiting.value || typeof window === 'undefined' || !source || source === fallbackImage) return null
-  if (preloadedImages.has(source)) return preloadedImages.get(source).promise
+  if (preloadedImages.has(source)) {
+    const cached = preloadedImages.get(source)
+    if (priority === 'high') cached.image.fetchPriority = 'high'
+    return cached.promise
+  }
 
   const image = new window.Image()
   image.decoding = 'async'
-  image.fetchPriority = 'low'
+  image.fetchPriority = priority
   let resolveLoad
   const promise = new Promise((resolve) => {
     resolveLoad = resolve
@@ -97,7 +101,7 @@ function preloadHomeImage(source) {
 function preloadSlide(index) {
   if (exiting.value || !slides.value.length) return null
   const normalizedIndex = (index + slides.value.length) % slides.value.length
-  return preloadHomeImage(imageSrc(slides.value[normalizedIndex]))
+  return preloadHomeImage(imageSrc(slides.value[normalizedIndex]), 'low')
 }
 
 function preloadOrder() {
@@ -152,14 +156,14 @@ async function chooseSlide(index) {
   }
 
   const targetSource = imageSrc(slides.value[targetIndex])
-  const loaded = await preloadHomeImage(targetSource)
+  const loaded = await preloadHomeImage(targetSource, 'high')
   if (requestSequence !== slideRequestSequence || exiting.value) return
 
   if (loaded) {
+    activeImageLoaded.value = false
     activeIndex.value = targetIndex
     activeDisplayImageSrc.value = targetSource
     activeImageRetryCount.value = 0
-    activeImageLoaded.value = true
   }
   scheduleSlideTimer()
 }
@@ -234,6 +238,7 @@ function setSlides(items) {
   activeImageRetryCount.value = 0
   activeImageLoaded.value = false
   slideRequestSequence += 1
+  void preloadHomeImage(activeDisplayImageSrc.value, 'high')
   void preloadSlideshowOriginals()
 }
 
@@ -337,7 +342,7 @@ onBeforeRouteLeave(() => {
       </div>
     </div>
 
-    <div v-if="slides.length" class="home-slideshow__rail-wrap" aria-label="胶片切换">
+    <div v-if="slides.length" v-show="activeImageLoaded" class="home-slideshow__rail-wrap" aria-label="胶片切换">
       <button
         v-if="slides.length > 4"
         class="home-rail-button home-rail-button--prev"

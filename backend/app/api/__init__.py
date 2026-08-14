@@ -1,4 +1,4 @@
-from app.api import auth, characters, images, imports, search, settings, stats, storage, system, tags, upload_tasks, updates, works
+from app.api import auth, characters, images, imports, search, settings, shares, stats, storage, system, tags, upload_tasks, updates, works
 
 __all__ = [
     "auth",
@@ -6,6 +6,7 @@ __all__ = [
     "images",
     "imports",
     "search",
+    "shares",
     "settings",
     "stats",
     "storage",

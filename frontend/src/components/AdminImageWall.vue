@@ -118,6 +118,7 @@ function imageTitle(row) {
           </button>
           <el-checkbox
             class="admin-image-wall-check"
+            :aria-label="`选择 ${imageTitle(image)}`"
             :model-value="isSelected(image.id)"
             @change="(checked) => toggleSelection(image, checked)"
             @click.stop

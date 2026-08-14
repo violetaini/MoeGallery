@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Table
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, Table
 
 from app.database import Base
 from app.utils.time import utcnow_naive
@@ -31,4 +31,14 @@ image_tags = Table(
     Column("tag_id", ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
     Column("created_at", DateTime, default=utcnow_naive, nullable=False),
     Index("ix_image_tags_tag_image", "tag_id", "image_id"),
+)
+
+share_images = Table(
+    "share_images",
+    Base.metadata,
+    Column("share_id", ForeignKey("shares.id", ondelete="CASCADE"), primary_key=True),
+    Column("image_id", ForeignKey("images.id", ondelete="CASCADE"), primary_key=True),
+    Column("sort_order", Integer, default=0, nullable=False),
+    Column("created_at", DateTime, default=utcnow_naive, nullable=False),
+    Index("ix_share_images_image_share", "image_id", "share_id"),
 )

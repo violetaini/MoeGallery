@@ -2,7 +2,7 @@ from sqlalchemy import Boolean, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.associations import image_characters, image_tags, image_works
+from app.models.associations import image_characters, image_tags, image_works, share_images
 from app.models.mixins import TimestampMixin
 
 
@@ -40,3 +40,4 @@ class Image(Base, TimestampMixin):
     works = relationship("Work", secondary=image_works, back_populates="images", lazy="selectin")
     characters = relationship("Character", secondary=image_characters, back_populates="images", lazy="selectin")
     tags = relationship("Tag", secondary=image_tags, back_populates="images", lazy="selectin")
+    shares = relationship("Share", secondary=share_images, back_populates="images", lazy="selectin")

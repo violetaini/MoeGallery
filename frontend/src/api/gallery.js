@@ -86,6 +86,24 @@ export const galleryApi = {
   deleteImagesBatch(payload) {
     return api.delete('/images/batch', { data: payload }).then((r) => r.data)
   },
+  createShare(payload) {
+    return api.post('/shares', payload).then((r) => r.data)
+  },
+  shares(params = {}) {
+    return api.get('/shares', { params }).then((r) => r.data)
+  },
+  share(token) {
+    return api.get(`/shares/${encodeURIComponent(token)}`).then((r) => r.data)
+  },
+  shareImage(token, imageId) {
+    return api.get(`/shares/${encodeURIComponent(token)}/images/${encodeURIComponent(imageId)}`).then((r) => r.data)
+  },
+  updateShare(id, payload) {
+    return api.patch(`/shares/${id}`, payload).then((r) => r.data)
+  },
+  revokeShare(id) {
+    return api.delete(`/shares/${id}`)
+  },
   importMetadata(formData, dryRun = true) {
     return api.post('/imports/metadata', formData, {
       params: { dry_run: dryRun },

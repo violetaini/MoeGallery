@@ -7,7 +7,8 @@ import ImageDetailOverlay from './ImageDetailOverlay.vue'
 const props = defineProps({
   images: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
-  preview: { type: Boolean, default: true }
+  preview: { type: Boolean, default: true },
+  shareToken: { type: String, default: '' }
 })
 
 const route = useRoute()
@@ -125,6 +126,7 @@ const rows = computed(() => {
           :image="image"
           :style-vars="{ flex: `0 0 ${width}px`, width: `${width}px` }"
           :preview="preview"
+          :share-token="shareToken"
           @open="openImageOverlay"
         />
       </div>
@@ -134,6 +136,7 @@ const rows = computed(() => {
       v-if="preview && activeImageId"
       :image-id="activeImageId"
       :image="activeImage"
+      :share-token="shareToken"
       @close="closeImageOverlay"
     />
   </div>

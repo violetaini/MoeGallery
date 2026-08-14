@@ -1,11 +1,12 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Search } from '@element-plus/icons-vue'
+import { Delete, Edit, Link, Search } from '@element-plus/icons-vue'
 import { mediaUrl } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import AdminImageEditOverlay from '../../components/AdminImageEditOverlay.vue'
 import AdminImageWall from '../../components/AdminImageWall.vue'
+import ShareDialog from '../../components/ShareDialog.vue'
 import { orientationLabel, orientationOptions } from '../../constants/orientations'
 import { ratingOptions } from '../../constants/ratings'
 import { getImageManageViewMode, normalizeImageManageViewMode, setImageManageViewMode } from '../../utils/adminPreferences'
@@ -22,6 +23,7 @@ const batchDialog = ref(false)
 const batchSaving = ref(false)
 const currentImage = ref(null)
 const selectedRows = ref([])
+const shareImages = ref([])
 const viewMode = ref(getImageManageViewMode())
 const q = ref('')
 const page = ref(1)
@@ -243,6 +245,14 @@ function closeEditor() {
   currentImage.value = null
 }
 
+function openShare(rows) {
+  shareImages.value = [...rows]
+}
+
+function closeShare() {
+  shareImages.value = []
+}
+
 async function handleEditorSaved() {
   currentImage.value = null
   await load()
@@ -372,6 +382,7 @@ onMounted(async () => {
     <div v-if="selectedCount" class="admin-batch-bar">
       <div class="muted">已选择 {{ selectedCount }} 张图片</div>
       <div class="admin-batch-actions">
+        <el-button type="success" :icon="Link" @click="openShare(selectedRows)">分享选中</el-button>
         <el-button type="primary" @click="openBatchDialog">批量编辑</el-button>
         <el-button type="danger" :icon="Delete" @click="removeSelected">批量删除</el-button>
         <el-button @click="selectCurrentPage">全选本页</el-button>
@@ -429,8 +440,11 @@ onMounted(async () => {
           <el-tag :type="row.is_public ? 'success' : 'info'">{{ row.is_public ? '公开' : '隐藏' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="132" fixed="right">
+      <el-table-column label="操作" width="176" fixed="right">
         <template #default="{ row }">
+          <el-tooltip content="分享图片" placement="top">
+            <el-button circle type="success" :icon="Link" @click="openShare([row])" />
+          </el-tooltip>
           <el-tooltip content="修改信息" placement="top">
             <el-button circle :icon="Edit" @click="edit(row)" />
           </el-tooltip>
@@ -536,6 +550,11 @@ onMounted(async () => {
       :image="currentImage"
       @close="closeEditor"
       @saved="handleEditorSaved"
+    />
+    <ShareDialog
+      v-if="shareImages.length"
+      :images="shareImages"
+      @close="closeShare"
     />
   </div>
 </template>

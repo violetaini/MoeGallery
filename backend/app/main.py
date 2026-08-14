@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
-from app.api import auth, characters, images, imports, install, search, settings as api_settings, stats, storage, system, tags, upload_tasks, updates, works
+from app.api import auth, characters, images, imports, install, search, settings as api_settings, shares, stats, storage, system, tags, upload_tasks, updates, works
 from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, require_system_read, verify_access_token, verify_api_key
 from app.config import ROOT_DIR, settings
 from app.openapi import configure_openapi
@@ -129,6 +129,7 @@ app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(install.router, prefix=settings.api_prefix)
 app.include_router(storage.router)
 app.include_router(images.router, prefix=settings.api_prefix)
+app.include_router(shares.router, prefix=settings.api_prefix)
 app.include_router(upload_tasks.router, prefix=settings.api_prefix)
 app.include_router(updates.router, prefix=settings.api_prefix)
 app.include_router(imports.router, prefix=settings.api_prefix)

@@ -7,7 +7,8 @@ import ImageDetailContent from './ImageDetailContent.vue'
 
 const props = defineProps({
   image: { type: Object, default: null },
-  imageId: { type: [Number, String], default: null }
+  imageId: { type: [Number, String], default: null },
+  shareToken: { type: String, default: '' }
 })
 
 const emit = defineEmits(['close'])
@@ -38,12 +39,16 @@ async function loadImage() {
     return
   }
 
-  loading.value = !props.image
+  loading.value = !props.image || Boolean(props.shareToken)
   try {
-    currentImage.value = await galleryApi.image(normalizedImageId.value)
-    await trackViewIfNeeded()
+    currentImage.value = props.shareToken
+      ? await galleryApi.shareImage(props.shareToken, normalizedImageId.value)
+      : await galleryApi.image(normalizedImageId.value)
+    if (!props.shareToken) {
+      await trackViewIfNeeded()
+    }
   } catch (caught) {
-    if (!props.image) {
+    if (!props.image || props.shareToken) {
       currentImage.value = null
       error.value = caught?.response?.data?.detail || '图片不存在或不可访问'
     }
@@ -90,7 +95,7 @@ function restoreScroll() {
   document.body.style.overflow = previousBodyOverflow
 }
 
-watch([() => props.image, normalizedImageId], loadImage, { immediate: true })
+watch([() => props.image, normalizedImageId, () => props.shareToken], loadImage, { immediate: true })
 
 onMounted(() => {
   lockScroll()
@@ -109,7 +114,7 @@ onBeforeUnmount(() => {
       <div class="image-detail-overlay__panel" @click.stop>
         <el-button class="image-detail-overlay__close" circle :icon="Close" aria-label="关闭" @click="close" />
         <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
-        <ImageDetailContent v-else :image="currentImage" :loading="loading" @updated="handleUpdated" />
+        <ImageDetailContent v-else :image="currentImage" :loading="loading" :share-token="shareToken" @updated="handleUpdated" />
       </div>
     </div>
   </Teleport>

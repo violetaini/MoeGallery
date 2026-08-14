@@ -6,12 +6,13 @@ import { imagePlaceholderFor } from '../utils/imagePlaceholder'
 const props = defineProps({
   image: { type: Object, required: true },
   styleVars: { type: Object, default: () => ({}) },
-  preview: { type: Boolean, default: true }
+  preview: { type: Boolean, default: true },
+  shareToken: { type: String, default: '' }
 })
 
 const emit = defineEmits(['open'])
 
-const imageUrl = computed(() => mediaUrl(props.image, 'thumbnail'))
+const imageUrl = computed(() => mediaUrl(props.image, 'thumbnail', props.shareToken))
 const placeholderUrl = computed(() => imagePlaceholderFor(props.image))
 const title = computed(() => props.image.original_filename || props.image.filename || '图片')
 const displayImageUrl = ref('')

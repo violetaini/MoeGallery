@@ -86,6 +86,7 @@ sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
 - 使用 `safe`、`sensitive`、`hidden` 三个固定分级。
 - 提供公开随机图片 API，可按作品、角色 ID、中文名、日文原名、别名、分级和方向筛选，并可分别设置桌面与手机的默认方向。
 - 后台图片管理可在经典表格和瀑布画廊之间切换，并支持批量操作。
+- 图片可一键复制原图 URL、Markdown 或论坛 BBCode；单图和多图均可生成可撤销的独立分享页。
 - 批量上传提供文件预览、重复检测、处理队列、失败重试和元数据绑定。
 - 提供 CSV、JSON、XLSX 和 XLSM 批量导入模板。
 - 首次安装时可选择 SQLite 或 MySQL/MariaDB。
@@ -160,6 +161,7 @@ npm run dev
 /works           作品
 /characters      角色
 /tags            分级
+/s/:token        单图或多图分享页
 /admin            管理后台
 /install          首次安装
 /api-docs         管理员 API 文档

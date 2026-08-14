@@ -11,7 +11,8 @@ import { safeExternalUrl } from '../utils/urls'
 
 const props = defineProps({
   image: { type: Object, default: null },
-  loading: { type: Boolean, default: false }
+  loading: { type: Boolean, default: false },
+  shareToken: { type: String, default: '' }
 })
 
 const emit = defineEmits(['updated'])
@@ -29,6 +30,8 @@ const bitDepthLabel = computed(() => {
 })
 const colorProfileLabel = computed(() => props.image?.color_profile || '-')
 const sourceUrl = computed(() => safeExternalUrl(props.image?.source_url))
+const works = computed(() => props.image?.works || [])
+const characters = computed(() => props.image?.characters || [])
 
 watch(() => props.image?.id, (id) => {
   favorited.value = id ? isImageFavorited(id) : false
@@ -62,6 +65,7 @@ async function toggleFavorite() {
       <ResponsiveImage
         :image="image"
         :alt="title"
+        :share-token="shareToken"
         img-class="detail-image"
         variant="preview"
         prefer-hdr
@@ -78,7 +82,7 @@ async function toggleFavorite() {
         <el-tag v-if="image.dynamic_range === 'hdr'" type="warning">HDR</el-tag>
         <el-tag v-if="image.is_animated" type="info">动图</el-tag>
       </div>
-      <div class="image-detail-actions">
+      <div v-if="!shareToken" class="image-detail-actions">
         <el-button :type="favorited ? 'primary' : 'default'" :icon="Star" :loading="favoriteLoading" @click="toggleFavorite">
           {{ favorited ? '已收藏' : '收藏' }}
         </el-button>
@@ -106,20 +110,20 @@ async function toggleFavorite() {
         <h2>作品</h2>
       </div>
       <div class="chip-row">
-        <RouterLink v-for="work in image.works" :key="work.id" :to="`/works/${work.id}`">
+        <RouterLink v-for="work in works" :key="work.id" :to="`/works/${work.id}`">
           <el-tag effect="dark">{{ work.name }}</el-tag>
         </RouterLink>
-        <span v-if="!image.works.length" class="muted">未绑定</span>
+        <span v-if="!works.length" class="muted">未绑定</span>
       </div>
 
       <div class="section-title">
         <h2>角色</h2>
       </div>
       <div class="chip-row">
-        <RouterLink v-for="character in image.characters" :key="character.id" :to="`/characters/${character.id}`">
+        <RouterLink v-for="character in characters" :key="character.id" :to="`/characters/${character.id}`">
           <el-tag type="success">{{ character.name }}</el-tag>
         </RouterLink>
-        <span v-if="!image.characters.length" class="muted">未绑定</span>
+        <span v-if="!characters.length" class="muted">未绑定</span>
       </div>
 
       <div class="section-title">

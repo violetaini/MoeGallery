@@ -88,11 +88,12 @@ export function storageUrl(path) {
   return `/storage/${String(path).replace(/^\/?storage\//, '').replaceAll('\\', '/')}`
 }
 
-export function mediaUrl(image, variant = 'preview') {
+export function mediaUrl(image, variant = 'preview', shareToken = '') {
   if (!image) return ''
   if (image.id) {
     const version = Math.max(1, Number(image.media_version || 1))
-    return `/media/${encodeURIComponent(image.id)}/${variant}/${version}`
+    const url = `/media/${encodeURIComponent(image.id)}/${variant}/${version}`
+    return shareToken ? `${url}?share=${encodeURIComponent(shareToken)}` : url
   }
   const fallbackPaths = {
     original: [image.file_path, image.preview_path, image.thumbnail_path],

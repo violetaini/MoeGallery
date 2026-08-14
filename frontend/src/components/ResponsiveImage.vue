@@ -10,13 +10,14 @@ const props = defineProps({
   pictureClass: { type: [String, Array, Object], default: '' },
   loading: { type: String, default: undefined },
   variant: { type: String, default: 'preview' },
+  shareToken: { type: String, default: '' },
   preferHdr: { type: Boolean, default: false },
   preferAnimated: { type: Boolean, default: false }
 })
 
-const originalSrc = computed(() => mediaUrl(props.image, 'original'))
-const previewSrc = computed(() => mediaUrl(props.image, 'preview'))
-const thumbnailSrc = computed(() => mediaUrl(props.image, 'thumbnail'))
+const originalSrc = computed(() => mediaUrl(props.image, 'original', props.shareToken))
+const previewSrc = computed(() => mediaUrl(props.image, 'preview', props.shareToken))
+const thumbnailSrc = computed(() => mediaUrl(props.image, 'thumbnail', props.shareToken))
 
 const defaultSrc = computed(() => {
   if (props.variant === 'thumbnail') {

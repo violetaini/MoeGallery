@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from app.services.media_delivery_service import (
     resolve_media_variant,
 )
 from app.services.storage_service import normalize_storage_relative_path, resolve_storage_file
+from app.services.share_service import share_allows_image
 from app.utils.image_process import WEBP_MIME_TYPE
 
 router = APIRouter(tags=["storage"])
@@ -60,9 +61,11 @@ def _deliver_media(
     served_variant: MediaVariant,
     media_type: str,
     db: Session,
+    share_token: str | None = None,
 ) -> Response:
     is_public_image = image.is_public and image.rating != "hidden"
-    if not is_public_image:
+    is_shared_image = share_allows_image(db, share_token, image.id)
+    if not is_public_image and not is_shared_image:
         admin = authenticate_optional_request(request, db, "library:read")
         if not admin:
             raise _not_found()
@@ -73,7 +76,7 @@ def _deliver_media(
     if not target.is_file():
         raise _not_found()
 
-    cache_control = public_media_cache_control() if is_public_image else private_media_cache_control()
+    cache_control = public_media_cache_control() if is_public_image and not is_shared_image else private_media_cache_control()
     etag = media_etag(image, requested_variant, relative_path, target)
     headers = {
         "Cache-Control": cache_control,
@@ -81,7 +84,7 @@ def _deliver_media(
         "X-Content-Type-Options": "nosniff",
         "X-AGMS-Media-Variant": served_variant,
     }
-    if is_public_image:
+    if is_public_image or is_shared_image:
         headers["Cross-Origin-Resource-Policy"] = "cross-origin"
     if _etag_matches(request, etag):
         return Response(status_code=304, headers=headers)
@@ -101,6 +104,7 @@ def get_media_file(
     media_version: int,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
+    share_token: str | None = Query(default=None, alias="share", max_length=64),
 ):
     image = db.get(Image, image_id)
     if not image or max(1, int(image.media_version or 1)) != media_version:
@@ -117,6 +121,7 @@ def get_media_file(
         served_variant=served_variant,
         media_type=media_type_for_variant(image, served_variant),
         db=db,
+        share_token=share_token,
     )
 
 

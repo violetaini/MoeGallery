@@ -6,6 +6,7 @@ import {
   Document,
   Close,
   FolderOpened,
+  Link,
   FolderAdd,
   Menu as MenuIcon,
   Picture,
@@ -29,6 +30,7 @@ const activeMenu = computed(() => {
   if (route.path === '/admin') return '/admin'
   if (route.path.startsWith('/admin/images/upload')) return '/admin/images/upload'
   if (route.path.startsWith('/admin/images')) return '/admin/images'
+  if (route.path.startsWith('/admin/shares')) return '/admin/shares'
   if (route.path.startsWith('/admin/imports')) return '/admin/imports'
   if (route.path.startsWith('/admin/works')) return '/admin/works'
   if (route.path.startsWith('/admin/characters')) return '/admin/characters'
@@ -96,6 +98,10 @@ onBeforeUnmount(() => window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, syn
           <el-icon><Upload /></el-icon>
           <span>图片上传</span>
         </el-menu-item>
+        <el-menu-item index="/admin/shares">
+          <el-icon><Link /></el-icon>
+          <span>分享管理</span>
+        </el-menu-item>
         <el-menu-item index="/admin/imports">
           <el-icon><FolderAdd /></el-icon>
           <span>批量导入</span>
@@ -132,6 +138,7 @@ onBeforeUnmount(() => window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, syn
             aria-label="打开管理菜单"
             @click="mobileMenuOpen = true"
           />
+          <img class="admin-mobile-brand-avatar" :src="avatarUrl" alt="Anime Gallery" />
           <span>{{ pageTitle }}</span>
         </div>
         <div class="admin-header-actions">

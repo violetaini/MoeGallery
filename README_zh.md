@@ -129,6 +129,7 @@ SQLite 通过 SQLite Backup API 创建一致性备份；MySQL/MariaDB 使用 `my
 
 - [部署说明](docs/deployment_zh.md)
 - [Deployment guide](docs/deployment.md)
+- [维护发布约定](docs/release-workflow_zh.md)
 - [API 运维指南](docs/api/operations-guide.md)
 - 管理员登录后的交互式 API 文档：`/api-docs`
 - OpenAPI 文件：`docs/api/openapi.json`

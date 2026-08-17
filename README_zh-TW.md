@@ -21,7 +21,7 @@
 
 <p align="center">
   <a href="https://anime.chitanda.net/">線上站點</a> |
-  <a href="https://anime.chitanda.net/api-docs">API 文件</a> |
+  <a href="docs/api/operations-guide.md">API 操作說明</a> |
   <a href="https://github.com/violetaini/MoeGallery/releases">Release</a>
 </p>
 

@@ -21,7 +21,7 @@
 
 <p align="center">
   <a href="https://anime.chitanda.net/">Live Site</a> |
-  <a href="https://anime.chitanda.net/api-docs">API Docs</a> |
+  <a href="docs/api/operations-guide.md">API Guide</a> |
   <a href="https://github.com/violetaini/MoeGallery/releases">Releases</a>
 </p>
 

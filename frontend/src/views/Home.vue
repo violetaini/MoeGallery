@@ -13,7 +13,9 @@ const activeIndex = ref(0)
 const paused = ref(false)
 const railRef = ref(null)
 const activeDisplayImageSrc = ref(fallbackImage)
-const activeImageLoaded = ref(false)
+const pendingDisplayImageSrc = ref('')
+const pendingImageLoaded = ref(false)
+const pendingSlideIndex = ref(-1)
 const activeImageRetryCount = ref(0)
 const exiting = ref(false)
 const slideInterval = 5600
@@ -21,6 +23,7 @@ const maxActiveImageRetries = 2
 const preloadWorkerCount = 3
 const preloadedImages = new Map()
 let slideTimer = null
+let imageSwapTimer = null
 let preloadGeneration = 0
 let slideRequestSequence = 0
 const railDrag = {
@@ -41,10 +44,6 @@ function imageSrc(image) {
   return mediaUrl(image, 'preview') || mediaUrl(image, 'original') || fallbackImage
 }
 
-function thumbnailSrc(image) {
-  return mediaUrl(image, 'thumbnail') || fallbackImage
-}
-
 function withRetryParam(source, retry) {
   const separator = source.includes('?') ? '&' : '?'
   return `${source}${separator}agms_home_retry=${retry}&t=${Date.now()}`
@@ -52,11 +51,9 @@ function withRetryParam(source, retry) {
 
 function handleActiveImageLoad() {
   activeImageRetryCount.value = 0
-  activeImageLoaded.value = true
 }
 
 function handleActiveImageError() {
-  activeImageLoaded.value = false
   if (!activeImageSrc.value || activeImageRetryCount.value >= maxActiveImageRetries) {
     return
   }
@@ -98,35 +95,10 @@ function preloadHomeImage(source, priority = 'low') {
   return promise
 }
 
-function preloadSlide(index) {
+function preloadSlide(index, priority = 'low') {
   if (exiting.value || !slides.value.length) return null
   const normalizedIndex = (index + slides.value.length) % slides.value.length
-  return preloadHomeImage(imageSrc(slides.value[normalizedIndex]), 'low')
-}
-
-function preloadOrder() {
-  const order = []
-  for (let offset = 1; offset < slides.value.length; offset += 1) {
-    order.push((activeIndex.value + offset) % slides.value.length)
-  }
-  return order
-}
-
-async function preloadSlideshowOriginals() {
-  const generation = ++preloadGeneration
-  const order = preloadOrder()
-  let cursor = 0
-
-  async function worker() {
-    while (generation === preloadGeneration && cursor < order.length) {
-      const index = order[cursor]
-      cursor += 1
-      await preloadSlide(index)
-    }
-  }
-
-  const workerCount = Math.min(preloadWorkerCount, order.length)
-  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+  return preloadHomeImage(imageSrc(slides.value[normalizedIndex]), priority)
 }
 
 function clearSlideTimer() {
@@ -134,6 +106,58 @@ function clearSlideTimer() {
     window.clearTimeout(slideTimer)
     slideTimer = null
   }
+}
+
+function clearImageSwapTimer() {
+  if (imageSwapTimer) {
+    window.clearTimeout(imageSwapTimer)
+    imageSwapTimer = null
+  }
+}
+
+function clearPendingImage() {
+  pendingDisplayImageSrc.value = ''
+  pendingImageLoaded.value = false
+  pendingSlideIndex.value = -1
+}
+
+function handlePendingImageLoad() {
+  if (!pendingDisplayImageSrc.value || pendingSlideIndex.value < 0) return
+
+  const requestSequence = slideRequestSequence
+  const nextSource = pendingDisplayImageSrc.value
+  const nextIndex = pendingSlideIndex.value
+  pendingImageLoaded.value = true
+  clearImageSwapTimer()
+  imageSwapTimer = window.setTimeout(() => {
+    if (
+      requestSequence !== slideRequestSequence
+      || exiting.value
+      || pendingDisplayImageSrc.value !== nextSource
+    ) return
+
+    activeIndex.value = nextIndex
+    activeDisplayImageSrc.value = nextSource
+    activeImageRetryCount.value = 0
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (
+          requestSequence !== slideRequestSequence
+          || exiting.value
+          || pendingDisplayImageSrc.value !== nextSource
+        ) return
+        clearPendingImage()
+        scheduleSlideTimer()
+      })
+    })
+  }, 190)
+}
+
+function handlePendingImageError() {
+  clearImageSwapTimer()
+  clearPendingImage()
+  scheduleSlideTimer()
 }
 
 function scheduleSlideTimer() {
@@ -150,20 +174,22 @@ async function chooseSlide(index) {
   const requestSequence = ++slideRequestSequence
 
   clearSlideTimer()
+  clearImageSwapTimer()
+  clearPendingImage()
   if (targetIndex === activeIndex.value) {
     scheduleSlideTimer()
     return
   }
 
   const targetSource = imageSrc(slides.value[targetIndex])
-  const loaded = await preloadHomeImage(targetSource, 'high')
+  const loaded = targetSource === fallbackImage || await preloadHomeImage(targetSource, 'high')
   if (requestSequence !== slideRequestSequence || exiting.value) return
 
   if (loaded) {
-    activeImageLoaded.value = false
-    activeIndex.value = targetIndex
-    activeDisplayImageSrc.value = targetSource
-    activeImageRetryCount.value = 0
+    pendingImageLoaded.value = false
+    pendingSlideIndex.value = targetIndex
+    pendingDisplayImageSrc.value = targetSource
+    return
   }
   scheduleSlideTimer()
 }
@@ -231,15 +257,47 @@ function handleThumbClick(index) {
   void chooseSlide(index)
 }
 
-function setSlides(items) {
-  slides.value = items
+async function setSlides(items) {
+  const candidates = Array.isArray(items) ? items.filter(Boolean) : []
+  const generation = ++preloadGeneration
+  clearImageSwapTimer()
+  clearPendingImage()
+  clearSlideTimer()
+  slides.value = []
   activeIndex.value = 0
-  activeDisplayImageSrc.value = imageSrc(items[0])
+  activeDisplayImageSrc.value = fallbackImage
   activeImageRetryCount.value = 0
-  activeImageLoaded.value = false
   slideRequestSequence += 1
-  void preloadHomeImage(activeDisplayImageSrc.value, 'high')
-  void preloadSlideshowOriginals()
+
+  if (!candidates.length) return
+
+  let cursor = 0
+  async function worker() {
+    while (generation === preloadGeneration && cursor < candidates.length) {
+      const candidate = candidates[cursor]
+      cursor += 1
+      const source = imageSrc(candidate)
+      const loaded = source === fallbackImage || await preloadHomeImage(source, 'high')
+      if (generation !== preloadGeneration || exiting.value) return
+      if (!loaded) continue
+
+      const isFirstReady = slides.value.length === 0
+      slides.value.push(candidate)
+      if (isFirstReady) {
+        activeIndex.value = 0
+        activeImageRetryCount.value = 0
+        if (source !== activeDisplayImageSrc.value) {
+          pendingImageLoaded.value = false
+          pendingSlideIndex.value = 0
+          pendingDisplayImageSrc.value = source
+        }
+      }
+      if (slides.value.length === 2) scheduleSlideTimer()
+    }
+  }
+
+  const workerCount = Math.min(preloadWorkerCount, candidates.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
 }
 
 async function loadSlides() {
@@ -248,7 +306,7 @@ async function loadSlides() {
     const settings = await galleryApi.publicSettings().catch(() => null)
     const configuredSlides = settings?.home_slideshow_images || []
     if (configuredSlides.length) {
-      setSlides(configuredSlides)
+      await setSlides(configuredSlides)
       return
     }
     let data = await galleryApi.images({
@@ -270,9 +328,9 @@ async function loadSlides() {
         exclude_avatar_images: true
       })
     }
-    setSlides(data.items || [])
+    await setSlides(data.items || [])
   } catch (error) {
-    setSlides([])
+    await setSlides([])
   } finally {
     loading.value = false
     scheduleSlideTimer()
@@ -284,6 +342,7 @@ onBeforeUnmount(() => {
   preloadGeneration += 1
   slideRequestSequence += 1
   clearSlideTimer()
+  clearImageSwapTimer()
   preloadedImages.clear()
 })
 
@@ -293,6 +352,7 @@ onBeforeRouteLeave(() => {
   preloadGeneration += 1
   slideRequestSequence += 1
   clearSlideTimer()
+  clearImageSwapTimer()
 })
 </script>
 
@@ -315,9 +375,9 @@ onBeforeRouteLeave(() => {
 
       <div class="home-slideshow__visual">
         <div class="home-slide-shadow" aria-hidden="true"></div>
-        <div class="home-slide-frame" :class="{ 'home-slide-frame--empty': !activeSlide, 'is-image-loaded': activeImageLoaded }">
+        <div class="home-slide-frame">
           <img
-            :key="`${activeSlide?.id || 'fallback'}-${activeDisplayImageSrc}`"
+            class="home-slide-frame__current"
             :src="activeDisplayImageSrc"
             :alt="activeTitle"
             loading="eager"
@@ -325,6 +385,19 @@ onBeforeRouteLeave(() => {
             fetchpriority="high"
             @load="handleActiveImageLoad"
             @error="handleActiveImageError"
+          />
+          <img
+            v-if="pendingDisplayImageSrc"
+            class="home-slide-frame__pending"
+            :class="{ 'is-image-loaded': pendingImageLoaded }"
+            :src="pendingDisplayImageSrc"
+            alt=""
+            aria-hidden="true"
+            loading="eager"
+            decoding="async"
+            fetchpriority="high"
+            @load="handlePendingImageLoad"
+            @error="handlePendingImageError"
           />
         </div>
 
@@ -342,7 +415,12 @@ onBeforeRouteLeave(() => {
       </div>
     </div>
 
-    <div v-if="slides.length" v-show="activeImageLoaded" class="home-slideshow__rail-wrap" aria-label="胶片切换">
+    <div
+      class="home-slideshow__rail-wrap"
+      :class="{ 'has-rail-controls': slides.length > 4, 'is-empty': !slides.length }"
+      aria-label="胶片切换"
+      :aria-busy="loading"
+    >
       <button
         v-if="slides.length > 4"
         class="home-rail-button home-rail-button--prev"
@@ -369,6 +447,7 @@ onBeforeRouteLeave(() => {
           :key="slide.id"
           class="home-slide-thumb"
           :class="{ 'is-active': index === activeIndex }"
+          :style="{ '--home-film-delay': `${Math.min(index, 6) * 45}ms` }"
           type="button"
           :aria-label="slide.original_filename || slide.filename || `图片 ${slide.id}`"
           @pointerenter="preloadSlide(index)"
@@ -378,7 +457,7 @@ onBeforeRouteLeave(() => {
           @click.stop="handleThumbClick(index)"
         >
           <img
-            :src="thumbnailSrc(slide)"
+            :src="imageSrc(slide)"
             :alt="slide.original_filename || slide.filename || '图片'"
             loading="lazy"
             decoding="async"

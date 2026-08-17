@@ -12,6 +12,12 @@ MediaVariant = Literal["original", "preview", "thumbnail"]
 MEDIA_VARIANTS: tuple[MediaVariant, ...] = ("original", "preview", "thumbnail")
 
 
+def rotate_media_version(image: Image) -> int:
+    """Make every public media URL for an image point at a fresh immutable version."""
+    image.media_version = max(1, int(image.media_version or 1)) + 1
+    return image.media_version
+
+
 def build_media_url(image: Image, variant: MediaVariant) -> str:
     version = max(1, int(image.media_version or 1))
     return f"/media/{image.id}/{variant}/{version}"

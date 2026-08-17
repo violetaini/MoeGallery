@@ -98,11 +98,11 @@ Nginx then accepts that header only from a listed network. Continue forwarding t
 
 ## Media Delivery And Caching
 
-No additional component is required by default; FastAPI sends image files directly. Public images allow 60 seconds of browser caching and 300 seconds of shared/CDN caching by default. Private and hidden images are never shared-cacheable. These values can be adjusted in `.env`:
+No additional component is required by default; FastAPI sends image files directly. Public images allow 7 days of browser caching and 30 days of shared/CDN caching by default. Every media-content or access-policy change produces a new versioned URL, so an old cache never blocks the refresh. Private and hidden images are never shared-cacheable. These values can be adjusted in `.env`:
 
 ```env
-AGMS_MEDIA_PUBLIC_BROWSER_CACHE_SECONDS=60
-AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=300
+AGMS_MEDIA_PUBLIC_BROWSER_CACHE_SECONDS=604800
+AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=2592000
 AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=
 ```
 

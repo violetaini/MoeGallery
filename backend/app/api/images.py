@@ -36,7 +36,7 @@ from app.schemas.image import (
 )
 from app.services.image_service import ImageService
 from app.services.app_setting_service import get_random_api_defaults
-from app.services.media_delivery_service import build_media_url, resolve_media_variant
+from app.services.media_delivery_service import build_media_url, resolve_media_variant, rotate_media_version
 from app.services.storage_service import delete_storage_file, resolve_storage_file
 from app.utils.hash import sha256_bytes
 from app.utils.image_process import InvalidImageError, inspect_image, render_webp_preview_bytes, validate_upload_filename
@@ -141,7 +141,7 @@ def _random_image_asset(image: Image, requested_variant: str) -> tuple[str, str]
 
 def _rotate_media_version_if_access_changes(image: Image, data: dict) -> None:
     if any(key in data and getattr(image, key) != data[key] for key in ("rating", "is_public")):
-        image.media_version = max(1, int(image.media_version or 1)) + 1
+        rotate_media_version(image)
 
 
 def _update_public_image_counter(db: Session, image_id: int, values: dict) -> Image:

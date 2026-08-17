@@ -141,8 +141,8 @@ class Settings(BaseSettings):
     max_upload_size: int = 100 * 1024 * 1024
     preview_max_size: int = 1600
     thumbnail_max_size: int = 480
-    media_public_browser_cache_seconds: int = Field(default=60, ge=0, le=86400)
-    media_public_shared_cache_seconds: int = Field(default=300, ge=0, le=604800)
+    media_public_browser_cache_seconds: int = Field(default=604800, ge=0, le=2592000)
+    media_public_shared_cache_seconds: int = Field(default=2592000, ge=0, le=2592000)
     media_accel_redirect_prefix: str = ""
     sqlite_busy_timeout_ms: int = Field(default=8000, ge=1000, le=60000)
     sqlite_synchronous: Literal["NORMAL", "FULL"] = "NORMAL"

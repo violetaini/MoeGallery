@@ -98,11 +98,11 @@ real_ip_recursive on;
 
 ## 图片发送与缓存
 
-默认配置无需额外组件，FastAPI 会直接发送图片。公开图片默认允许浏览器缓存 60 秒、共享缓存或 CDN 缓存 300 秒；私有和隐藏图片禁止共享缓存。可在 `.env` 中调整：
+默认配置无需额外组件，FastAPI 会直接发送图片。公开图片默认允许浏览器缓存 7 天、共享缓存或 CDN 缓存 30 天；每次媒体内容或访问策略变更都会切换到新的版本化 URL，因此不会被旧缓存阻挡。私有和隐藏图片禁止共享缓存。可在 `.env` 中调整：
 
 ```env
-AGMS_MEDIA_PUBLIC_BROWSER_CACHE_SECONDS=60
-AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=300
+AGMS_MEDIA_PUBLIC_BROWSER_CACHE_SECONDS=604800
+AGMS_MEDIA_PUBLIC_SHARED_CACHE_SECONDS=2592000
 AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=
 ```
 

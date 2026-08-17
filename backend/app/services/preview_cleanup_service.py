@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Image
 from app.services.image_service import image_orientation
+from app.services.media_delivery_service import rotate_media_version
 from app.services.storage_service import normalize_storage_relative_path, requires_sdr_preview, resolve_storage_file
 from app.utils.image_process import InvalidImageError, inspect_image
 
@@ -84,7 +85,9 @@ def prune_redundant_previews(db: Session, apply: bool = False) -> PreviewCleanup
         try:
             target = resolve_storage_file(preview_path)
             exists = target.is_file()
+            previous_media_version = image.media_version
             image.preview_path = None
+            rotate_media_version(image)
             _refresh_image_inspection(image, inspection)
             db.commit()
         except Exception as exc:
@@ -105,6 +108,7 @@ def prune_redundant_previews(db: Session, apply: bool = False) -> PreviewCleanup
             print(f"FAILED file removal image_id={image.id} preview_path={preview_path}: {exc}")
             try:
                 image.preview_path = preview_path
+                image.media_version = previous_media_version
                 db.commit()
             except Exception as restore_exc:
                 db.rollback()

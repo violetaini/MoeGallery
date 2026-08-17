@@ -8,6 +8,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import Image
 from app.services.image_service import image_orientation
+from app.services.media_delivery_service import rotate_media_version
 from app.utils.image_process import InvalidImageError, WEBP_EXTENSION, WEBP_MIME_TYPE, inspect_image, save_webp_image
 
 
@@ -84,6 +85,7 @@ def convert_image(image: Image, apply: bool, keep_source: bool) -> str:
     image.file_path = relative_storage_path(target)
     image.mime_type = WEBP_MIME_TYPE
     image.file_size = target.stat().st_size
+    rotate_media_version(image)
     return "converted"
 
 

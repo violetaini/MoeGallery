@@ -31,8 +31,8 @@ class MediaDeliveryCacheTests(unittest.TestCase):
         self.original_api_keys = settings.api_keys
         settings.storage_path = Path(self.temp_dir.name) / "storage"
         settings.media_accel_redirect_prefix = ""
-        settings.media_public_browser_cache_seconds = 60
-        settings.media_public_shared_cache_seconds = 300
+        settings.media_public_browser_cache_seconds = 604800
+        settings.media_public_shared_cache_seconds = 2592000
         ensure_storage_dirs()
 
         self.engine = create_engine(
@@ -123,7 +123,7 @@ class MediaDeliveryCacheTests(unittest.TestCase):
         self.assertEqual(response.content, b"thumbnail-data")
         self.assertEqual(
             response.headers["cache-control"],
-            "public, max-age=60, s-maxage=300, must-revalidate",
+            "public, max-age=604800, s-maxage=2592000, must-revalidate",
         )
         self.assertEqual(response.headers["cross-origin-resource-policy"], "cross-origin")
         self.assertEqual(response.headers["x-agms-media-variant"], "thumbnail")
@@ -161,7 +161,7 @@ class MediaDeliveryCacheTests(unittest.TestCase):
         legacy = self.client.get(f"/storage/{image.thumbnail_path}")
         self.assertEqual(legacy.status_code, 200)
         self.assertEqual(legacy.content, b"thumbnail-data")
-        self.assertIn("s-maxage=300", legacy.headers["cache-control"])
+        self.assertIn("s-maxage=2592000", legacy.headers["cache-control"])
 
     def test_private_and_hidden_media_require_admin_and_are_never_cached(self):
         private_image = self._image(is_public=False)

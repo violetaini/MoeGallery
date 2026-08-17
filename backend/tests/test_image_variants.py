@@ -142,7 +142,9 @@ class ImageVariantStorageTests(unittest.TestCase):
             self.assertEqual(applied.removed, 1)
             self.assertFalse(legacy_target.exists())
             self.assertIsNone(db.get(Image, static.id).preview_path)
+            self.assertEqual(db.get(Image, static.id).media_version, 2)
             self.assertEqual(db.get(Image, hdr.id).preview_path, hdr_paths["preview_path"])
+            self.assertEqual(db.get(Image, hdr.id).media_version, 1)
             self.assert_storage_file(hdr_paths["preview_path"])
 
 

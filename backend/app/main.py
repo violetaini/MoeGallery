@@ -12,11 +12,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
-from app.api import auth, characters, images, imports, install, search, settings as api_settings, shares, stats, storage, system, tags, upload_tasks, updates, works
+from app.api import auth, cdn_warm, characters, images, imports, install, search, settings as api_settings, shares, stats, storage, system, tags, upload_tasks, updates, works
 from app.auth import ADMIN_CSRF_COOKIE, ADMIN_SESSION_COOKIE, require_system_read, verify_access_token, verify_api_key
 from app.config import ROOT_DIR, settings
 from app.openapi import configure_openapi
 from app.services.install_service import migrate_legacy_admin_password, prepare_install_token
+from app.services.cdn_warm_service import initialize_cdn_warm_queue, stop_cdn_warm_worker
 from app.services.storage_service import ensure_storage_dirs
 from app.services.upload_task_service import initialize_upload_queue, stop_upload_workers
 
@@ -39,12 +40,14 @@ async def lifespan(_app: FastAPI):
     else:
         try:
             initialize_upload_queue()
+            initialize_cdn_warm_queue()
         except Exception as exc:  # The health endpoint exposes queue availability after startup.
             logger.error("Upload queue initialization failed (%s)", type(exc).__name__)
     try:
         yield
     finally:
         stop_upload_workers(join_timeout=0.1)
+        stop_cdn_warm_worker(join_timeout=0.1)
 
 
 app = FastAPI(
@@ -128,6 +131,7 @@ ensure_storage_dirs()
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(install.router, prefix=settings.api_prefix)
 app.include_router(storage.router)
+app.include_router(cdn_warm.router, prefix=settings.api_prefix)
 app.include_router(images.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
 app.include_router(upload_tasks.router, prefix=settings.api_prefix)

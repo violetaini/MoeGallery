@@ -27,6 +27,12 @@ const randomApiMobileOrientation = ref('portrait')
 const randomApiDefaultRating = ref('safe')
 const randomApiDefaultVariant = ref('preview')
 const githubProxyUrl = ref('')
+const cdnWarmEnabled = ref(false)
+const cdnWarmBaseUrl = ref('')
+const cdnWarmStatus = ref(null)
+const cdnWarmLoading = ref(false)
+const cdnWarmSaving = ref(false)
+const cdnWarmSeeding = ref(false)
 const operationsApiKeys = ref([])
 const apiKeyScopes = ref([])
 const visibleApiKeyIds = ref(new Set())
@@ -144,6 +150,7 @@ const uploadWorkerHint = computed(() => {
   }
   return `当前数据库最多允许 ${uploadWorkerLimit.value} 个 worker。`
 })
+const cdnWarmProgress = computed(() => Math.max(0, Math.min(100, Number(cdnWarmStatus.value?.coverage_percentage ?? 0))))
 const selectedHomeSlideshowImages = computed(() => {
   const imageById = new Map()
   ;[...homeSlideshowImages.value, ...homeSlideshowImageOptions.value, ...homeSlideshowPickerImages.value].forEach((image) => {
@@ -454,6 +461,29 @@ function syncRandomApiSettings(data) {
   randomApiDefaultVariant.value = data.random_api_default_variant || 'preview'
 }
 
+function syncCdnWarmStatus(data) {
+  cdnWarmStatus.value = data || null
+  const config = data?.config || data || {}
+  cdnWarmEnabled.value = Boolean(config.enabled)
+  cdnWarmBaseUrl.value = config.base_url || ''
+}
+
+function cdnProviderLabel(value) {
+  return {
+    esa: 'ESA',
+    edgeone: 'EdgeOne',
+    cloudflare: 'Cloudflare',
+    direct: '直连源站',
+    unknown: '待探测'
+  }[value] || value || '待探测'
+}
+
+function cdnCacheStatusType(value) {
+  if (['HIT', 'REVALIDATED', 'REFRESHHIT'].includes(String(value || '').toUpperCase())) return 'success'
+  if (['MISS', 'UNKNOWN'].includes(String(value || '').toUpperCase())) return 'warning'
+  return 'info'
+}
+
 function syncHomeSlideshowImages(data) {
   homeSlideshowImageIds.value = Array.isArray(data.home_slideshow_image_ids) ? data.home_slideshow_image_ids : []
   homeSlideshowImages.value = Array.isArray(data.home_slideshow_images) ? data.home_slideshow_images : []
@@ -680,6 +710,69 @@ async function loadAdminSettings() {
   }
 }
 
+async function loadCdnWarmStatus() {
+  cdnWarmLoading.value = true
+  try {
+    syncCdnWarmStatus(await galleryApi.cdnWarmStatus())
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '加载 CDN 预热状态失败')
+  } finally {
+    cdnWarmLoading.value = false
+  }
+}
+
+async function saveCdnWarmConfig() {
+  cdnWarmSaving.value = true
+  try {
+    const config = await galleryApi.updateCdnWarmConfig({
+      enabled: cdnWarmEnabled.value,
+      base_url: cdnWarmBaseUrl.value.trim(),
+      auto_new_uploads: cdnWarmEnabled.value
+    })
+    syncCdnWarmStatus({ ...(cdnWarmStatus.value || {}), config })
+    ElMessage.success(config.enabled ? 'CDN 预热已启用并完成域名探测' : 'CDN 预热已停用')
+    await loadCdnWarmStatus()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '保存 CDN 预热设置失败')
+  } finally {
+    cdnWarmSaving.value = false
+  }
+}
+
+async function probeCdnWarm() {
+  cdnWarmLoading.value = true
+  try {
+    const result = await galleryApi.probeCdnWarm()
+    ElMessage[result.detected ? 'success' : 'warning'](
+      `${cdnProviderLabel(result.provider)} · ${result.cache_status || 'UNKNOWN'} · ${result.message}`
+    )
+    await loadCdnWarmStatus()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || 'CDN 探测失败')
+  } finally {
+    cdnWarmLoading.value = false
+  }
+}
+
+async function seedCdnWarmThumbnails() {
+  const confirmed = await ElMessageBox.confirm(
+    '会按队列分批访问所有公开图片的缩略图 URL，触发 CDN 缓存；不会预热全量原图。确认继续？',
+    '补齐 CDN 缩略图预热',
+    { type: 'warning', confirmButtonText: '开始预热', cancelButtonText: '取消', closeOnClickModal: false }
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
+  cdnWarmSeeding.value = true
+  try {
+    const result = await galleryApi.seedCdnWarmThumbnails()
+    ElMessage.success(`预热队列：新增 ${result.queued}，重试 ${result.retried}，已有 ${result.existing}`)
+    await loadCdnWarmStatus()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '创建 CDN 预热任务失败')
+  } finally {
+    cdnWarmSeeding.value = false
+  }
+}
+
 async function saveAdminPreferences() {
   if (!adminUsername.value.trim()) {
     ElMessage.warning('请输入用户名')
@@ -883,7 +976,7 @@ async function resetOperationsApiKeys() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadAdminSettings(), loadSystemHealth()])
+  await Promise.all([loadAdminSettings(), loadSystemHealth(), loadCdnWarmStatus()])
 })
 </script>
 
@@ -1273,6 +1366,84 @@ onMounted(async () => {
               maxlength="500"
               placeholder="例如：https://gh-proxy.example.com/"
             />
+          </div>
+
+          <div class="admin-preference-section cdn-warm-settings">
+            <div class="cdn-warm-panel">
+              <div class="admin-preference-header cdn-warm-panel__header">
+                <div class="admin-preference-copy">
+                  <strong>CDN 图片预热</strong>
+                  <span>模拟浏览器访问公开图片，识别 ESA、EdgeOne 与 Cloudflare 的真实缓存状态；私有、隐藏和分享链接不会进入队列。</span>
+                </div>
+                <div class="cdn-warm-actions">
+                  <el-button class="cdn-warm-button cdn-warm-button--secondary" size="small" :icon="Refresh" :loading="cdnWarmLoading" @click="loadCdnWarmStatus">刷新状态</el-button>
+                  <el-button class="cdn-warm-button cdn-warm-button--save" size="small" :loading="cdnWarmSaving" @click="saveCdnWarmConfig">保存并探测</el-button>
+                </div>
+              </div>
+
+              <div class="cdn-warm-toggle">
+                <div>
+                  <strong>启用自动预热</strong>
+                  <span>新增公开图片会自动入队；现有缩略图分批补齐，缓存到期前自动续热。</span>
+                </div>
+                <el-switch v-model="cdnWarmEnabled" size="large" />
+              </div>
+
+              <label class="cdn-warm-domain">
+                <span>CDN HTTPS 域名</span>
+                <el-input
+                  v-model="cdnWarmBaseUrl"
+                  clearable
+                  maxlength="500"
+                  placeholder="例如：https://anime.example.com"
+                  :disabled="cdnWarmSaving"
+                />
+                <small>仅接受已绑定域名；127、localhost、IP 或直连源站会被自动拒绝。</small>
+              </label>
+
+              <div v-if="cdnWarmStatus" class="cdn-warm-status-grid">
+                <div class="cdn-warm-stat">
+                  <span>预热状态</span>
+                  <strong>{{ cdnWarmStatus.config?.enabled ? '自动运行中' : '尚未启用' }}</strong>
+                </div>
+                <div class="cdn-warm-stat">
+                  <span>队列</span>
+                  <strong>{{ cdnWarmStatus.queued || 0 }} <small>等待</small></strong>
+                </div>
+                <div class="cdn-warm-stat">
+                  <span>缓存结果</span>
+                  <strong>{{ cdnWarmStatus.success || 0 }} <small>成功</small></strong>
+                </div>
+                <div class="cdn-warm-stat">
+                  <span>Worker</span>
+                  <strong :class="{ 'is-running': cdnWarmStatus.worker_alive }">{{ cdnWarmStatus.worker_alive ? '运行中' : '待机' }}</strong>
+                </div>
+              </div>
+
+              <div v-if="cdnWarmStatus" class="cdn-warm-progress">
+                <div class="cdn-warm-progress__heading">
+                  <div>
+                    <strong>公开缩略图预热进度</strong>
+                    <span>已就绪 {{ cdnWarmStatus.coverage_fresh || 0 }} / {{ cdnWarmStatus.coverage_total || 0 }}，每 {{ Math.round((cdnWarmStatus.rewarm_after_seconds || 0) / 86400) || '-' }} 天自动续热。</span>
+                  </div>
+                  <b>{{ cdnWarmProgress.toFixed(1) }}%</b>
+                </div>
+                <el-progress :percentage="cdnWarmProgress" :stroke-width="14" :show-text="false" :status="cdnWarmProgress >= 100 ? 'success' : undefined" />
+              </div>
+
+              <div v-if="cdnWarmStatus?.recent_tasks?.length" class="cdn-warm-recent">
+                <span class="cdn-warm-recent__label">最近任务</span>
+                <span v-for="task in cdnWarmStatus.recent_tasks.slice(0, 4)" :key="task.id" class="cdn-warm-task-chip">
+                  #{{ task.image_id }} · {{ cdnProviderLabel(task.provider) }}
+                  <el-tag size="small" :type="cdnCacheStatusType(task.cache_status)">{{ task.cache_status || task.status }}</el-tag>
+                </span>
+              </div>
+
+              <div class="cdn-warm-actions cdn-warm-actions--footer">
+                <el-button class="cdn-warm-button cdn-warm-button--probe" size="small" :loading="cdnWarmLoading" :disabled="!cdnWarmStatus?.config?.enabled" @click="probeCdnWarm">探测 CDN</el-button>
+                <el-button class="cdn-warm-button cdn-warm-button--seed" size="small" :loading="cdnWarmSeeding" :disabled="!cdnWarmStatus?.config?.enabled" @click="seedCdnWarmThumbnails">预热全部公开缩略图</el-button>
+              </div>
+            </div>
           </div>
 
           <div class="admin-preference-section api-key-settings">

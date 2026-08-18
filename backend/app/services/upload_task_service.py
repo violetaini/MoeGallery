@@ -22,6 +22,7 @@ from app.services.app_setting_service import (
     get_upload_worker_count,
 )
 from app.services.image_service import ImageService
+from app.services.cdn_warm_service import enqueue_new_public_image, start_cdn_warm_worker
 from app.services.storage_service import delete_storage_file, resolve_storage_file
 from app.utils.hash import sha256_bytes
 from app.utils.image_process import ImageInspection, InvalidImageError
@@ -547,6 +548,14 @@ def process_task(db: Session, task: UploadTask) -> None:
         db.commit()
         if not updated:
             return
+        warm_queued = False
+        try:
+            if not duplicate:
+                warm_queued = enqueue_new_public_image(db, image)
+        except Exception as exc:  # noqa: BLE001 - CDN warming is non-critical after upload success.
+            logger.warning("Unable to enqueue upload CDN warm task (%s)", type(exc).__name__)
+        else:
+            db.commit()
         try:
             if staged_path:
                 delete_storage_file(staged_path)
@@ -563,6 +572,8 @@ def process_task(db: Session, task: UploadTask) -> None:
             .values(staged_path=None, staged_file_deleted_at=utcnow())
         )
         db.commit()
+        if warm_queued:
+            start_cdn_warm_worker()
     except Exception as exc:  # noqa: BLE001 - task failures must become durable queue state.
         _handle_task_failure(db, task_id, lease_token, exc)
 

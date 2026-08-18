@@ -23,6 +23,7 @@ from app.services.app_setting_service import (
     get_upload_worker_count,
     get_upload_worker_profile,
 )
+from app.services.cdn_warm_service import cdn_warm_stats, get_cdn_warm_config
 from app.services.release_service import current_app_version, latest_release_info, parse_semver
 from app.services.storage_stats_service import media_storage_stats
 from app.services.upload_task_service import upload_queue_stats
@@ -236,6 +237,10 @@ def system_health(
             "public_browser_cache_seconds": settings.media_public_browser_cache_seconds,
             "public_shared_cache_seconds": settings.media_public_shared_cache_seconds,
             "private_cache_control": "private, no-store, max-age=0",
+        },
+        "cdn_warm": {
+            "config": get_cdn_warm_config(db),
+            **cdn_warm_stats(db),
         },
         "security": {
             "auth_secret": auth_secret_health(settings.auth_secret),

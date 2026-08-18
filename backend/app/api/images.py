@@ -1,3 +1,4 @@
+import logging
 import random
 from typing import Annotated
 from pathlib import PurePath
@@ -35,6 +36,7 @@ from app.schemas.image import (
     ImageUploadResult,
 )
 from app.services.image_service import ImageService
+from app.services.cdn_warm_service import enqueue_new_public_image, start_cdn_warm_worker
 from app.services.app_setting_service import get_random_api_defaults
 from app.services.media_delivery_service import build_media_url, resolve_media_variant, rotate_media_version
 from app.services.storage_service import delete_storage_file, resolve_storage_file
@@ -44,6 +46,7 @@ from app.utils.urls import normalize_http_url
 
 router = APIRouter(prefix="/images", tags=["images"])
 RANDOM_SORT_MODULUS = 2_147_483_647
+logger = logging.getLogger(__name__)
 
 
 def _filename_extension(filename: str | None) -> str:
@@ -419,6 +422,18 @@ async def upload_images(
             delete_storage_file(path)
         raise HTTPException(status_code=500, detail="批量上传失败，本批图片未提交") from exc
 
+    warm_queued = False
+    try:
+        for image, duplicate in uploaded:
+            if not duplicate:
+                warm_queued = enqueue_new_public_image(db, image) or warm_queued
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 - CDN warming must never make uploads fail.
+        db.rollback()
+        logger.warning("Unable to enqueue direct-upload CDN warm tasks (%s)", type(exc).__name__)
+    if warm_queued:
+        start_cdn_warm_worker()
+
     results = [ImageUploadResult(image=image, duplicate=duplicate) for image, duplicate in uploaded]
     return {"items": results}
 
@@ -457,13 +472,27 @@ def update_images_batch(
     work_ids = data.pop("work_ids", None)
     character_ids = data.pop("character_ids", None)
     service = ImageService(db)
+    warm_images: list[Image] = []
     for image in images:
+        previous_version = image.media_version
         _rotate_media_version_if_access_changes(image, data)
         for key, value in data.items():
             setattr(image, key, value)
         service.update_relations(image, work_ids, character_ids)
+        if image.is_public and image.rating != "hidden" and image.media_version != previous_version:
+            warm_images.append(image)
 
     db.commit()
+    warm_queued = False
+    try:
+        for image in warm_images:
+            warm_queued = enqueue_new_public_image(db, image) or warm_queued
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.warning("Unable to enqueue batch-update CDN warm tasks (%s)", type(exc).__name__)
+    if warm_queued:
+        start_cdn_warm_worker()
     return {"count": len(images)}
 
 
@@ -562,12 +591,23 @@ def update_image(
     _validate_original_filename_extension(image.original_filename or image.filename, data.get("original_filename"))
     work_ids = data.pop("work_ids", None)
     character_ids = data.pop("character_ids", None)
+    previous_version = image.media_version
     _rotate_media_version_if_access_changes(image, data)
     for key, value in data.items():
         setattr(image, key, value)
     ImageService(db).update_relations(image, work_ids, character_ids)
     db.commit()
     db.refresh(image)
+    warm_queued = False
+    try:
+        if image.is_public and image.rating != "hidden" and image.media_version != previous_version:
+            warm_queued = enqueue_new_public_image(db, image)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.warning("Unable to enqueue image-update CDN warm task (%s)", type(exc).__name__)
+    if warm_queued:
+        start_cdn_warm_worker()
     return image
 
 

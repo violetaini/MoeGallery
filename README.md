@@ -82,6 +82,7 @@ Updates are handled by the main service, so no separate updater service or passw
 - A masonry gallery with search, sorting, and filters for titles, characters, and content ratings.
 - Automatic loading at the end of the page, with upcoming image thumbnails prefetched in advance.
 - An in-page image detail overlay, while retaining a direct URL for every image.
+- Built-in CDN thumbnail warming through a configured HTTPS hostname, with browser-style requests, ESA/EdgeOne/Cloudflare cache detection, persistent retries, and automatic renewal before shared-cache expiry.
 - Media-library-style title and character pages with backdrops, posters, avatars, and pagination.
 - Three fixed content ratings: `safe`, `sensitive`, and `hidden`.
 - A public random-image API can filter by work, character ID, Chinese/Japanese character names and aliases, rating, and orientation, with configurable desktop and mobile defaults.

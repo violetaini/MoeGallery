@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { galleryApi } from '../api/gallery'
+import { mediaUrl } from '../api/client'
 import { orientationLabel } from '../constants/orientations'
 import { ratingLabel, ratingOptions, ratingTagType } from '../constants/ratings'
 import ResponsiveImage from './ResponsiveImage.vue'
@@ -42,6 +43,10 @@ const bitDepthLabel = computed(() => {
 const colorProfileLabel = computed(() => props.image?.color_profile || '-')
 const uploadedAt = computed(() => (props.image?.created_at ? new Date(props.image.created_at).toLocaleString() : '-'))
 const originalExtension = computed(() => getFilenameExtension(props.image?.original_filename || props.image?.filename || ''))
+const directMediaUrl = computed(() => {
+  const path = mediaUrl(props.image, 'original')
+  return path ? new URL(path, window.location.origin).href : ''
+})
 
 function getFilenameExtension(filename) {
   const clean = (filename || '').trim()
@@ -96,6 +101,27 @@ function validateFilename() {
     return false
   }
   return true
+}
+
+async function copyDirectMediaUrl() {
+  if (!directMediaUrl.value) return
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(directMediaUrl.value)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = directMediaUrl.value
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      textarea.remove()
+    }
+    ElMessage.success('直连地址已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
 }
 
 async function save() {
@@ -185,7 +211,7 @@ onBeforeUnmount(() => {
               <el-descriptions-item label="上传时间">{{ uploadedAt }}</el-descriptions-item>
             </el-descriptions>
 
-            <el-form class="admin-image-edit-form" label-width="68px" :model="form">
+            <el-form class="admin-image-edit-form" label-width="76px" :model="form">
               <el-form-item label="文件名">
                 <el-input v-model="form.original_filename" :placeholder="originalExtension ? `保持 ${originalExtension} 后缀` : '不允许新增后缀'" />
               </el-form-item>
@@ -194,6 +220,15 @@ onBeforeUnmount(() => {
               </el-form-item>
               <el-form-item label="来源">
                 <el-input v-model="form.source_url" />
+              </el-form-item>
+              <el-form-item label="直连地址">
+                <el-input
+                  class="admin-image-edit-direct-url"
+                  readonly
+                  title="点击复制直连地址"
+                  :model-value="directMediaUrl"
+                  @click="copyDirectMediaUrl"
+                />
               </el-form-item>
               <el-form-item label="分级">
                 <el-radio-group v-model="form.rating">

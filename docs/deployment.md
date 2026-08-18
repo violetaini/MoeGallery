@@ -149,6 +149,14 @@ AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=/_agms_media
 
 The Nginx worker must have read and directory-traversal access to `/opt/moegallery/storage/`. After changing this setting, confirm `Nginx delivery` in System Health and open an original, preview, and thumbnail. A CDN should honor the origin headers for public `/media/*` responses and must not override `private` or `no-store`. The legacy `/storage/*` route exists only for client compatibility.
 
+### Built-in CDN media warming
+
+Under **System Settings > CDN image warming**, the main service can make browser-style image requests without cookies to a configured public HTTPS hostname. It does not require a CDN API key: the first request fills the CDN cache and the task records the detected ESA, EdgeOne, or Cloudflare cache status.
+
+The hostname must be a bound HTTPS domain. `localhost`, `127.0.0.1`, private or public IP addresses, single-label local hosts, and direct origins that do not identify as a supported CDN are rejected. Newly public images warm thumbnails by default; homepage slideshow and public hero images also warm previews. Administrators can batch-seed existing public thumbnails. Private, `hidden`, and `share=`-authorized media are never queued.
+
+The system never automatically warms the full original-image library, avoiding large unexpected bandwidth use. Tasks enforce a size cap, persist retry state, recover after service restarts, automatically requeue successful thumbnails before the shared CDN TTL expires, and queue new versioned URLs when media versions change.
+
 ## First-Time Setup
 
 After the service starts and passes its health check, open the complete first-time setup URL printed by the installation script. Its `#token=...` fragment contains a one-time setup token. The page reads it automatically and immediately removes it from the address bar; there is no token field to fill in.

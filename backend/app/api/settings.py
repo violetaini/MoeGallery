@@ -38,6 +38,7 @@ from app.services.app_setting_service import (
 )
 from app.services.admin_account_service import get_admin_account, update_admin_account
 from app.services.auth_session_service import clear_admin_session_cookie, rotate_auth_secret
+from app.services.cdn_warm_service import enqueue_home_images, start_cdn_warm_worker
 from app.services.api_key_service import (
     api_key_scope_catalog,
     create_api_key,
@@ -349,6 +350,22 @@ def update_settings(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.commit()
+    warm_queued = 0
+    try:
+        if "home_slideshow_image_ids" in data:
+            _ids, images = _read_image_list_setting(db, HOME_SLIDESHOW_IMAGE_IDS_KEY, public_only=True)
+            warm_queued += enqueue_home_images(db, images)
+        for prefix, key in PUBLIC_HERO_IMAGE_SETTINGS.items():
+            id_field = f"{prefix}_image_id"
+            if id_field in data:
+                _image_id, image = _read_image_setting(db, key, public_only=True)
+                if image:
+                    warm_queued += enqueue_home_images(db, [image])
+        db.commit()
+    except Exception:
+        db.rollback()
+    if warm_queued:
+        start_cdn_warm_worker()
     if data.get("upload_worker_count") is not None or data.get("upload_claim_batch_size") is not None:
         start_upload_worker()
     include_api_keys = admin.get("auth_type") != "api_key" or "api_keys:manage" in admin.get("api_key_scopes", [])

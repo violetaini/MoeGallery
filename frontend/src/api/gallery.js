@@ -182,6 +182,18 @@ export const galleryApi = {
   systemHealth(params = {}) {
     return api.get('/system/health', { params }).then((r) => r.data)
   },
+  cdnWarmStatus() {
+    return api.get('/cdn-warm').then((r) => r.data)
+  },
+  updateCdnWarmConfig(payload) {
+    return api.put('/cdn-warm/config', payload).then((r) => r.data)
+  },
+  probeCdnWarm() {
+    return api.post('/cdn-warm/probe').then((r) => r.data)
+  },
+  seedCdnWarmThumbnails() {
+    return api.post('/cdn-warm/seed-thumbnails').then((r) => r.data)
+  },
   checkUpdates() {
     return api.get('/updates/check').then((r) => r.data)
   },

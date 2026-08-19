@@ -416,13 +416,12 @@ onBeforeRouteLeave(() => {
     </div>
 
     <div
-      class="home-slideshow__rail-wrap"
-      :class="{ 'has-rail-controls': slides.length > 4, 'is-empty': !slides.length }"
+      class="home-slideshow__rail-wrap has-rail-controls"
+      :class="{ 'is-empty': !slides.length }"
       aria-label="胶片切换"
       :aria-busy="loading"
     >
       <button
-        v-if="slides.length > 4"
         class="home-rail-button home-rail-button--prev"
         type="button"
         title="向左滑动"
@@ -466,7 +465,6 @@ onBeforeRouteLeave(() => {
         </button>
       </div>
       <button
-        v-if="slides.length > 4"
         class="home-rail-button home-rail-button--next"
         type="button"
         title="向右滑动"

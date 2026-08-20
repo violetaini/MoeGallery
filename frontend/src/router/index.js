@@ -37,8 +37,6 @@ import {
   loadWorkManage
 } from './preload'
 
-export { warmPublicRoutes } from './preload'
-
 let installStatusCache = null
 let authProbePromise = null
 let authProbeResult = null

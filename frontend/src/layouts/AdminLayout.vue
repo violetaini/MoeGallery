@@ -1,4 +1,5 @@
 <script setup>
+import '../styles/admin-features.css'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {

@@ -79,7 +79,7 @@ class AdminSettingsUpdate(BaseModel):
     admin_password: str | None = Field(default=None, min_length=6, max_length=128)
     admin_avatar_image_id: int | None = Field(default=None, ge=1)
     clear_admin_avatar: bool | None = None
-    home_slideshow_image_ids: list[int] | None = Field(default=None, max_length=24)
+    home_slideshow_image_ids: list[int] | None = Field(default=None, max_length=48)
     home_hero_image_id: int | None = Field(default=None, ge=1)
     clear_home_hero_image: bool | None = None
     works_hero_image_id: int | None = Field(default=None, ge=1)

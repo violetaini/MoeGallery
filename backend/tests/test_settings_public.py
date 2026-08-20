@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -14,6 +15,7 @@ if str(BACKEND_DIR) not in sys.path:
 from app.api import settings as settings_api
 from app.database import Base
 from app.models import Image
+from app.schemas.settings import AdminSettingsUpdate
 from app.services.app_setting_service import (
     RANDOM_API_DEFAULT_RATING_KEY,
     RANDOM_API_DESKTOP_ORIENTATION_KEY,
@@ -140,6 +142,16 @@ class PublicSettingsTests(unittest.TestCase):
                             [image.id],
                             public_only=True,
                         )
+
+    def test_home_slideshow_accepts_forty_eight_images(self):
+        image_ids = list(range(1, 49))
+        self.assertEqual(settings_api._normalize_image_id_list(image_ids), image_ids)
+        self.assertEqual(AdminSettingsUpdate(home_slideshow_image_ids=image_ids).home_slideshow_image_ids, image_ids)
+
+        with self.assertRaisesRegex(ValueError, "at most 48 images"):
+            settings_api._normalize_image_id_list(list(range(1, 50)))
+        with self.assertRaises(ValidationError):
+            AdminSettingsUpdate(home_slideshow_image_ids=list(range(1, 50)))
 
     def test_random_api_admin_defaults_are_normalized(self):
         with self.SessionTesting() as db:

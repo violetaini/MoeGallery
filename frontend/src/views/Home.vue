@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeft, ArrowRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { mediaUrl } from '../api/client'
@@ -20,12 +20,16 @@ const activeImageRetryCount = ref(0)
 const exiting = ref(false)
 const slideInterval = 5600
 const maxActiveImageRetries = 2
-const preloadWorkerCount = 3
+const initialSlideLoadConcurrency = 3
+const randomSlideCount = 24
 const preloadedImages = new Map()
 let slideTimer = null
 let imageSwapTimer = null
 let preloadGeneration = 0
 let slideRequestSequence = 0
+let backgroundPreloadFrame = null
+let backgroundPreloadIdleCallback = null
+let backgroundPreloadTimer = null
 const railDrag = {
   active: false,
   moved: false,
@@ -34,13 +38,14 @@ const railDrag = {
 }
 
 const activeSlide = computed(() => slides.value[activeIndex.value] || null)
-const activeImageSrc = computed(() => imageSrc(activeSlide.value))
+const activeImageSrc = computed(() => homeSlideImageSrc(activeSlide.value))
 const activeTitle = computed(() => activeSlide.value?.original_filename || activeSlide.value?.filename || 'Anime Gallery')
 const slideshowStyle = computed(() => ({
   '--home-slideshow-image': `url("${activeDisplayImageSrc.value || fallbackImage}")`
 }))
 
-function imageSrc(image) {
+// The filmstrip and player deliberately share this exact media source.
+function homeSlideImageSrc(image) {
   return mediaUrl(image, 'preview') || mediaUrl(image, 'original') || fallbackImage
 }
 
@@ -98,7 +103,7 @@ function preloadHomeImage(source, priority = 'low') {
 function preloadSlide(index, priority = 'low') {
   if (exiting.value || !slides.value.length) return null
   const normalizedIndex = (index + slides.value.length) % slides.value.length
-  return preloadHomeImage(imageSrc(slides.value[normalizedIndex]), priority)
+  return preloadHomeImage(homeSlideImageSrc(slides.value[normalizedIndex]), priority)
 }
 
 function clearSlideTimer() {
@@ -112,6 +117,22 @@ function clearImageSwapTimer() {
   if (imageSwapTimer) {
     window.clearTimeout(imageSwapTimer)
     imageSwapTimer = null
+  }
+}
+
+function clearBackgroundPreloadSchedule() {
+  if (typeof window === 'undefined') return
+  if (backgroundPreloadFrame !== null) {
+    window.cancelAnimationFrame(backgroundPreloadFrame)
+    backgroundPreloadFrame = null
+  }
+  if (backgroundPreloadIdleCallback !== null && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(backgroundPreloadIdleCallback)
+    backgroundPreloadIdleCallback = null
+  }
+  if (backgroundPreloadTimer !== null) {
+    window.clearTimeout(backgroundPreloadTimer)
+    backgroundPreloadTimer = null
   }
 }
 
@@ -181,7 +202,7 @@ async function chooseSlide(index) {
     return
   }
 
-  const targetSource = imageSrc(slides.value[targetIndex])
+  const targetSource = homeSlideImageSrc(slides.value[targetIndex])
   const loaded = targetSource === fallbackImage || await preloadHomeImage(targetSource, 'high')
   if (requestSequence !== slideRequestSequence || exiting.value) return
 
@@ -257,9 +278,89 @@ function handleThumbClick(index) {
   void chooseSlide(index)
 }
 
+function appendLoadedSlide(candidate, source, generation) {
+  if (generation !== preloadGeneration || exiting.value || slides.value.some((slide) => slide.id === candidate.id)) {
+    return false
+  }
+
+  const isFirstReady = slides.value.length === 0
+  slides.value.push(candidate)
+  if (isFirstReady) {
+    activeIndex.value = 0
+    activeImageRetryCount.value = 0
+    if (source !== activeDisplayImageSrc.value) {
+      pendingImageLoaded.value = false
+      pendingSlideIndex.value = 0
+      pendingDisplayImageSrc.value = source
+    }
+  }
+  if (slides.value.length === 2) scheduleSlideTimer()
+  return true
+}
+
+async function loadHomeSlideCandidate(candidate, generation, priority) {
+  const source = homeSlideImageSrc(candidate)
+  const loaded = source === fallbackImage || await preloadHomeImage(source, priority)
+  if (!loaded) return false
+  return appendLoadedSlide(candidate, source, generation)
+}
+
+function visibleRailSlotCount(candidateCount) {
+  if (!candidateCount) return 0
+  const railWidth = railRef.value?.clientWidth || window.innerWidth || 0
+  const cardSpan = window.innerWidth <= 520 ? 84 : window.innerWidth <= 760 ? 110 : 166
+  return Math.min(candidateCount, Math.max(4, Math.ceil(railWidth / cardSpan) + 1))
+}
+
+async function loadInitialRailSlides(candidates, generation) {
+  await nextTick()
+  const visibleSlots = visibleRailSlotCount(candidates.length)
+  let cursor = 0
+
+  async function worker() {
+    while (generation === preloadGeneration && !exiting.value && cursor < candidates.length && slides.value.length < visibleSlots) {
+      const candidate = candidates[cursor]
+      cursor += 1
+      await loadHomeSlideCandidate(candidate, generation, 'high')
+    }
+  }
+
+  const workerCount = Math.min(initialSlideLoadConcurrency, candidates.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+  const loadedIds = new Set(slides.value.map((slide) => slide.id))
+  return candidates.filter((candidate) => !loadedIds.has(candidate.id))
+}
+
+function scheduleBackgroundSlidePreload(candidates, generation) {
+  if (!candidates.length || typeof window === 'undefined') return
+
+  const startPreload = () => {
+    backgroundPreloadIdleCallback = null
+    backgroundPreloadTimer = null
+    if (generation !== preloadGeneration || exiting.value) return
+
+    // Start every remaining home image together only after the first viewport is stable.
+    candidates.forEach((candidate) => {
+      void loadHomeSlideCandidate(candidate, generation, 'low')
+    })
+  }
+
+  const waitForIdle = () => {
+    backgroundPreloadFrame = null
+    if (typeof window.requestIdleCallback === 'function') {
+      backgroundPreloadIdleCallback = window.requestIdleCallback(startPreload, { timeout: 1200 })
+    } else {
+      backgroundPreloadTimer = window.setTimeout(startPreload, 180)
+    }
+  }
+
+  backgroundPreloadFrame = window.requestAnimationFrame(waitForIdle)
+}
+
 async function setSlides(items) {
   const candidates = Array.isArray(items) ? items.filter(Boolean) : []
   const generation = ++preloadGeneration
+  clearBackgroundPreloadSchedule()
   clearImageSwapTimer()
   clearPendingImage()
   clearSlideTimer()
@@ -269,71 +370,54 @@ async function setSlides(items) {
   activeImageRetryCount.value = 0
   slideRequestSequence += 1
 
-  if (!candidates.length) return
+  if (!candidates.length) return { generation, remainingCandidates: [] }
 
-  let cursor = 0
-  async function worker() {
-    while (generation === preloadGeneration && cursor < candidates.length) {
-      const candidate = candidates[cursor]
-      cursor += 1
-      const source = imageSrc(candidate)
-      const loaded = source === fallbackImage || await preloadHomeImage(source, 'high')
-      if (generation !== preloadGeneration || exiting.value) return
-      if (!loaded) continue
-
-      const isFirstReady = slides.value.length === 0
-      slides.value.push(candidate)
-      if (isFirstReady) {
-        activeIndex.value = 0
-        activeImageRetryCount.value = 0
-        if (source !== activeDisplayImageSrc.value) {
-          pendingImageLoaded.value = false
-          pendingSlideIndex.value = 0
-          pendingDisplayImageSrc.value = source
-        }
-      }
-      if (slides.value.length === 2) scheduleSlideTimer()
-    }
-  }
-
-  const workerCount = Math.min(preloadWorkerCount, candidates.length)
-  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+  const remainingCandidates = await loadInitialRailSlides(candidates, generation)
+  return { generation, remainingCandidates }
 }
 
 async function loadSlides() {
+  let preloadPlan = null
   loading.value = true
   try {
-    const settings = await galleryApi.publicSettings().catch(() => null)
-    const configuredSlides = settings?.home_slideshow_images || []
-    if (configuredSlides.length) {
-      await setSlides(configuredSlides)
-      return
-    }
-    let data = await galleryApi.images({
+    // Most galleries use the random feed. Start it with the settings request to
+    // remove one network round trip before the first image can begin loading.
+    const settingsRequest = galleryApi.publicSettings().catch(() => null)
+    const randomSlidesRequest = galleryApi.images({
       page: 1,
-      page_size: 12,
+      page_size: randomSlideCount,
       orientation: 'landscape',
       sort: 'random',
       exclude_cover_images: true,
       exclude_backdrop_images: true,
       exclude_avatar_images: true
-    })
-    if (!data.items?.length) {
+    }).catch(() => null)
+    const settings = await settingsRequest
+    const configuredSlides = settings?.home_slideshow_images || []
+    if (configuredSlides.length) {
+      preloadPlan = await setSlides(configuredSlides)
+      return
+    }
+    let data = await randomSlidesRequest
+    if (!data?.items?.length) {
       data = await galleryApi.images({
         page: 1,
-        page_size: 12,
+        page_size: randomSlideCount,
         sort: 'random',
         exclude_cover_images: true,
         exclude_backdrop_images: true,
         exclude_avatar_images: true
       })
     }
-    await setSlides(data.items || [])
+    preloadPlan = await setSlides(data.items || [])
   } catch (error) {
-    await setSlides([])
+    preloadPlan = await setSlides([])
   } finally {
     loading.value = false
     scheduleSlideTimer()
+    if (preloadPlan && preloadPlan.generation === preloadGeneration && !exiting.value) {
+      scheduleBackgroundSlidePreload(preloadPlan.remainingCandidates, preloadPlan.generation)
+    }
   }
 }
 
@@ -343,6 +427,7 @@ onBeforeUnmount(() => {
   slideRequestSequence += 1
   clearSlideTimer()
   clearImageSwapTimer()
+  clearBackgroundPreloadSchedule()
   preloadedImages.clear()
 })
 
@@ -353,6 +438,7 @@ onBeforeRouteLeave(() => {
   slideRequestSequence += 1
   clearSlideTimer()
   clearImageSwapTimer()
+  clearBackgroundPreloadSchedule()
 })
 </script>
 
@@ -433,7 +519,7 @@ onBeforeRouteLeave(() => {
       <div
         ref="railRef"
         class="home-slideshow__rail"
-        aria-label="放映缩略图"
+        aria-label="放映图片"
         @wheel="handleRailWheel"
         @pointerdown="startRailDrag"
         @pointermove="moveRailDrag"
@@ -456,7 +542,7 @@ onBeforeRouteLeave(() => {
           @click.stop="handleThumbClick(index)"
         >
           <img
-            :src="imageSrc(slide)"
+            :src="homeSlideImageSrc(slide)"
             :alt="slide.original_filename || slide.filename || '图片'"
             loading="lazy"
             decoding="async"

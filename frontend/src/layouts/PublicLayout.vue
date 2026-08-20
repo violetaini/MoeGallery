@@ -2,16 +2,15 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, Setting } from '@element-plus/icons-vue'
-import { useThemeStore } from '../stores/theme'
+import { applyLightTheme } from '../stores/theme'
 import { preloadRoute } from '../router/preload'
 
 const route = useRoute()
 const router = useRouter()
-const theme = useThemeStore()
 
 const isHomeLayoutActive = computed(() => route.name === 'home')
 
-onMounted(() => theme.apply())
+onMounted(applyLightTheme)
 
 function submitSearch(value) {
   const q = value?.trim()

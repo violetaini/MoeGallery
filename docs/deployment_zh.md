@@ -149,6 +149,8 @@ AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=/_agms_media
 
 Nginx worker 必须对 `/opt/moegallery/storage/` 具有只读和目录遍历权限。配置不一致时图片会返回错误，因此修改后应在“系统设置 > 系统健康”确认显示“`Nginx 发送`”，并实际打开原图、预览图和缩略图检查。CDN 只应按源站响应头缓存公开的 `/media/*`，不能强制缓存带 `private` 或 `no-store` 的响应。旧 `/storage/*` 仅用于兼容客户端。
 
+前端构建产物的 `/assets/*` 文件名包含内容哈希。MoeGallery 会为成功响应返回 `Cache-Control: public, max-age=31536000, immutable`；发布新构建即可得到新地址，不应依赖清理旧构建产物 URL。HTML、API 和媒体资源仍各自遵循原有缓存策略。
+
 ### 内置 CDN 图片预热
 
 在“系统设置 > CDN 图片预热”中，可以让主程序以不携带 Cookie 的浏览器风格图片请求访问已配置的公开 HTTPS 域名。它不会使用 CDN API Key，而是用首次访问填充 CDN 缓存，并记录实际识别到的 ESA、EdgeOne 或 Cloudflare 缓存状态。
@@ -156,6 +158,19 @@ Nginx worker 必须对 `/opt/moegallery/storage/` 具有只读和目录遍历权
 预热域名必须是已绑定的 HTTPS 域名；`localhost`、`127.0.0.1`、内网/公网 IP、无点号的本地域名和未识别 CDN 的直连源站都会被拒绝。新公开图片默认只预热缩略图；首页幻灯片和公开页背景会额外预热预览图。管理员也可以分批补齐已有公开缩略图的预热任务。私有、`hidden` 和带 `share=` 授权参数的资源永远不会进入预热队列。
 
 为了避免额外带宽，系统不会自动预热整个原图库。每个任务会限制读取大小、持久化重试状态，并在服务重启后恢复；成功的缩略图会在共享 CDN 缓存 TTL 到期前自动重新排队，图片媒体版本变化后也会针对新的版本化 URL 创建新任务。
+
+### ESA 响应压缩
+
+ESA 可以在边缘压缩 JavaScript、CSS 等符合条件的文本响应。`scripts/esa_compression.mjs` 是可选的独立管理员工具：默认只读取并显示 ESA 全局压缩规则，只有传入 `--apply` 才会修改。它会同时启用 Gzip、Brotli 和 Zstd，不会修改缓存规则、域名或应用配置。
+
+```bash
+export ALIBABA_ACCESS_KEY_ID='your-access-key-id'
+export ALIBABA_ACCESS_KEY_SECRET='your-access-key-secret'
+node scripts/esa_compression.mjs
+node scripts/esa_compression.mjs --apply
+```
+
+凭据只从进程环境变量读取，不能提交到 `.env`、仓库或前端代码。该工具与内置 CDN 图片预热相互独立，正常启动应用不需要它。
 
 ## 图片分享
 

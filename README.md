@@ -78,7 +78,7 @@ Updates are handled by the main service, so no separate updater service or passw
 
 ## Features
 
-- A fullscreen slideshow home page whose images can be selected from the admin panel; when none are selected, images are chosen randomly from the library.
+- A fullscreen slideshow home page with up to 48 administrator-selected images or 24 random library images. The player and filmstrip share the same media URL; visible film slots fill first, then remaining images preload after the first viewport settles.
 - A masonry gallery with search, sorting, and filters for titles, characters, and content ratings.
 - Automatic loading at the end of the page, with upcoming image thumbnails prefetched in advance.
 - An in-page image detail overlay, while retaining a direct URL for every image.

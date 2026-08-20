@@ -202,6 +202,8 @@ def unmatched_api_route(unmatched_path: str):
 
 
 class SPAStaticFiles(StaticFiles):
+    ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
     @staticmethod
     def should_fallback(path, scope) -> bool:
         first_segment = str(path).lstrip("/").split("/", 1)[0]
@@ -220,6 +222,11 @@ class SPAStaticFiles(StaticFiles):
             response = await super().get_response("index.html", scope)
         if response.status_code == 404 and self.should_fallback(path, scope):
             return await super().get_response("index.html", scope)
+        # Vite hashes every production asset filename. These files can be kept
+        # indefinitely by a browser because a deployment references new names.
+        request_path = str(scope.get("path", path)).lstrip("/")
+        if response.status_code == 200 and request_path.startswith("assets/"):
+            response.headers.setdefault("Cache-Control", self.ASSET_CACHE_CONTROL)
         return response
 
 

@@ -60,7 +60,7 @@ CHARACTERS_HERO_IMAGE_ID_KEY = "public.characters_hero_image_id"
 RATINGS_HERO_IMAGE_ID_KEY = "public.ratings_hero_image_id"
 DEFAULT_IMAGE_MANAGE_VIEW_MODE = "classic"
 VALID_IMAGE_MANAGE_VIEW_MODES = {"classic", "waterfall"}
-MAX_HOME_SLIDESHOW_IMAGES = 24
+MAX_HOME_SLIDESHOW_IMAGES = 48
 PUBLIC_HERO_IMAGE_SETTINGS = {
     "home_hero": HOME_HERO_IMAGE_ID_KEY,
     "works_hero": WORKS_HERO_IMAGE_ID_KEY,

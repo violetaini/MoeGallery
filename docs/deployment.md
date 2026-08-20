@@ -149,6 +149,8 @@ AGMS_MEDIA_ACCEL_REDIRECT_PREFIX=/_agms_media
 
 The Nginx worker must have read and directory-traversal access to `/opt/moegallery/storage/`. After changing this setting, confirm `Nginx delivery` in System Health and open an original, preview, and thumbnail. A CDN should honor the origin headers for public `/media/*` responses and must not override `private` or `no-store`. The legacy `/storage/*` route exists only for client compatibility.
 
+Frontend build files under `/assets/*` have content-hashed names. MoeGallery sends these successful responses with `Cache-Control: public, max-age=31536000, immutable`; deploy a new build instead of trying to purge an old asset URL. HTML, API, and media responses keep their own cache policies.
+
 ### Built-in CDN media warming
 
 Under **System Settings > CDN image warming**, the main service can make browser-style image requests without cookies to a configured public HTTPS hostname. It does not require a CDN API key: the first request fills the CDN cache and the task records the detected ESA, EdgeOne, or Cloudflare cache status.
@@ -156,6 +158,19 @@ Under **System Settings > CDN image warming**, the main service can make browser
 The hostname must be a bound HTTPS domain. `localhost`, `127.0.0.1`, private or public IP addresses, single-label local hosts, and direct origins that do not identify as a supported CDN are rejected. Newly public images warm thumbnails by default; homepage slideshow and public hero images also warm previews. Administrators can batch-seed existing public thumbnails. Private, `hidden`, and `share=`-authorized media are never queued.
 
 The system never automatically warms the full original-image library, avoiding large unexpected bandwidth use. Tasks enforce a size cap, persist retry state, recover after service restarts, automatically requeue successful thumbnails before the shared CDN TTL expires, and queue new versioned URLs when media versions change.
+
+### ESA response compression
+
+ESA can compress JavaScript, CSS, and other eligible text responses at the edge. `scripts/esa_compression.mjs` is an optional, standalone administrator tool: it inspects the global ESA compression rule by default and only changes it when invoked with `--apply`. It enables Gzip, Brotli, and Zstd together, without changing cache rules, domains, or application configuration.
+
+```bash
+export ALIBABA_ACCESS_KEY_ID='your-access-key-id'
+export ALIBABA_ACCESS_KEY_SECRET='your-access-key-secret'
+node scripts/esa_compression.mjs
+node scripts/esa_compression.mjs --apply
+```
+
+The credentials are read only from the process environment; never commit them to `.env`, the repository, or frontend code. The tool is separate from CDN image warming and is not needed for normal application startup.
 
 ## First-Time Setup
 

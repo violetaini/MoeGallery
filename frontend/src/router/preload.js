@@ -53,27 +53,3 @@ export function preloadRoute(routeName) {
   const loader = routeLoaders[routeName]
   return loader ? loader().catch(() => undefined) : Promise.resolve()
 }
-
-let publicRouteWarmupStarted = false
-
-export function warmPublicRoutes() {
-  if (publicRouteWarmupStarted || typeof window === 'undefined') return
-  publicRouteWarmupStarted = true
-
-  const routeNames = ['gallery', 'works', 'characters', 'tags', 'search']
-  const schedule = typeof window.requestIdleCallback === 'function'
-    ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 })
-    : (callback) => window.setTimeout(callback, 160)
-  let index = 0
-
-  const loadNext = () => {
-    const routeName = routeNames[index]
-    index += 1
-    if (!routeName) return
-    preloadRoute(routeName).finally(() => {
-      if (index < routeNames.length) window.setTimeout(loadNext, 120)
-    })
-  }
-
-  schedule(loadNext)
-}

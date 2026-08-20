@@ -63,6 +63,7 @@ const homeSlideshowPickerImages = ref([])
 const homeSlideshowPickerTotal = ref(0)
 const homeSlideshowPickerPage = ref(1)
 const homeSlideshowPickerPageSize = 24
+const maxHomeSlideshowImages = 48
 const homeSlideshowImageQuery = ref('')
 const homeSlideshowWorkId = ref()
 const homeSlideshowCharacterId = ref()
@@ -658,8 +659,8 @@ function toggleHomeSlideshowImage(image) {
     removeHomeSlideshowImage(image.id)
     return
   }
-  if (homeSlideshowImageIds.value.length >= 24) {
-    ElMessage.warning('首页放映图片最多选择 24 张')
+  if (homeSlideshowImageIds.value.length >= maxHomeSlideshowImages) {
+    ElMessage.warning(`首页放映图片最多选择 ${maxHomeSlideshowImages} 张`)
     return
   }
   mergeHomeSlideshowImageOptions([image])
@@ -1133,7 +1134,7 @@ onMounted(async () => {
                 >
                   重置
                 </el-button>
-                <span class="home-slideshow-picker-count">已选择 {{ homeSlideshowImageIds.length }} / 24</span>
+                <span class="home-slideshow-picker-count">已选择 {{ homeSlideshowImageIds.length }} / {{ maxHomeSlideshowImages }}</span>
               </div>
               <div v-loading="homeSlideshowImageLoading" class="home-slideshow-picker-grid">
                 <button

@@ -1,0 +1,97 @@
+name: Auto-merge routine Dependabot updates
+
+on:
+  workflow_run:
+    workflows:
+      - Verify
+      - Dependency audit
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  merge-routine-update:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge a verified routine Dependabot update
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const headSha = context.payload.workflow_run.head_sha
+            const { data: pulls } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              base: 'main',
+              per_page: 100
+            })
+            const pull = pulls.find((candidate) => candidate.head.sha === headSha)
+
+            if (!pull) {
+              core.notice(`No open pull request matches ${headSha}.`)
+              return
+            }
+            if (
+              pull.user?.login !== 'dependabot[bot]'
+              || pull.head.repo?.full_name !== `${owner}/${repo}`
+              || !pull.head.ref.includes('routine-minor-and-patch')
+            ) {
+              core.notice(`PR #${pull.number} is not an internal routine Dependabot update.`)
+              return
+            }
+
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner,
+              repo,
+              pull_number: pull.number,
+              per_page: 100
+            })
+            const needsDependencyAudit = files.some((file) => (
+              file.filename.startsWith('backend/requirements')
+              || file.filename === 'frontend/package.json'
+              || file.filename === 'frontend/package-lock.json'
+              || file.filename === '.github/workflows/dependency-audit.yml'
+            ))
+            const requiredWorkflows = needsDependencyAudit
+              ? new Set(['Verify', 'Dependency audit'])
+              : new Set(['Verify'])
+            const { data: runs } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner,
+              repo,
+              head_sha: headSha,
+              per_page: 100
+            })
+            const successfulWorkflows = new Set(
+              runs.workflow_runs
+                .filter((run) => run.status === 'completed' && run.conclusion === 'success')
+                .map((run) => run.name)
+            )
+            const missing = [...requiredWorkflows].filter((name) => !successfulWorkflows.has(name))
+            if (missing.length) {
+              core.notice(`PR #${pull.number} is waiting for: ${missing.join(', ')}.`)
+              return
+            }
+
+            try {
+              const result = await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: pull.number,
+                sha: pull.head.sha,
+                merge_method: 'squash'
+              })
+              core.notice(result.data.message)
+            } catch (error) {
+              core.warning(`PR #${pull.number} was not merged: ${error.message}`)
+            }

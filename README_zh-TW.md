@@ -139,13 +139,6 @@ npm ci
 npm run dev
 ```
 
-## 安全
-
-- 不要將 `.env`、`installed.lock`、資料庫、上傳圖片、備份或私鑰提交到 Git。
-- 透過不受信任的網路開放管理員登入前，請自行設定 HTTPS。
-- MySQL 應使用專用帳號，不要使用資料庫管理員帳號。
-- 保持 Release SHA256 校驗，只設定可信任的 GitHub 代理。
-
 ## 授權
 
 MoeGallery 使用 [MIT License](LICENSE)。

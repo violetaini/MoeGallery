@@ -166,14 +166,6 @@ The frontend development server runs at `http://127.0.0.1:5173` and proxies API 
 /api-docs         Admin API documentation
 ```
 
-## Security
-
-- Keep `.env`, `installed.lock`, databases, uploaded files, backups, and private keys out of Git.
-- Configure HTTPS before exposing the admin login over a public or otherwise untrusted network.
-- Create a dedicated MySQL account for MoeGallery; do not use the MySQL root account or another database administrator account.
-- Keep release package checksum verification enabled. If a GitHub proxy is required, use only one you trust.
-- Report security issues privately instead of publishing credentials or exploit details.
-
 ## License
 
 MoeGallery is released under the [MIT License](LICENSE).

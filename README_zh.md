@@ -169,14 +169,6 @@ npm run dev
 /api-docs         管理员 API 文档
 ```
 
-## 安全
-
-- 不要把 `.env`、`installed.lock`、数据库、上传图片、备份或私钥提交到 Git。
-- 通过公网访问后台前，请先配置 HTTPS，避免管理员密码和 Cookie 以明文传输。
-- 为 MoeGallery 创建独立的 MySQL 账号，不要使用数据库的 root 或其他管理员账号。
-- 不要关闭发布包的 SHA256 校验；需要使用 GitHub 代理时，只填写自己信任的地址。
-- 发现安全问题时请私下报告，不要公开账号、密钥或漏洞利用细节。
-
 ## 许可证
 
 MoeGallery 使用 [MIT License](LICENSE)。

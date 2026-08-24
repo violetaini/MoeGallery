@@ -137,7 +137,7 @@ SQLite 通过 SQLite Backup API 创建一致性备份；MySQL/MariaDB 使用 `my
 
 ## 本地开发
 
-参与本地开发需要 Python 3.11 或更高版本，以及 Node.js 20 或更高版本。
+参与本地开发需要 Python 3.11 或更高版本，以及 Node.js 20.19+ 或 22.12+。
 
 ```bash
 # 后端

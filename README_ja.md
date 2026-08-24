@@ -134,7 +134,7 @@ SQLite では SQLite Backup API を使って整合性のあるバックアップ
 
 ## 開発
 
-ローカル開発には Python 3.11 以降と Node.js 20 以降が必要です。
+ローカル開発には Python 3.11 以降と Node.js 20.19+ または 22.12+ が必要です。
 
 ```bash
 # バックエンド

@@ -135,7 +135,7 @@ SQLite backups use the SQLite Backup API to create a consistent snapshot. MySQL/
 
 ## Development
 
-Local development requires Python 3.11 or later and Node.js 20 or later.
+Local development requires Python 3.11 or later and Node.js 20.19+ or 22.12+.
 
 ```bash
 # Backend

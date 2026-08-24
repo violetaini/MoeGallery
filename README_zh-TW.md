@@ -126,7 +126,7 @@ SQLite 使用 SQLite backup API；MySQL/MariaDB 使用 `mysqldump --single-trans
 
 ## 本機開發
 
-需要 Python 3.11 或更新版本，以及 Node.js 20 或更新版本。
+需要 Python 3.11 或更新版本，以及 Node.js 20.19+ 或 22.12+。
 
 ```bash
 python -m venv .venv

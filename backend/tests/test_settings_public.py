@@ -16,6 +16,7 @@ from app.api import settings as settings_api
 from app.database import Base
 from app.models import Image
 from app.schemas.settings import AdminSettingsUpdate
+from app.services.admin_account_service import get_admin_account
 from app.services.app_setting_service import (
     RANDOM_API_DEFAULT_RATING_KEY,
     RANDOM_API_DESKTOP_ORIENTATION_KEY,
@@ -152,6 +153,25 @@ class PublicSettingsTests(unittest.TestCase):
             settings_api._normalize_image_id_list(list(range(1, 50)))
         with self.assertRaises(ValidationError):
             AdminSettingsUpdate(home_slideshow_image_ids=list(range(1, 50)))
+
+    def test_admin_nickname_is_saved_and_empty_value_falls_back_to_username(self):
+        with self.SessionTesting() as db:
+            data = settings_api.update_settings(
+                AdminSettingsUpdate(admin_username="owner", admin_nickname="  画廊主人  "),
+                db,
+                {"auth_type": "session", "api_key_scopes": []},
+            )
+            self.assertEqual(data["admin_username"], "owner")
+            self.assertEqual(data["admin_nickname"], "画廊主人")
+            self.assertEqual(get_admin_account(db).nickname, "画廊主人")
+
+            data = settings_api.update_settings(
+                AdminSettingsUpdate(admin_nickname="   "),
+                db,
+                {"auth_type": "session", "api_key_scopes": []},
+            )
+            self.assertEqual(data["admin_nickname"], "owner")
+            self.assertEqual(get_admin_account(db).nickname, "owner")
 
     def test_random_api_admin_defaults_are_normalized(self):
         with self.SessionTesting() as db:

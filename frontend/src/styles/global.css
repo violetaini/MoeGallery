@@ -3880,8 +3880,7 @@ body {
     display: none;
   }
 
-  .admin-header-actions .admin-user-avatar,
-  .admin-header-actions > .muted {
+  .admin-header-actions .admin-profile-shortcut {
     display: none;
   }
 

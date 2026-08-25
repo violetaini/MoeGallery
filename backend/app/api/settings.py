@@ -245,6 +245,7 @@ def _read_settings(db: Session, *, include_api_keys: bool = True) -> dict[str, o
         "upload_task_max_attempts": get_upload_task_max_attempts(db),
         "upload_failed_retention_days": get_upload_failed_retention_days(db),
         "admin_username": account.username,
+        "admin_nickname": account.nickname,
         "admin_avatar_image_id": account.avatar_image_id,
         "admin_avatar_image": account.avatar_image,
         "admin_password_change_required": account.password_change_required,
@@ -335,6 +336,7 @@ def update_settings(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if (
         data.get("admin_username") is not None
+        or data.get("admin_nickname") is not None
         or data.get("admin_password") is not None
         or data.get("admin_avatar_image_id") is not None
         or data.get("clear_admin_avatar")
@@ -343,6 +345,7 @@ def update_settings(
             update_admin_account(
                 db,
                 username=data.get("admin_username"),
+                nickname=data.get("admin_nickname"),
                 password=data.get("admin_password"),
                 avatar_image_id=data.get("admin_avatar_image_id"),
                 clear_avatar=bool(data.get("clear_admin_avatar")),

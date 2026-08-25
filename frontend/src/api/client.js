@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 const USER_KEY = 'agms-admin-user'
+const DISPLAY_NAME_KEY = 'agms-admin-display-name'
 const AVATAR_KEY = 'agms-admin-avatar'
 const SESSION_KEY = 'agms-admin-session'
 export const AUTH_SESSION_CHANGED_EVENT = 'agms-auth-session-changed'
@@ -17,6 +18,10 @@ export function getAuthUser() {
   return localStorage.getItem(USER_KEY) || ''
 }
 
+export function getAuthDisplayName() {
+  return localStorage.getItem(DISPLAY_NAME_KEY) || getAuthUser()
+}
+
 export function getAuthAvatar() {
   return localStorage.getItem(AVATAR_KEY) || ''
 }
@@ -26,10 +31,15 @@ export function adminAvatarUrlFromImage(image) {
   return mediaUrl(image, 'thumbnail')
 }
 
-export function setAuthSession({ access_token, username, expires_in, avatar_image }) {
+export function setAuthSession({ access_token, username, nickname, expires_in, avatar_image }) {
   localStorage.setItem(SESSION_KEY, '1')
   void access_token
   if (username !== undefined) localStorage.setItem(USER_KEY, username || '')
+  if (nickname !== undefined) {
+    const displayName = nickname?.trim()
+    if (displayName) localStorage.setItem(DISPLAY_NAME_KEY, displayName)
+    else localStorage.removeItem(DISPLAY_NAME_KEY)
+  }
   void expires_in
   if (avatar_image !== undefined) {
     const avatarUrl = adminAvatarUrlFromImage(avatar_image)
@@ -42,6 +52,7 @@ export function setAuthSession({ access_token, username, expires_in, avatar_imag
 export function clearAuthSession() {
   localStorage.removeItem(SESSION_KEY)
   localStorage.removeItem(USER_KEY)
+  localStorage.removeItem(DISPLAY_NAME_KEY)
   localStorage.removeItem(AVATAR_KEY)
   notifyAuthSessionChanged()
 }

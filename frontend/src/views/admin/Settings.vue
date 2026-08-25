@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Delete, Edit, Loading, Plus, Refresh } from '@element-plus/icons-vue'
 import { adminAvatarUrlFromImage, clearAuthSession, mediaUrl, setAuthSession } from '../../api/client'
@@ -16,6 +16,7 @@ import {
 
 const imageManageViewMode = ref(getImageManageViewMode())
 const router = useRouter()
+const route = useRoute()
 const uploadWorkerCount = ref(12)
 const uploadWorkerLimit = ref(96)
 const databaseConcurrencyProfile = ref('generic')
@@ -43,11 +44,14 @@ const editingApiKeyId = ref(null)
 const rotatingApiKeyId = ref(null)
 const apiKeyForm = ref({ name: '', scopes: ['library:read'], expires_at: null })
 const adminUsername = ref('')
+const adminNickname = ref('')
 const adminPassword = ref('')
 const adminPasswordChangeRequired = ref(false)
 const adminAvatarImage = ref(null)
 const adminAvatarImageId = ref(null)
 const avatarUploading = ref(false)
+const adminAccountPanelRef = ref(null)
+const adminNicknameInputRef = ref(null)
 const settingsLoading = ref(false)
 const settingsSaving = ref(false)
 const healthLoading = ref(false)
@@ -315,12 +319,13 @@ function storageStats(name) {
 
 function syncAccount(data) {
   adminUsername.value = data.admin_username || ''
+  adminNickname.value = data.admin_nickname || data.admin_username || ''
   adminPasswordChangeRequired.value = Boolean(data.admin_password_change_required)
   adminAvatarImageId.value = data.admin_avatar_image_id || null
   adminAvatarImage.value = data.admin_avatar_image || null
   syncHomeSlideshowImages(data)
   syncHeroBackgrounds(data)
-  setAuthSession({ username: adminUsername.value, avatar_image: adminAvatarImage.value })
+  setAuthSession({ username: adminUsername.value, nickname: adminNickname.value, avatar_image: adminAvatarImage.value })
 }
 
 function syncOperationsApiKeys(data) {
@@ -787,6 +792,7 @@ async function saveAdminPreferences() {
   try {
     const payload = {
       admin_username: adminUsername.value.trim(),
+      admin_nickname: adminNickname.value.trim(),
       admin_avatar_image_id: adminAvatarImageId.value || undefined,
       home_slideshow_image_ids: homeSlideshowImageIds.value,
       image_manage_view_mode: normalizeImageManageViewMode(imageManageViewMode.value),
@@ -976,8 +982,27 @@ async function resetOperationsApiKeys() {
   }
 }
 
+function focusAdminAccountPanel() {
+  void nextTick(() => {
+    adminAccountPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.setTimeout(() => adminNicknameInputRef.value?.focus?.(), 220)
+  })
+}
+
+function needsAdminAccountFocus() {
+  return route.query.account === '1' || route.query.password_change === '1'
+}
+
+watch(
+  () => route.query.account,
+  (value) => {
+    if (value === '1') focusAdminAccountPanel()
+  }
+)
+
 onMounted(async () => {
   await Promise.all([loadAdminSettings(), loadSystemHealth(), loadCdnWarmStatus()])
+  if (needsAdminAccountFocus()) focusAdminAccountPanel()
 })
 </script>
 
@@ -995,7 +1020,7 @@ onMounted(async () => {
     <div v-loading="settingsLoading" class="admin-settings-preferences">
       <section class="admin-preferences-panel">
         <div class="admin-preferences-body">
-          <div class="admin-preference-section admin-account-panel">
+          <div ref="adminAccountPanelRef" class="admin-preference-section admin-account-panel" tabindex="-1">
             <el-alert
               v-if="adminPasswordChangeRequired"
               title="当前账号沿用了旧版默认密码，请设置新密码后再继续使用后台。"
@@ -1006,7 +1031,7 @@ onMounted(async () => {
             <div class="admin-preference-header">
               <div class="admin-preference-copy">
                 <strong>管理员资料</strong>
-                <span>点击头像可直接上传并覆盖。</span>
+                <span>昵称用于顶部显示；点击头像可直接上传并覆盖。</span>
               </div>
               <el-button type="primary" :icon="Check" :loading="settingsSaving" @click="saveAdminPreferences">
                 保存所有后台偏好
@@ -1030,6 +1055,10 @@ onMounted(async () => {
                 </el-upload>
               </div>
               <div class="admin-account-form">
+                <div class="admin-account-field">
+                  <span>昵称</span>
+                  <el-input ref="adminNicknameInputRef" v-model="adminNickname" maxlength="80" placeholder="顶部显示名称，留空则显示用户名" autocomplete="nickname" />
+                </div>
                 <div class="admin-account-field">
                   <span>用户名</span>
                   <el-input v-model="adminUsername" maxlength="80" autocomplete="username" />

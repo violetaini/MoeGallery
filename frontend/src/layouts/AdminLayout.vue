@@ -17,12 +17,12 @@ import {
   Upload,
   User
 } from '@element-plus/icons-vue'
-import { AUTH_SESSION_CHANGED_EVENT, clearAuthSession, getAuthAvatar, getAuthUser } from '../api/client'
+import { AUTH_SESSION_CHANGED_EVENT, clearAuthSession, getAuthAvatar, getAuthDisplayName } from '../api/client'
 import { galleryApi } from '../api/gallery'
 
 const router = useRouter()
 const route = useRoute()
-const username = ref(getAuthUser() || 'admin')
+const displayName = ref(getAuthDisplayName() || 'admin')
 const avatarUrl = ref(getAuthAvatar() || '/avatar.webp')
 const mobileMenuOpen = ref(false)
 const pageTitle = computed(() => route.meta?.title || '后台首页')
@@ -42,8 +42,12 @@ const activeMenu = computed(() => {
 })
 
 function syncAdminProfile() {
-  username.value = getAuthUser() || 'admin'
+  displayName.value = getAuthDisplayName() || 'admin'
   avatarUrl.value = getAuthAvatar() || '/avatar.webp'
+}
+
+function openAccountSettings() {
+  router.push({ path: '/admin/settings', query: { account: '1' } })
 }
 
 async function logout() {
@@ -144,8 +148,16 @@ onBeforeUnmount(() => window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, syn
         </div>
         <div class="admin-header-actions">
           <span class="admin-status-pill">在线管理</span>
-          <img class="admin-user-avatar" :src="avatarUrl" alt="" />
-          <span class="muted">{{ username }}</span>
+          <button
+            class="admin-profile-shortcut"
+            type="button"
+            title="修改账号、昵称或密码"
+            aria-label="修改账号、昵称或密码"
+            @click="openAccountSettings"
+          >
+            <img class="admin-user-avatar" :src="avatarUrl" alt="" />
+            <span class="admin-profile-shortcut__name">{{ displayName }}</span>
+          </button>
           <el-button @click="$router.push('/')">返回前台</el-button>
           <el-button :icon="SwitchButton" @click="logout">退出</el-button>
         </div>

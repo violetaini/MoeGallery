@@ -816,7 +816,7 @@
 
 .admin-account-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -1183,6 +1183,41 @@
   border-radius: 8px;
   object-fit: cover;
   box-shadow: 0 8px 18px rgba(75, 58, 126, 0.12);
+}
+
+.admin-profile-shortcut {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.admin-profile-shortcut:hover,
+.admin-profile-shortcut:focus-visible {
+  border-color: rgba(122, 140, 255, 0.28);
+  color: var(--text);
+  background: rgba(122, 140, 255, 0.08);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.admin-profile-shortcut:focus-visible {
+  box-shadow: 0 0 0 3px rgba(122, 140, 255, 0.18);
+}
+
+.admin-profile-shortcut__name {
+  overflow: hidden;
+  max-width: 144px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
 }
 
 .upload-queue-settings {

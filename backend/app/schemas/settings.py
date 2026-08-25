@@ -47,6 +47,7 @@ class AdminSettingsRead(BaseModel):
     upload_failed_retention_days: int = Field(default=7, ge=1, le=90)
     github_proxy_url: str = Field(default="", max_length=500)
     admin_username: str
+    admin_nickname: str
     admin_avatar_image_id: int | None = None
     admin_avatar_image: ImageSummary | None = None
     admin_password_change_required: bool = False
@@ -76,6 +77,7 @@ class AdminSettingsUpdate(BaseModel):
     upload_failed_retention_days: int | None = Field(default=None, ge=1, le=90)
     github_proxy_url: str | None = Field(default=None, max_length=500)
     admin_username: str | None = Field(default=None, min_length=1, max_length=80)
+    admin_nickname: str | None = Field(default=None, max_length=80)
     admin_password: str | None = Field(default=None, min_length=6, max_length=128)
     admin_avatar_image_id: int | None = Field(default=None, ge=1)
     clear_admin_avatar: bool | None = None

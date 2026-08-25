@@ -77,7 +77,7 @@ async function ensureAuthSession() {
   if (!authProbePromise) {
     authProbePromise = galleryApi.me()
       .then((profile) => {
-        setAuthSession({ username: profile.username, avatar_image: profile.avatar_image })
+        setAuthSession({ username: profile.username, nickname: profile.nickname, avatar_image: profile.avatar_image })
         return profile
       })
       .catch(() => {

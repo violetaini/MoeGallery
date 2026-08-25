@@ -114,6 +114,7 @@ def login(
         "access_token": "",
         "expires_in": settings.auth_token_ttl_seconds,
         "username": account.username,
+        "nickname": account.nickname,
         "avatar_image_id": account.avatar_image_id,
         "avatar_image": account.avatar_image,
         "password_change_required": account.password_change_required,
@@ -141,6 +142,7 @@ def me(
     account = get_admin_account(db)
     return {
         "username": account.username if admin.get("auth_type") == "api_key" else admin["sub"],
+        "nickname": account.nickname,
         "avatar_image_id": account.avatar_image_id,
         "avatar_image": account.avatar_image,
         "password_change_required": account.password_change_required,

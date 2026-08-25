@@ -13,6 +13,7 @@ ADMIN_USERNAME_KEY = "admin.username"
 ADMIN_PASSWORD_HASH_KEY = "admin.password_hash"
 ADMIN_PASSWORD_CHANGE_REQUIRED_KEY = "admin.password_change_required"
 ADMIN_AVATAR_IMAGE_ID_KEY = "admin.avatar_image_id"
+ADMIN_NICKNAME_KEY = "admin.nickname"
 
 PASSWORD_SCHEME = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 210_000
@@ -21,6 +22,7 @@ PASSWORD_ITERATIONS = 210_000
 @dataclass(frozen=True)
 class AdminAccount:
     username: str
+    nickname: str
     avatar_image_id: int | None
     avatar_image: Image | None
     password_change_required: bool
@@ -79,6 +81,8 @@ def get_admin_username(db: Session) -> str:
 
 
 def get_admin_account(db: Session) -> AdminAccount:
+    username = get_admin_username(db)
+    nickname = (_get_setting(db, ADMIN_NICKNAME_KEY) or "").strip() or username
     avatar_image_id_text = _get_setting(db, ADMIN_AVATAR_IMAGE_ID_KEY)
     avatar_image_id: int | None = None
     avatar_image: Image | None = None
@@ -92,7 +96,8 @@ def get_admin_account(db: Session) -> AdminAccount:
         if not avatar_image:
             avatar_image_id = None
     return AdminAccount(
-        username=get_admin_username(db),
+        username=username,
+        nickname=nickname,
         avatar_image_id=avatar_image_id,
         avatar_image=avatar_image,
         password_change_required=_get_setting(db, ADMIN_PASSWORD_CHANGE_REQUIRED_KEY) == "1",
@@ -113,6 +118,7 @@ def update_admin_account(
     db: Session,
     *,
     username: str | None = None,
+    nickname: str | None = None,
     password: str | None = None,
     avatar_image_id: int | None = None,
     clear_avatar: bool = False,
@@ -122,6 +128,12 @@ def update_admin_account(
         if not normalized:
             raise ValueError("用户名不能为空")
         _set_setting(db, ADMIN_USERNAME_KEY, normalized)
+    if nickname is not None:
+        normalized_nickname = nickname.strip()
+        if normalized_nickname:
+            _set_setting(db, ADMIN_NICKNAME_KEY, normalized_nickname)
+        else:
+            _delete_setting(db, ADMIN_NICKNAME_KEY)
     if password is not None:
         if len(password) < 6:
             raise ValueError("密码至少需要 6 位")

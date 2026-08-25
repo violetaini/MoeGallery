@@ -232,7 +232,9 @@ test('administrator can open settings and submit an image task', async ({ page }
   await loginAsAdmin(page)
   await expect(page.getByRole('menuitem', { name: '后台首页' })).toBeVisible()
 
-  await page.goto('/admin/settings')
+  await page.getByRole('button', { name: '修改账号、昵称或密码' }).click()
+  await expect(page).toHaveURL(/\/admin\/settings\?account=1/)
+  await expect(page.locator('.admin-account-panel')).toBeVisible()
   await expect(page.getByText('系统健康', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '轮换登录密钥' }).click()
   const confirmation = page.locator('.el-message-box')

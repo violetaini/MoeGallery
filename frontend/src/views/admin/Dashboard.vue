@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { FolderOpened, Picture, Upload, User } from '@element-plus/icons-vue'
 import { mediaUrl } from '../../api/client'
@@ -9,6 +9,11 @@ const stats = ref(null)
 const recentImages = ref([])
 const loading = ref(false)
 const loadError = ref('')
+const dashboardRef = ref(null)
+const recentImagePageSize = ref(12)
+let recentImageRequestSequence = 0
+let dashboardResizeObserver = null
+let dashboardResizeTimer = null
 
 function imageTitle(image) {
   return image.original_filename || image.filename || '图片'
@@ -27,32 +32,85 @@ function formatBytes(value) {
   return `${size} B`
 }
 
-onMounted(async () => {
-  loading.value = true
-  loadError.value = ''
-  const [statsResult, imagesResult] = await Promise.allSettled([
-    galleryApi.stats(),
-    galleryApi.images({
-      page_size: 12,
+function targetRecentImagePageSize() {
+  const dashboardWidth = dashboardRef.value?.clientWidth || 0
+  if (!dashboardWidth || typeof window === 'undefined') return 12
+  if (window.innerWidth <= 760) return 4
+  const minimumCardWidth = window.innerWidth <= 1100 ? 136 : 148
+  const columnCount = Math.max(2, Math.floor((dashboardWidth + 16) / (minimumCardWidth + 16)))
+  return Math.min(100, columnCount * 2)
+}
+
+async function loadRecentImages({ showError = true } = {}) {
+  const requestSequence = ++recentImageRequestSequence
+  try {
+    const data = await galleryApi.images({
+      page_size: recentImagePageSize.value,
       public_only: false,
       exclude_cover_images: true,
       exclude_backdrop_images: true,
       exclude_avatar_images: true
     })
+    if (requestSequence === recentImageRequestSequence) recentImages.value = data.items
+    return true
+  } catch (error) {
+    if (showError && requestSequence === recentImageRequestSequence) {
+      loadError.value = '最近上传加载失败，请稍后刷新'
+      ElMessage.error(error?.response?.data?.detail || loadError.value)
+    }
+    return false
+  }
+}
+
+function refreshRecentImagesForLayout() {
+  if (typeof window === 'undefined') return
+  if (dashboardResizeTimer !== null) window.clearTimeout(dashboardResizeTimer)
+  dashboardResizeTimer = window.setTimeout(() => {
+    dashboardResizeTimer = null
+    const nextPageSize = targetRecentImagePageSize()
+    if (nextPageSize === recentImagePageSize.value) return
+    recentImagePageSize.value = nextPageSize
+    void loadRecentImages({ showError: false })
+  }, 120)
+}
+
+onMounted(async () => {
+  await nextTick()
+  recentImagePageSize.value = targetRecentImagePageSize()
+  loading.value = true
+  loadError.value = ''
+  const [statsResult, recentImagesResult] = await Promise.allSettled([
+    galleryApi.stats(),
+    loadRecentImages({ showError: false })
   ])
   if (statsResult.status === 'fulfilled') stats.value = statsResult.value
-  if (imagesResult.status === 'fulfilled') recentImages.value = imagesResult.value.items
-  const failures = [statsResult, imagesResult].filter((result) => result.status === 'rejected')
+  const failures = [statsResult, recentImagesResult].filter(
+    (result) => result.status === 'rejected' || result.value === false
+  )
   if (failures.length) {
     loadError.value = '部分首页数据加载失败，请稍后刷新'
     ElMessage.error(failures[0].reason?.response?.data?.detail || loadError.value)
   }
   loading.value = false
+
+  if (typeof ResizeObserver === 'function') {
+    dashboardResizeObserver = new ResizeObserver(refreshRecentImagesForLayout)
+    dashboardResizeObserver.observe(dashboardRef.value)
+  } else {
+    window.addEventListener('resize', refreshRecentImagesForLayout)
+  }
+})
+
+onBeforeUnmount(() => {
+  dashboardResizeObserver?.disconnect()
+  dashboardResizeObserver = null
+  if (dashboardResizeTimer !== null) window.clearTimeout(dashboardResizeTimer)
+  window.removeEventListener('resize', refreshRecentImagesForLayout)
 })
 </script>
 
 <template>
-  <div v-loading="loading" class="admin-dashboard">
+  <div ref="dashboardRef" v-loading="loading" class="admin-dashboard">
     <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false" />
     <section class="admin-dashboard__section">
       <div class="admin-dashboard__section-title">

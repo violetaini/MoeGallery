@@ -200,6 +200,30 @@ test('administrator work and character tables can reach records after the first 
   await expect(page.getByText('管理角色 51', { exact: true })).toBeVisible()
 })
 
+test('administrator dashboard requests two responsive rows of recent uploads', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'Responsive dashboard sizing only needs one browser pass.')
+  const requestedPageSizes = []
+  await page.route('**/api/images?*', async (route) => {
+    const requestUrl = new URL(route.request().url())
+    const pageSize = Number(requestUrl.searchParams.get('page_size') || 0)
+    requestedPageSizes.push(pageSize)
+    await route.fulfill({ json: { items: [], total: 0, page: 1, page_size: pageSize } })
+  })
+
+  await loginAsAdmin(page)
+  await expect.poll(() => requestedPageSizes.at(-1) || 0).toBeGreaterThan(12)
+  const widePageSize = requestedPageSizes.at(-1)
+  expect(widePageSize % 2).toBe(0)
+
+  await page.setViewportSize({ width: 1000, height: 900 })
+  await expect.poll(() => requestedPageSizes.at(-1)).toBeLessThan(widePageSize)
+  const compactPageSize = requestedPageSizes.at(-1)
+  expect(compactPageSize % 2).toBe(0)
+
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await expect.poll(() => requestedPageSizes.at(-1)).toBeGreaterThan(compactPageSize)
+})
+
 test('upload preview requests use the bounded client queue', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'Preview concurrency only needs one browser pass.')
   await loginAsAdmin(page)

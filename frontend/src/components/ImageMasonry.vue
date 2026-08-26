@@ -54,6 +54,17 @@ function closeImageOverlay() {
   router.replace({ query })
 }
 
+function navigateImageOverlay(image) {
+  if (!image?.id) return
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      image: image.id
+    }
+  })
+}
+
 let resizeObserver
 
 onMounted(() => {
@@ -136,8 +147,10 @@ const rows = computed(() => {
       v-if="preview && activeImageId"
       :image-id="activeImageId"
       :image="activeImage"
+      :images="images"
       :share-token="shareToken"
       @close="closeImageOverlay"
+      @navigate="navigateImageOverlay"
     />
   </div>
 </template>

@@ -112,10 +112,6 @@ loadPublicSettings()
     </el-radio-group>
   </section>
 
-  <div class="section-title">
-    <h2>{{ activeRating.label }}</h2>
-    <span class="muted">{{ total }} 张图片</span>
-  </div>
   <ImageMasonry :images="images" :loading="loading" />
   <div v-if="total > pageSize" class="pagination-bar">
     <el-pagination

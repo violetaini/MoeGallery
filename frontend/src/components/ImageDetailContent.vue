@@ -82,20 +82,30 @@ async function toggleFavorite() {
         <el-tag v-if="image.dynamic_range === 'hdr'" type="warning">HDR</el-tag>
         <el-tag v-if="image.is_animated" type="info">动图</el-tag>
       </div>
-      <div v-if="!shareToken" class="image-detail-actions">
-        <el-button :type="favorited ? 'primary' : 'default'" :icon="Star" :loading="favoriteLoading" @click="toggleFavorite">
+      <div v-if="!shareToken || sourceUrl" class="image-detail-actions">
+        <el-button v-if="!shareToken" :type="favorited ? 'primary' : 'default'" :icon="Star" :loading="favoriteLoading" @click="toggleFavorite">
           {{ favorited ? '已收藏' : '收藏' }}
         </el-button>
-        <span class="muted">收藏 {{ image.favorite_count }}</span>
+        <span v-if="!shareToken" class="muted">收藏 {{ image.favorite_count }}</span>
+        <el-button
+          v-if="sourceUrl"
+          :icon="Link"
+          tag="a"
+          :href="sourceUrl"
+          target="_blank"
+          rel="noreferrer"
+        >
+          来源
+        </el-button>
       </div>
 
-      <el-descriptions :column="1" border style="margin-top: 18px">
-        <el-descriptions-item label="作者">{{ image.artist_name || '未知' }}</el-descriptions-item>
+      <el-descriptions class="image-detail-facts" :column="2" border>
+        <el-descriptions-item label="作者" :span="2">{{ image.artist_name || '未知' }}</el-descriptions-item>
         <el-descriptions-item label="MIME">{{ image.mime_type }}</el-descriptions-item>
         <el-descriptions-item label="显示">{{ dynamicRangeLabel }}</el-descriptions-item>
         <el-descriptions-item label="位深">{{ bitDepthLabel }}</el-descriptions-item>
         <el-descriptions-item label="色彩">{{ colorProfileLabel }}</el-descriptions-item>
-        <el-descriptions-item label="上传时间">{{ new Date(image.created_at).toLocaleString() }}</el-descriptions-item>
+        <el-descriptions-item label="上传时间" :span="2">{{ new Date(image.created_at).toLocaleString() }}</el-descriptions-item>
         <el-descriptions-item label="浏览">
           <el-icon><View /></el-icon>
           {{ image.view_count }}
@@ -106,44 +116,32 @@ async function toggleFavorite() {
         </el-descriptions-item>
       </el-descriptions>
 
-      <div class="section-title">
-        <h2>作品</h2>
+      <div class="image-detail-taxonomy">
+        <section class="image-detail-taxonomy__group">
+          <h3>作品</h3>
+          <div class="chip-row">
+            <RouterLink v-for="work in works" :key="work.id" :to="`/works/${work.id}`">
+              <el-tag effect="dark">{{ work.name }}</el-tag>
+            </RouterLink>
+            <span v-if="!works.length" class="muted">未绑定</span>
+          </div>
+        </section>
+        <section class="image-detail-taxonomy__group">
+          <h3>角色</h3>
+          <div class="chip-row">
+            <RouterLink v-for="character in characters" :key="character.id" :to="`/characters/${character.id}`">
+              <el-tag type="success">{{ character.name }}</el-tag>
+            </RouterLink>
+            <span v-if="!characters.length" class="muted">未绑定</span>
+          </div>
+        </section>
+        <section class="image-detail-taxonomy__group">
+          <h3>分级</h3>
+          <div class="chip-row">
+            <el-tag :type="ratingTagType(image.rating)">{{ ratingLabel(image.rating) }}</el-tag>
+          </div>
+        </section>
       </div>
-      <div class="chip-row">
-        <RouterLink v-for="work in works" :key="work.id" :to="`/works/${work.id}`">
-          <el-tag effect="dark">{{ work.name }}</el-tag>
-        </RouterLink>
-        <span v-if="!works.length" class="muted">未绑定</span>
-      </div>
-
-      <div class="section-title">
-        <h2>角色</h2>
-      </div>
-      <div class="chip-row">
-        <RouterLink v-for="character in characters" :key="character.id" :to="`/characters/${character.id}`">
-          <el-tag type="success">{{ character.name }}</el-tag>
-        </RouterLink>
-        <span v-if="!characters.length" class="muted">未绑定</span>
-      </div>
-
-      <div class="section-title">
-        <h2>分级</h2>
-      </div>
-      <div class="chip-row">
-        <el-tag :type="ratingTagType(image.rating)">{{ ratingLabel(image.rating) }}</el-tag>
-      </div>
-
-      <el-button
-        v-if="sourceUrl"
-        style="margin-top: 18px"
-        :icon="Link"
-        tag="a"
-        :href="sourceUrl"
-        target="_blank"
-        rel="noreferrer"
-      >
-        来源链接
-      </el-button>
     </aside>
   </div>
 </template>

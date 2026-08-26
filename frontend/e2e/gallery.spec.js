@@ -17,6 +17,17 @@ async function loginAsAdmin(page) {
   await expect(page.getByRole('menuitem', { name: '后台首页' })).toBeVisible()
 }
 
+async function swipeImageDetail(page, fromRatio, toRatio) {
+  const panel = page.locator('.image-detail-overlay__panel')
+  const box = await panel.boundingBox()
+  if (!box) throw new Error('Image detail panel is not visible')
+  const y = box.y + Math.min(220, box.height * 0.35)
+  await page.mouse.move(box.x + box.width * fromRatio, y)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * toRatio, y, { steps: 8 })
+  await page.mouse.up()
+}
+
 function captureRuntimeErrors(page) {
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -36,6 +47,11 @@ function captureRuntimeErrors(page) {
 
 test('public navigation loads gallery without horizontal overflow', async ({ page }, testInfo) => {
   const runtimeErrors = captureRuntimeErrors(page)
+  const previewRequestIds = new Set()
+  page.on('request', (request) => {
+    const match = request.url().match(/\/media\/(\d+)\/preview\//)
+    if (match) previewRequestIds.add(match[1])
+  })
   await page.goto('/')
   await expect(page.locator('.home-slideshow')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Anime Gallery' })).toBeVisible()
@@ -49,8 +65,58 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
   await page.locator('.masonry .image-card').first().click()
   await expect(page.locator('.image-detail-overlay')).toBeVisible()
   await expect(page).toHaveURL(/\?image=\d+$/)
-  await page.getByRole('button', { name: '关闭' }).click()
-  await expect(page.locator('.image-detail-overlay')).toBeHidden()
+  await expect(page.locator('.image-detail-overlay__panel')).toBeVisible()
+  await expect(page.locator('.image-detail-view .detail-image')).toBeVisible()
+  const imagePanelBox = await page.locator('.image-detail-view > .detail-panel').first().boundingBox()
+  const metadataPanelBox = await page.locator('.image-detail-meta').boundingBox()
+  const detailImageBox = await page.locator('.image-detail-view .detail-image').boundingBox()
+  expect(imagePanelBox).not.toBeNull()
+  expect(metadataPanelBox).not.toBeNull()
+  expect(detailImageBox).not.toBeNull()
+  if (testInfo.project.name === 'desktop-chromium') {
+    expect(Math.abs(imagePanelBox.height - metadataPanelBox.height)).toBeLessThanOrEqual(1)
+  }
+  await expect.poll(() => previewRequestIds.size).toBeGreaterThan(1)
+  const nextButton = page.getByRole('button', { name: '下一张' })
+  const firstImageUrl = page.url()
+  if (testInfo.project.name === 'mobile-chromium') {
+    await expect(nextButton).toBeHidden()
+    await swipeImageDetail(page, 0.76, 0.24)
+  } else {
+    const nextButtonBeforeHover = await nextButton.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    })
+    expect(nextButtonBeforeHover.width).toBe(nextButtonBeforeHover.height)
+    await nextButton.hover()
+    const nextButtonAfterHover = await nextButton.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return { x: rect.x, y: rect.y }
+    })
+    expect(nextButtonAfterHover).toEqual({ x: nextButtonBeforeHover.x, y: nextButtonBeforeHover.y })
+    await nextButton.click()
+  }
+  await expect(page).toHaveURL(/\/gallery\?image=\d+$/)
+  await expect.poll(() => page.url()).not.toBe(firstImageUrl)
+  await expect(page.locator('.image-detail-overlay')).toBeVisible()
+  if (testInfo.project.name === 'mobile-chromium') {
+    await swipeImageDetail(page, 0.24, 0.76)
+  } else {
+    await expect(page.getByRole('button', { name: '上一张' })).toBeVisible()
+    await page.getByRole('button', { name: '上一张' }).click()
+  }
+  await expect.poll(() => page.url()).toBe(firstImageUrl)
+  await expect(page.locator('.image-detail-overlay')).toBeVisible()
+  if (testInfo.project.name === 'desktop-chromium') {
+    const viewport = page.viewportSize()
+    await page.mouse.click(viewport.width / 2, 8)
+    await expect(page.locator('.image-detail-overlay')).toBeVisible()
+    await page.mouse.click(4, viewport.height / 2)
+    await expect(page.locator('.image-detail-overlay')).toBeHidden()
+  } else {
+    await page.getByRole('button', { name: '关闭' }).click()
+    await expect(page.locator('.image-detail-overlay')).toBeHidden()
+  }
 
   if (testInfo.project.name === 'mobile-chromium') {
     const viewport = await page.evaluate(() => ({
@@ -82,6 +148,21 @@ test('public archive routes render works, characters, ratings, and search result
 
   await page.goto('/tags')
   await expect(page.getByRole('heading', { name: '分级', level: 1 })).toBeVisible()
+  await expect(page.locator('.rating-toolbar-copy').getByRole('heading', { name: '安全', level: 2 })).toBeVisible()
+  await expect(page.locator('.rating-gallery-meta')).toHaveCount(0)
+  const ratingAlignment = await page.evaluate(() => {
+    const eyebrow = document.querySelector('.listing-hero--rating .hero-eyebrow')
+    const toolbarTitle = document.querySelector('.rating-toolbar-copy h2')
+    if (!eyebrow || !toolbarTitle) return null
+    const eyebrowRect = eyebrow.getBoundingClientRect()
+    const toolbarRect = toolbarTitle.getBoundingClientRect()
+    return {
+      eyebrowLineX: eyebrowRect.x + Number.parseFloat(getComputedStyle(eyebrow).paddingLeft),
+      toolbarTitleX: toolbarRect.x
+    }
+  })
+  expect(ratingAlignment).not.toBeNull()
+  expect(ratingAlignment.toolbarTitleX).toBe(ratingAlignment.eyebrowLineX)
   await expect(page.locator('.masonry .image-card[aria-label^="e2e-"]')).toHaveCount(2)
 
   await page.goto('/search?q=E2E')

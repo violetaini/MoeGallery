@@ -53,7 +53,7 @@ function preload(routeName) {
     </header>
     <main class="page-wrap" :class="{ 'page-wrap--home': isHomeLayoutActive }">
       <RouterView v-slot="{ Component, route: viewRoute }">
-        <div :key="viewRoute.fullPath" class="route-view" :class="{ 'route-view--home': viewRoute.name === 'home' }">
+        <div :key="viewRoute.path" class="route-view" :class="{ 'route-view--home': viewRoute.name === 'home' }">
           <component :is="Component" />
         </div>
       </RouterView>

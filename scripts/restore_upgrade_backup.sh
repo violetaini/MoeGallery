@@ -103,7 +103,7 @@ for root, directories, files in os.walk(source):
         destination_file.parent.mkdir(parents=True, exist_ok=True)
         if destination_file.is_dir():
             shutil.rmtree(destination_file)
-        shutil.copy2(source_file, destination_file)
+        shutil.copyfile(source_file, destination_file)
 
 for root, directories, files in os.walk(target, topdown=False):
     root_path = Path(root)
@@ -156,7 +156,7 @@ tar -xzf "$BACKUP_DIR/app-files.tar.gz" -C "$WORK_DIR"
 mkdir -p "$APP_DIR/backend" "$APP_DIR/frontend" "$APP_DIR/scripts"
 if [[ -d "$WORK_DIR/backend" ]]; then
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete \
+    rsync -a --delete --no-times --no-owner --no-group --no-perms \
       --exclude='__pycache__/' \
       --exclude='*.pyc' \
       --exclude='*.pyo' \
@@ -175,7 +175,7 @@ if [[ -d "$WORK_DIR/backend" ]]; then
 fi
 if [[ -d "$WORK_DIR/frontend" ]]; then
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete \
+    rsync -a --delete --no-times --no-owner --no-group --no-perms \
       --exclude='dist/.user.ini' \
       "$WORK_DIR/frontend/" "$APP_DIR/frontend/"
   else
@@ -184,7 +184,7 @@ if [[ -d "$WORK_DIR/frontend" ]]; then
 fi
 if [[ -d "$WORK_DIR/scripts" ]]; then
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete \
+    rsync -a --delete --no-times --no-owner --no-group --no-perms \
       --exclude='__pycache__/' \
       --exclude='*.pyc' \
       --exclude='*.pyo' \
@@ -196,7 +196,7 @@ fi
 if [[ -d "$WORK_DIR/docs" ]]; then
   mkdir -p "$APP_DIR/docs"
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$WORK_DIR/docs/" "$APP_DIR/docs/"
+    rsync -a --delete --no-times --no-owner --no-group --no-perms "$WORK_DIR/docs/" "$APP_DIR/docs/"
   else
     sync_tree_without_rsync "$WORK_DIR/docs" "$APP_DIR/docs"
   fi
@@ -206,18 +206,18 @@ fi
 
 for file in install.sh .env.example LICENSE README.md README_zh.md README_zh-TW.md README_ja.md VERSION RELEASE_NOTES.md; do
   if [[ -e "$WORK_DIR/$file" ]]; then
-    cp -a "$WORK_DIR/$file" "$APP_DIR/$file"
+    cp -f "$WORK_DIR/$file" "$APP_DIR/$file"
   fi
 done
 
 if [[ -f "$BACKUP_DIR/env/.env" ]]; then
-  cp -a "$BACKUP_DIR/env/.env" "$APP_DIR/.env"
+  cp -f "$BACKUP_DIR/env/.env" "$APP_DIR/.env"
 fi
 if [[ -f "$BACKUP_DIR/install/installed.lock" ]]; then
-  cp -a "$BACKUP_DIR/install/installed.lock" "$APP_DIR/installed.lock"
+  cp -f "$BACKUP_DIR/install/installed.lock" "$APP_DIR/installed.lock"
 fi
 if [[ -f "$BACKUP_DIR/install/VERSION" ]]; then
-  cp -a "$BACKUP_DIR/install/VERSION" "$APP_DIR/VERSION"
+  cp -f "$BACKUP_DIR/install/VERSION" "$APP_DIR/VERSION"
 fi
 
 if [[ -f "$BACKUP_DIR/storage-files.tar.gz" ]]; then
@@ -230,7 +230,7 @@ if [[ -f "$BACKUP_DIR/storage-files.tar.gz" ]]; then
     if [[ -d "$source_dir" ]]; then
       mkdir -p "$target_dir"
       if command -v rsync >/dev/null 2>&1; then
-        rsync -a --delete "$source_dir/" "$target_dir/"
+        rsync -a --delete --no-times --no-owner --no-group --no-perms "$source_dir/" "$target_dir/"
       else
         sync_tree_without_rsync "$source_dir" "$target_dir"
       fi
@@ -277,7 +277,7 @@ if database_type == "sqlite":
     target = Path(str(info.get("path") or ""))
     if backup.exists() and target:
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(backup, target)
+        shutil.copyfile(backup, target)
         print(f"Restored SQLite database to {target}")
 elif database_type.startswith(("mysql", "mariadb")):
     if not backup.exists():

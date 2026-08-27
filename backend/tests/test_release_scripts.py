@@ -50,6 +50,23 @@ class ReleaseScriptSafetyTests(unittest.TestCase):
             with self.subTest(exclusion=exclusion):
                 self.assertIn(f"--exclude='{exclusion}'", scripts_sync_block)
 
+    def test_upgrade_and_restore_avoid_metadata_preservation_failures(self):
+        upgrade = (ROOT_DIR / "scripts" / "upgrade_release.sh").read_text(encoding="utf-8")
+        restore = (ROOT_DIR / "scripts" / "restore_upgrade_backup.sh").read_text(encoding="utf-8")
+
+        self.assertNotIn("cp -a", upgrade)
+        self.assertNotIn("cp -a", restore)
+        self.assertIn('run cp -f "$STAGE_DIR/$file" "$APP_DIR/$file"', upgrade)
+        self.assertIn('cp -f "$WORK_DIR/$file" "$APP_DIR/$file"', restore)
+        self.assertIn('cp -f "$BACKUP_DIR/env/.env" "$APP_DIR/.env"', restore)
+        self.assertIn('cp -f "$BACKUP_DIR/install/installed.lock" "$APP_DIR/installed.lock"', restore)
+        self.assertIn('cp -f "$BACKUP_DIR/install/VERSION" "$APP_DIR/VERSION"', restore)
+        metadata_flags = "--no-times --no-owner --no-group --no-perms"
+        self.assertGreaterEqual(upgrade.count(metadata_flags), 4)
+        self.assertGreaterEqual(restore.count(metadata_flags), 5)
+        self.assertNotIn("shutil.copy2", restore)
+        self.assertNotIn("shutil.copymode", restore)
+
     def test_backup_and_restore_cover_supported_sqlite_names(self):
         for relative_path in ("scripts/backup_before_upgrade.sh", "scripts/restore_upgrade_backup.sh"):
             script = (ROOT_DIR / relative_path).read_text(encoding="utf-8")

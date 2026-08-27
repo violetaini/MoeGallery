@@ -191,7 +191,7 @@ fi
 
 run mkdir -p "$APP_DIR/backend" "$APP_DIR/frontend" "$APP_DIR/scripts" "$APP_DIR/storage" "$APP_DIR/logs"
 
-run rsync -a --delete \
+run rsync -a --delete --no-times --no-owner --no-group --no-perms \
   --exclude='__pycache__/' \
   --exclude='*.pyc' \
   --exclude='*.pyo' \
@@ -204,22 +204,22 @@ run rsync -a --delete \
   --exclude='*.sqlite3-*' \
   "$STAGE_DIR/backend/" "$APP_DIR/backend/"
 
-run rsync -a --delete \
+run rsync -a --delete --no-times --no-owner --no-group --no-perms \
   --exclude='.user.ini' \
   "$STAGE_DIR/frontend/dist/" "$APP_DIR/frontend/dist/"
-run rsync -a --delete \
+run rsync -a --delete --no-times --no-owner --no-group --no-perms \
   --exclude='__pycache__/' \
   --exclude='*.pyc' \
   --exclude='*.pyo' \
   "$STAGE_DIR/scripts/" "$APP_DIR/scripts/"
 
 if [[ -d "$STAGE_DIR/docs" ]]; then
-  run rsync -a --delete "$STAGE_DIR/docs/" "$APP_DIR/docs/"
+  run rsync -a --delete --no-times --no-owner --no-group --no-perms "$STAGE_DIR/docs/" "$APP_DIR/docs/"
 fi
 
 for file in install.sh .env.example LICENSE README.md README_zh.md README_zh-TW.md README_ja.md VERSION RELEASE_NOTES.md; do
   if [[ -e "$STAGE_DIR/$file" ]]; then
-    run cp -a "$STAGE_DIR/$file" "$APP_DIR/$file"
+    run cp -f "$STAGE_DIR/$file" "$APP_DIR/$file"
   fi
 done
 

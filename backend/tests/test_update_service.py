@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -195,6 +196,29 @@ class UpdateServiceTests(unittest.TestCase):
 
         release.assert_called_once_with(None, force_refresh=False)
 
+    def test_list_task_page_returns_total_and_running_state(self):
+        root = update_service.updates_root()
+        for index in range(13):
+            task_id = f"{index:032x}"
+            task_path = root / task_id / "task.json"
+            task_path.parent.mkdir(parents=True)
+            task_path.write_text(
+                json.dumps(
+                    {
+                        "id": task_id,
+                        "status": "upgrading" if index == 3 else "success",
+                        "created_at": f"2026-08-27T00:{index:02}:00+00:00",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+        items, total, has_running_task = update_service.list_task_page(page=2, page_size=5)
+
+        self.assertEqual(total, 13)
+        self.assertTrue(has_running_task)
+        self.assertEqual([item["id"] for item in items], [f"{index:032x}" for index in range(7, 2, -1)])
+
 
 class UpdateApiTests(unittest.TestCase):
     def setUp(self):
@@ -264,6 +288,29 @@ class UpdateApiTests(unittest.TestCase):
             response = self.client.post("/api/updates/tasks", json={"dry_run": True, "force": True})
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["id"], "a" * 32)
+
+    def test_list_update_tasks_endpoint_returns_page_metadata(self):
+        now = datetime.now(UTC).isoformat()
+        task = {
+            "id": "b" * 32,
+            "status": "success",
+            "current_version": "v1.0.0",
+            "target_version": "v1.1.0",
+            "created_at": now,
+            "updated_at": now,
+        }
+        with patch(
+            "app.api.updates.update_service.list_task_page",
+            return_value=([task], 17, False),
+        ) as list_task_page:
+            response = self.client.get("/api/updates/tasks?page=2&page_size=8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total"], 17)
+        self.assertEqual(response.json()["page"], 2)
+        self.assertEqual(response.json()["page_size"], 8)
+        self.assertFalse(response.json()["has_running_task"])
+        list_task_page.assert_called_once_with(page=2, page_size=8)
 
 
 if __name__ == "__main__":

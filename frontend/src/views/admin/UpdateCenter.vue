@@ -10,6 +10,10 @@ const starting = ref(false)
 const updateInfo = ref(null)
 const tasks = ref([])
 const selectedTaskId = ref('')
+const taskPage = ref(1)
+const taskPageSize = 8
+const taskTotal = ref(0)
+const hasRunningTask = ref(false)
 let pollingTimer = null
 let pollingActive = false
 let pollingGeneration = 0
@@ -38,8 +42,8 @@ const updateExecutionHint = computed(() => {
   const details = [...(updateExecutionStatus.value.issues || []), ...(updateExecutionStatus.value.warnings || [])]
   return details[0] || updateExecutionStatus.value.message || '更新环境正常'
 })
-const canDryRun = computed(() => Boolean(latestRelease.value.available && updateExecutionStatus.value.dry_run_available && !runningTask.value))
-const canUpgrade = computed(() => Boolean(updateAvailable.value && updateExecutionStatus.value.available && !runningTask.value))
+const canDryRun = computed(() => Boolean(latestRelease.value.available && updateExecutionStatus.value.dry_run_available && !hasRunningTask.value))
+const canUpgrade = computed(() => Boolean(updateAvailable.value && updateExecutionStatus.value.available && !hasRunningTask.value))
 const statusText = computed(() => {
   if (!updateInfo.value) return '未检查'
   if (!latestRelease.value.available) return '检查失败'
@@ -97,9 +101,16 @@ async function loadTasks({ silent = false } = {}) {
   const loadingSeq = silent ? null : ++taskLoadingSeq
   if (loadingSeq !== null) taskLoading.value = true
   try {
-    const data = await galleryApi.updateTasks({ limit: 20 })
+    const data = await galleryApi.updateTasks({ page: taskPage.value, page_size: taskPageSize })
     if (seq !== taskRequestSeq) return
     tasks.value = data.items || []
+    taskTotal.value = Number(data.total || 0)
+    hasRunningTask.value = Boolean(data.has_running_task)
+    if (!tasks.value.length && taskTotal.value && taskPage.value > 1) {
+      taskPage.value = Math.ceil(taskTotal.value / taskPageSize)
+      await loadTasks({ silent })
+      return
+    }
     if (!selectedTaskId.value || !tasks.value.some((task) => task.id === selectedTaskId.value)) {
       selectedTaskId.value = tasks.value[0]?.id || ''
     }
@@ -108,6 +119,12 @@ async function loadTasks({ silent = false } = {}) {
   } finally {
     if (loadingSeq !== null && loadingSeq === taskLoadingSeq) taskLoading.value = false
   }
+}
+
+function changeTaskPage(page) {
+  if (page === taskPage.value) return
+  taskPage.value = page
+  void loadTasks()
 }
 
 async function refreshAll() {
@@ -152,7 +169,9 @@ async function createTask(dryRun) {
     })
     ElMessage.success(dryRun ? '已开始下载校验' : '已开始更新')
     selectedTaskId.value = task.id
-    tasks.value = [task, ...tasks.value.filter((item) => item.id !== task.id)]
+    taskPage.value = 1
+    hasRunningTask.value = runningStatuses.has(task.status)
+    await loadTasks({ silent: true })
     startPolling()
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || '创建更新任务失败')
@@ -177,7 +196,7 @@ function startPolling() {
     pollingTimer = null
     await loadTasks({ silent: true })
     if (!pollingActive || generation !== pollingGeneration) return
-    if (!runningTask.value) {
+    if (!hasRunningTask.value) {
       pollingActive = false
       await loadUpdateCheck()
       return
@@ -189,7 +208,7 @@ function startPolling() {
 
 onMounted(async () => {
   await refreshAll()
-  if (runningTask.value) startPolling()
+  if (hasRunningTask.value) startPolling()
 })
 
 onBeforeUnmount(() => {
@@ -255,7 +274,7 @@ onBeforeUnmount(() => {
       <div class="update-task-list" v-loading="taskLoading">
         <div class="update-task-list__head">
           <strong>更新任务</strong>
-          <span>{{ tasks.length }} 条记录</span>
+          <span>{{ taskTotal }} 条记录</span>
         </div>
         <button
           v-for="task in tasks"
@@ -272,6 +291,17 @@ onBeforeUnmount(() => {
           <el-tag :type="statusType(task.status)">{{ statusLabel(task.status) }}</el-tag>
         </button>
         <el-empty v-if="!taskLoading && !tasks.length" description="暂无更新任务" />
+        <el-pagination
+          v-if="taskTotal > taskPageSize"
+          class="update-task-pagination"
+          small
+          background
+          layout="prev, pager, next"
+          :current-page="taskPage"
+          :page-size="taskPageSize"
+          :total="taskTotal"
+          @current-change="changeTaskPage"
+        />
       </div>
 
       <div class="update-task-detail">

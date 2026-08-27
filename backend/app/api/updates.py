@@ -22,9 +22,20 @@ def check_updates(
 @router.get("/tasks", response_model=UpdateTaskListResponse)
 def list_update_tasks(
     _admin: Annotated[dict, Depends(require_updates_read)],
-    limit: int = Query(20, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    limit: int | None = Query(None, ge=1, le=100, deprecated=True),
 ):
-    return {"items": update_service.list_tasks(limit=limit)}
+    if limit is not None:
+        page_size = limit
+    items, total, has_running_task = update_service.list_task_page(page=page, page_size=page_size)
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_running_task": has_running_task,
+    }
 
 
 @router.post("/tasks", response_model=UpdateTaskRead, status_code=status.HTTP_202_ACCEPTED)

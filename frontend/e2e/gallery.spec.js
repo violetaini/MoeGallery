@@ -305,6 +305,53 @@ test('administrator dashboard requests two responsive rows of recent uploads', a
   await expect.poll(() => requestedPageSizes.at(-1)).toBeGreaterThan(compactPageSize)
 })
 
+test('administrator can page through update tasks', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'Update task pagination only needs one browser pass.')
+  await loginAsAdmin(page)
+  const requestedPages = []
+  const task = (index) => ({
+    id: `${index}`.padStart(32, '0'),
+    status: 'success',
+    current_version: 'v0.4.6',
+    target_version: `v0.4.${index}`,
+    dry_run: false,
+    progress: 100,
+    message: '更新完成',
+    log: [],
+    created_at: `2026-08-27T00:${String(index).padStart(2, '0')}:00Z`,
+    updated_at: `2026-08-27T00:${String(index).padStart(2, '0')}:00Z`,
+    started_at: null,
+    finished_at: null
+  })
+  await page.route('**/api/updates/check', async (route) => {
+    await route.fulfill({
+      json: {
+        current_version: 'v0.4.6',
+        latest_release: { available: true, version: 'v0.4.7', assets: [], proxied: false, message: 'ok' },
+        update_available: true,
+        update_execution_available: true,
+        update_execution_mode: 'launcher',
+        update_execution_status: { available: true, dry_run_available: true, severity: 'ok', message: '内置更新已就绪' }
+      }
+    })
+  })
+  await page.route('**/api/updates/tasks?*', async (route) => {
+    const url = new URL(route.request().url())
+    const pageNumber = Number(url.searchParams.get('page') || 1)
+    const pageSize = Number(url.searchParams.get('page_size') || 8)
+    requestedPages.push(pageNumber)
+    const items = Array.from({ length: Math.min(pageSize, Math.max(0, 17 - (pageNumber - 1) * pageSize)) }, (_value, offset) => task(17 - (pageNumber - 1) * pageSize - offset))
+    await route.fulfill({ json: { items, total: 17, page: pageNumber, page_size: pageSize, has_running_task: false } })
+  })
+
+  await page.goto('/admin/updates')
+  await expect(page.getByText('17 条记录', { exact: true })).toBeVisible()
+  await expect(page.locator('.update-task-row')).toHaveCount(8)
+  await page.locator('.update-task-pagination .btn-next').click()
+  await expect(page.locator('.update-task-list').getByText('v0.4.9', { exact: true })).toBeVisible()
+  expect(requestedPages).toContain(2)
+})
+
 test('upload preview requests use the bounded client queue', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'Preview concurrency only needs one browser pass.')
   await loginAsAdmin(page)

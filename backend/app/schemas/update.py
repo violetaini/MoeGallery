@@ -55,3 +55,7 @@ class UpdateTaskRead(BaseModel):
 
 class UpdateTaskListResponse(BaseModel):
     items: list[UpdateTaskRead] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
+    has_running_task: bool = False

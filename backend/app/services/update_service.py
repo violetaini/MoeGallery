@@ -171,7 +171,7 @@ def read_task(task_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def list_tasks(limit: int = 20) -> list[dict]:
+def _all_tasks() -> list[dict]:
     items: list[dict] = []
     root = updates_root()
     for path in root.glob("*/task.json"):
@@ -180,11 +180,23 @@ def list_tasks(limit: int = 20) -> list[dict]:
         except (OSError, json.JSONDecodeError):
             continue
     items.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
-    return items[:limit]
+    return items
+
+
+def list_tasks(limit: int = 20) -> list[dict]:
+    return _all_tasks()[:limit]
+
+
+def list_task_page(page: int = 1, page_size: int = 20) -> tuple[list[dict], int, bool]:
+    items = _all_tasks()
+    total = len(items)
+    offset = (page - 1) * page_size
+    has_running_task = any(item.get("status") in UPDATE_STATUS_RUNNING for item in items)
+    return items[offset:offset + page_size], total, has_running_task
 
 
 def running_task() -> dict | None:
-    for task in list_tasks(limit=50):
+    for task in _all_tasks():
         if task.get("status") in UPDATE_STATUS_RUNNING:
             return task
     return None

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Close } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { mediaUrl } from '../api/client'
 import { galleryApi } from '../api/gallery'
 import { markImageViewed, shouldTrackImageView } from '../utils/views'
@@ -45,10 +45,6 @@ const nextImage = computed(() => (
     ? props.images[imageIndex.value + 1]
     : null
 ))
-const imagePositionLabel = computed(() => (
-  imageIndex.value >= 0 && props.images.length > 1 ? `${imageIndex.value + 1} / ${props.images.length}` : ''
-))
-
 async function loadImage() {
   const requestSequence = ++imageLoadSequence
   error.value = ''
@@ -258,19 +254,15 @@ onBeforeUnmount(() => {
         aria-label="上一张"
         @click="navigate(-1)"
       />
-      <div class="image-detail-overlay__frame">
-        <el-button class="image-detail-overlay__close" circle :icon="Close" aria-label="关闭" @click="close" />
-        <span v-if="imagePositionLabel" class="image-detail-overlay__position">{{ imagePositionLabel }}</span>
-        <div
-          class="image-detail-overlay__panel"
-          @click.stop
-          @pointerdown="startSwipe"
-          @pointerup="finishSwipe"
-          @pointercancel="cancelSwipe"
-        >
-          <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
-          <ImageDetailContent v-else :image="currentImage" :loading="loading" :share-token="shareToken" @updated="handleUpdated" />
-        </div>
+      <div
+        class="image-detail-overlay__panel"
+        @click.stop
+        @pointerdown="startSwipe"
+        @pointerup="finishSwipe"
+        @pointercancel="cancelSwipe"
+      >
+        <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
+        <ImageDetailContent v-else :image="currentImage" :loading="loading" :share-token="shareToken" @updated="handleUpdated" />
       </div>
       <el-button
         v-if="nextImage"

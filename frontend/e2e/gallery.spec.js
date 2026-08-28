@@ -77,16 +77,11 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
   const imagePanelBox = await page.locator('.image-detail-view > .detail-panel').first().boundingBox()
   const metadataPanelBox = await page.locator('.image-detail-meta').boundingBox()
   const detailImageBox = await page.locator('.image-detail-view .detail-image').boundingBox()
-  const overlayPanelBox = await page.locator('.image-detail-overlay__panel').boundingBox()
-  const closeButtonBox = await page.getByRole('button', { name: '关闭' }).boundingBox()
   expect(imagePanelBox).not.toBeNull()
   expect(metadataPanelBox).not.toBeNull()
   expect(detailImageBox).not.toBeNull()
-  expect(overlayPanelBox).not.toBeNull()
-  expect(closeButtonBox).not.toBeNull()
   if (testInfo.project.name === 'desktop-chromium') {
     expect(Math.abs(imagePanelBox.height - metadataPanelBox.height)).toBeLessThanOrEqual(1)
-    expect(closeButtonBox.x).toBeGreaterThanOrEqual(overlayPanelBox.x + overlayPanelBox.width)
     const taxonomyAlignment = await page.locator('.image-detail-taxonomy h3').first().evaluate((heading) => {
       const label = document.querySelector('.image-detail-facts .el-descriptions__label')
       if (!label) return null
@@ -136,15 +131,11 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
     await expect(page.locator('.image-detail-overlay')).toBeVisible()
     await page.mouse.click(4, viewport.height / 2)
     await expect(page.locator('.image-detail-overlay')).toBeHidden()
-  } else {
-    await page.getByRole('button', { name: '关闭' }).click()
+  }
+  if (testInfo.project.name === 'mobile-chromium') {
+    await page.keyboard.press('Escape')
     await expect(page.locator('.image-detail-overlay')).toBeHidden()
   }
-
-  await page.locator('.masonry .image-card').first().click()
-  await expect(page.locator('.image-detail-overlay')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.locator('.image-detail-overlay')).toBeHidden()
 
   if (testInfo.project.name === 'mobile-chromium') {
     const viewport = await page.evaluate(() => ({

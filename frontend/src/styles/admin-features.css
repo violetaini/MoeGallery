@@ -1639,10 +1639,13 @@
 
 .update-task-detail {
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 14px;
-  align-content: start;
   min-width: 0;
+  height: min(720px, calc(100vh - var(--admin-chrome-height) - 48px));
   min-height: 420px;
+  max-height: 720px;
+  overflow: hidden;
   padding: 16px;
 }
 
@@ -1654,7 +1657,7 @@
 
 .update-task-log {
   min-height: 0;
-  max-height: 420px;
+  height: 100%;
   margin: 0;
   overflow: auto;
   padding: 14px;

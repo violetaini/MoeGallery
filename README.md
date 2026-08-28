@@ -82,6 +82,7 @@ Updates are handled by the main service, so no separate updater service or passw
 - A masonry gallery with search, sorting, and filters for titles, characters, and content ratings.
 - Automatic loading at the end of the page, with upcoming image thumbnails prefetched in advance.
 - An in-page image detail overlay, while retaining a direct URL for every image.
+- The image detail viewer supports previous/next navigation, keyboard and swipe controls, and directional preview prefetching.
 - Built-in CDN thumbnail warming through a configured HTTPS hostname, with browser-style requests, ESA/EdgeOne/Cloudflare cache detection, persistent retries, and automatic renewal before shared-cache expiry.
 - Media-library-style title and character pages with backdrops, posters, avatars, and pagination.
 - Three fixed content ratings: `safe`, `sensitive`, and `hidden`.
@@ -93,6 +94,7 @@ Updates are handled by the main service, so no separate updater service or passw
 - SQLite or MySQL/MariaDB selection during first-time setup.
 - HttpOnly admin sessions, CSRF validation, login rate limiting, API keys, and a cryptographically strong session secret generated during setup.
 - Checks for new GitHub releases, verified updates, database backups, migrations, health checks, and automatic rollback from the admin panel.
+- The Update Center paginates update history and keeps long task logs in a scrollable detail panel.
 
 ## Image Processing
 

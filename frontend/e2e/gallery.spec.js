@@ -61,6 +61,13 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
   await galleryLink.click()
   await expect(page).toHaveURL(/\/gallery$/)
   await expect(page.locator('.masonry .image-card').first()).toBeVisible()
+  if (testInfo.project.name === 'desktop-chromium') {
+    const toolbarRowBounds = await page.locator('.gallery-toolbar > *').evaluateAll((elements) => {
+      const rows = elements.map((element) => element.getBoundingClientRect().y)
+      return { min: Math.min(...rows), max: Math.max(...rows) }
+    })
+    expect(toolbarRowBounds.max - toolbarRowBounds.min).toBeLessThanOrEqual(1)
+  }
 
   await page.locator('.masonry .image-card').first().click()
   await expect(page.locator('.image-detail-overlay')).toBeVisible()
@@ -163,6 +170,14 @@ test('public archive routes render works, characters, ratings, and search result
   })
   expect(ratingAlignment).not.toBeNull()
   expect(ratingAlignment.toolbarTitleX).toBe(ratingAlignment.eyebrowLineX)
+  const indicatorBefore = await page.locator('.rating-switch').getAttribute('style')
+  await page.getByRole('button', { name: '敏感', exact: true }).click()
+  await expect(page).toHaveURL(/\/tags\?rating=sensitive$/)
+  expect(await page.getByRole('button', { name: '敏感', exact: true }).getAttribute('aria-pressed')).toBe('true')
+  const indicatorAfter = await page.locator('.rating-switch').getAttribute('style')
+  expect(indicatorAfter).not.toBe(indicatorBefore)
+  await page.getByRole('button', { name: '安全', exact: true }).click()
+  await expect(page).toHaveURL(/\/tags$/)
   await expect(page.locator('.masonry .image-card[aria-label^="e2e-"]')).toHaveCount(2)
 
   await page.goto('/search?q=E2E')
@@ -317,7 +332,7 @@ test('administrator can page through update tasks', async ({ page }, testInfo) =
     dry_run: false,
     progress: 100,
     message: '更新完成',
-    log: [],
+    log: Array.from({ length: 100 }, (_value, line) => `更新日志 ${index}-${line + 1}`),
     created_at: `2026-08-27T00:${String(index).padStart(2, '0')}:00Z`,
     updated_at: `2026-08-27T00:${String(index).padStart(2, '0')}:00Z`,
     started_at: null,
@@ -347,6 +362,11 @@ test('administrator can page through update tasks', async ({ page }, testInfo) =
   await page.goto('/admin/updates')
   await expect(page.getByText('17 条记录', { exact: true })).toBeVisible()
   await expect(page.locator('.update-task-row')).toHaveCount(8)
+  const logMetrics = await page.locator('.update-task-log').evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight
+  }))
+  expect(logMetrics.scrollHeight).toBeGreaterThan(logMetrics.clientHeight)
   await page.locator('.update-task-pagination .btn-next').click()
   await expect(page.locator('.update-task-list').getByText('v0.4.9', { exact: true })).toBeVisible()
   expect(requestedPages).toContain(2)

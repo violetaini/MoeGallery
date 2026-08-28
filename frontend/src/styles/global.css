@@ -418,7 +418,7 @@ a {
 }
 
 .gallery-toolbar {
-  grid-template-columns: repeat(4, minmax(160px, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
 }
 
 .search-toolbar {
@@ -448,15 +448,54 @@ a {
 }
 
 .rating-switch {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px;
   justify-content: flex-end;
+  align-items: stretch;
+  min-width: 300px;
+  padding: 4px;
+  border: 1px solid rgba(142, 133, 196, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.62);
 }
 
-.rating-switch .el-radio-button__inner {
+.rating-switch__indicator {
+  position: absolute;
+  inset: 4px auto 4px 4px;
+  z-index: 0;
+  width: calc((100% - 16px) / 3);
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 16px rgba(91, 105, 222, 0.2);
+  transform: translateX(calc(var(--rating-index) * (100% + 4px)));
+  transition: transform 0.24s cubic-bezier(0.22, 0.72, 0.24, 1);
+}
+
+.rating-switch__option {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
   min-width: 92px;
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 0 !important;
+  border-radius: 10px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
   text-align: center;
+}
+
+.rating-switch__option:hover,
+.rating-switch__option:focus-visible {
+  color: var(--text);
+}
+
+.rating-switch__option.is-active {
+  color: #fff;
 }
 
 .section-title {
@@ -3551,6 +3590,7 @@ body {
   }
 
   .rating-switch {
+    min-width: 0;
     justify-content: flex-start;
   }
 

@@ -28,6 +28,7 @@ let ratingChangeSeq = 0
 const activeRating = computed(() => {
   return ratingOptions.find((item) => item.value === rating.value) || ratingOptions[0]
 })
+const activeRatingIndex = computed(() => Math.max(0, ratingOptions.findIndex((item) => item.value === rating.value)))
 
 async function loadImages() {
   const seq = ++imageRequestSeq
@@ -105,11 +106,20 @@ loadPublicSettings()
       <h2>{{ activeRating.label }}</h2>
       <span class="muted">切换分级后下方图片墙会即时刷新。</span>
     </div>
-    <el-radio-group v-model="rating" class="rating-switch" size="large">
-      <el-radio-button v-for="item in ratingOptions" :key="item.value" :label="item.value">
+    <div class="rating-switch" :style="{ '--rating-index': activeRatingIndex }">
+      <span class="rating-switch__indicator" aria-hidden="true" />
+      <button
+        v-for="item in ratingOptions"
+        :key="item.value"
+        type="button"
+        class="rating-switch__option"
+        :class="{ 'is-active': rating === item.value }"
+        :aria-pressed="rating === item.value"
+        @click="rating = item.value"
+      >
         {{ item.label }}
-      </el-radio-button>
-    </el-radio-group>
+      </button>
+    </div>
   </section>
 
   <ImageMasonry :images="images" :loading="loading" />

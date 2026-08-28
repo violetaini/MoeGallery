@@ -82,6 +82,17 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
   expect(detailImageBox).not.toBeNull()
   if (testInfo.project.name === 'desktop-chromium') {
     expect(Math.abs(imagePanelBox.height - metadataPanelBox.height)).toBeLessThanOrEqual(1)
+    const taxonomyAlignment = await page.locator('.image-detail-taxonomy h3').first().evaluate((heading) => {
+      const label = document.querySelector('.image-detail-facts .el-descriptions__label')
+      if (!label) return null
+      const labelStyle = getComputedStyle(label)
+      return {
+        headingX: Math.round(heading.getBoundingClientRect().x),
+        labelX: Math.round(label.getBoundingClientRect().x + parseFloat(labelStyle.paddingLeft || '0'))
+      }
+    })
+    expect(taxonomyAlignment).not.toBeNull()
+    expect(taxonomyAlignment.headingX).toBe(taxonomyAlignment.labelX)
   }
   await expect.poll(() => previewRequestIds.size).toBeGreaterThan(1)
   const nextButton = page.getByRole('button', { name: '下一张' })

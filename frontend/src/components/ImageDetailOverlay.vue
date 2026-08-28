@@ -199,7 +199,8 @@ function handleUpdated(updated) {
 }
 
 function handleKeydown(event) {
-  if (event.key === 'Escape') {
+  const key = String(event.key || '').toLowerCase()
+  if (event.code === 'Escape' || key === 'escape' || key === 'esc' || key === 'esa') {
     close()
   } else if (event.key === 'ArrowLeft') {
     event.preventDefault()
@@ -232,12 +233,14 @@ watch(() => props.images, () => preloadNeighbors(0), { deep: true })
 
 onMounted(() => {
   lockScroll()
+  window.addEventListener('keydown', handleKeydown)
   window.requestAnimationFrame(() => overlayRef.value?.focus())
 })
 
 onBeforeUnmount(() => {
   imageLoadSequence += 1
   prefetchSequence += 1
+  window.removeEventListener('keydown', handleKeydown)
   preloadedSources.clear()
   restoreScroll()
 })
@@ -245,7 +248,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div ref="overlayRef" class="image-detail-overlay" tabindex="-1" @click="handleOverlayClick" @keydown="handleKeydown">
+    <div ref="overlayRef" class="image-detail-overlay" tabindex="-1" @click="handleOverlayClick">
       <el-button
         v-if="previousImage"
         class="image-detail-overlay__nav image-detail-overlay__nav--previous"
@@ -257,6 +260,7 @@ onBeforeUnmount(() => {
       />
       <div class="image-detail-overlay__frame">
         <el-button class="image-detail-overlay__close" circle :icon="Close" aria-label="关闭" @click="close" />
+        <span v-if="imagePositionLabel" class="image-detail-overlay__position">{{ imagePositionLabel }}</span>
         <div
           class="image-detail-overlay__panel"
           @click.stop
@@ -264,7 +268,6 @@ onBeforeUnmount(() => {
           @pointerup="finishSwipe"
           @pointercancel="cancelSwipe"
         >
-          <span v-if="imagePositionLabel" class="image-detail-overlay__position">{{ imagePositionLabel }}</span>
           <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
           <ImageDetailContent v-else :image="currentImage" :loading="loading" :share-token="shareToken" @updated="handleUpdated" />
         </div>

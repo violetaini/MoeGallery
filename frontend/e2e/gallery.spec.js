@@ -141,6 +141,11 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
     await expect(page.locator('.image-detail-overlay')).toBeHidden()
   }
 
+  await page.locator('.masonry .image-card').first().click()
+  await expect(page.locator('.image-detail-overlay')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.image-detail-overlay')).toBeHidden()
+
   if (testInfo.project.name === 'mobile-chromium') {
     const viewport = await page.evaluate(() => ({
       pageWidth: document.documentElement.scrollWidth,

@@ -74,6 +74,8 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
   await expect(page).toHaveURL(/\?image=\d+$/)
   await expect(page.locator('.image-detail-overlay__panel')).toBeVisible()
   await expect(page.locator('.image-detail-view .detail-image')).toBeVisible()
+  await expect(page.locator('.image-detail-meta h2')).toHaveText('E2E 作品')
+  await expect(page.locator('.image-detail-meta h2')).not.toHaveText(/e2e-work-only\.webp/)
   const imagePanelBox = await page.locator('.image-detail-view > .detail-panel').first().boundingBox()
   const metadataPanelBox = await page.locator('.image-detail-meta').boundingBox()
   const detailImageBox = await page.locator('.image-detail-view .detail-image').boundingBox()

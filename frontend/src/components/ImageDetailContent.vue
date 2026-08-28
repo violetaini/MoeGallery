@@ -19,7 +19,7 @@ const emit = defineEmits(['updated'])
 const favoriteLoading = ref(false)
 const favorited = ref(false)
 
-const title = computed(() => props.image?.original_filename || props.image?.filename || '图片')
+const imageAlt = computed(() => props.image?.original_filename || props.image?.filename || '图片')
 const dynamicRangeLabel = computed(() => {
   if (props.image?.dynamic_range === 'hdr') return 'HDR'
   return 'SDR'
@@ -32,6 +32,13 @@ const colorProfileLabel = computed(() => props.image?.color_profile || '-')
 const sourceUrl = computed(() => safeExternalUrl(props.image?.source_url))
 const works = computed(() => props.image?.works || [])
 const characters = computed(() => props.image?.characters || [])
+const displayTitle = computed(() => works.value[0]?.name || '图片详情')
+const displaySubtitle = computed(() => {
+  const names = characters.value.map((character) => character?.name).filter(Boolean)
+  if (!names.length) return ''
+  const visibleNames = names.slice(0, 2).join(' · ')
+  return names.length > 2 ? `${visibleNames} 等 ${names.length} 位角色` : visibleNames
+})
 
 watch(() => props.image?.id, (id) => {
   favorited.value = id ? isImageFavorited(id) : false
@@ -64,7 +71,7 @@ async function toggleFavorite() {
     <div class="detail-panel">
       <ResponsiveImage
         :image="image"
-        :alt="title"
+        :alt="imageAlt"
         :share-token="shareToken"
         img-class="detail-image"
         variant="preview"
@@ -73,7 +80,8 @@ async function toggleFavorite() {
       />
     </div>
     <aside class="detail-panel image-detail-meta">
-      <h2>{{ title }}</h2>
+      <h2>{{ displayTitle }}</h2>
+      <p v-if="displaySubtitle" class="image-detail-meta__subtitle">{{ displaySubtitle }}</p>
       <div class="chip-row">
         <el-tag>{{ image.width }} x {{ image.height }}</el-tag>
         <el-tag>{{ orientationLabel(image.orientation) }}</el-tag>

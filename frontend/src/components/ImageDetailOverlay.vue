@@ -255,17 +255,19 @@ onBeforeUnmount(() => {
         aria-label="上一张"
         @click="navigate(-1)"
       />
-      <div
-        class="image-detail-overlay__panel"
-        @click.stop
-        @pointerdown="startSwipe"
-        @pointerup="finishSwipe"
-        @pointercancel="cancelSwipe"
-      >
+      <div class="image-detail-overlay__frame">
         <el-button class="image-detail-overlay__close" circle :icon="Close" aria-label="关闭" @click="close" />
-        <span v-if="imagePositionLabel" class="image-detail-overlay__position">{{ imagePositionLabel }}</span>
-        <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
-        <ImageDetailContent v-else :image="currentImage" :loading="loading" :share-token="shareToken" @updated="handleUpdated" />
+        <div
+          class="image-detail-overlay__panel"
+          @click.stop
+          @pointerdown="startSwipe"
+          @pointerup="finishSwipe"
+          @pointercancel="cancelSwipe"
+        >
+          <span v-if="imagePositionLabel" class="image-detail-overlay__position">{{ imagePositionLabel }}</span>
+          <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
+          <ImageDetailContent v-else :image="currentImage" :loading="loading" :share-token="shareToken" @updated="handleUpdated" />
+        </div>
       </div>
       <el-button
         v-if="nextImage"

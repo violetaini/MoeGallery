@@ -434,6 +434,64 @@ test('upload preview requests use the bounded client queue', async ({ page }, te
   expect(peakRequests).toBeLessThanOrEqual(6)
 })
 
+test('upload task history uses two columns and task pagination', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'Task layout is verified once at the desktop breakpoint.')
+  await loginAsAdmin(page)
+  const requestedPages = []
+  const task = (index) => ({
+    id: index,
+    status: 'queued',
+    original_filename: index === 1
+      ? 'this-is-a-very-long-upload-filename-that-must-be-truncated-in-the-task-card.webp'
+      : `upload-${index}.webp`,
+    file_size: 1024,
+    duplicate: false,
+    preflight_duplicate: false,
+    attempt_count: 0,
+    max_attempts: 3,
+    cancel_requested: false
+  })
+  await page.route('**/api/upload-tasks?*', async (route) => {
+    const url = new URL(route.request().url())
+    const pageNumber = Number(url.searchParams.get('page') || 1)
+    const pageSize = Number(url.searchParams.get('page_size') || 12)
+    requestedPages.push(pageNumber)
+    const start = (pageNumber - 1) * pageSize + 1
+    const items = Array.from({ length: Math.max(0, Math.min(pageSize, 13 - start + 1)) }, (_value, offset) => task(start + offset))
+    await route.fulfill({ json: { items, total: 13, page: pageNumber, page_size: pageSize } })
+  })
+
+  await page.goto('/admin/images/upload')
+  await expect(page.locator('.upload-task-item')).toHaveCount(12)
+  const taskCardLayout = await page.locator('.upload-task-list').evaluate((list) => {
+    const cards = Array.from(list.querySelectorAll('.upload-task-item'))
+    const first = cards[0]?.getBoundingClientRect()
+    const second = cards[1]?.getBoundingClientRect()
+    const longName = cards[0]?.querySelector('.upload-task-item__main strong')
+    return {
+      firstY: Math.round(first?.y || 0),
+      secondY: Math.round(second?.y || 0),
+      firstX: Math.round(first?.x || 0),
+      secondX: Math.round(second?.x || 0),
+      longNameIsTruncated: Boolean(longName && longName.scrollWidth > longName.clientWidth)
+    }
+  })
+  expect(taskCardLayout.firstY).toBe(taskCardLayout.secondY)
+  expect(taskCardLayout.secondX).toBeGreaterThan(taskCardLayout.firstX)
+  expect(taskCardLayout.longNameIsTruncated).toBe(true)
+  await page.setViewportSize({ width: 1000, height: 900 })
+  const compactTaskCardLayout = await page.locator('.upload-task-list').evaluate((list) => {
+    const cards = Array.from(list.querySelectorAll('.upload-task-item'))
+    const first = cards[0]?.getBoundingClientRect()
+    const second = cards[1]?.getBoundingClientRect()
+    return { firstY: Math.round(first?.y || 0), secondY: Math.round(second?.y || 0) }
+  })
+  expect(compactTaskCardLayout.secondY).toBeGreaterThan(compactTaskCardLayout.firstY)
+  await page.locator('.upload-task-pagination .btn-next').click()
+  await expect(page.locator('.upload-task-item').filter({ hasText: 'upload-13.webp' })).toBeVisible()
+  expect(requestedPages).toContain(2)
+})
+
 test('administrator can open settings and submit an image task', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'The authenticated workflow runs once on desktop Chromium.')
   const runtimeErrors = captureRuntimeErrors(page)

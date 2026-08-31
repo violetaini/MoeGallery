@@ -2661,6 +2661,7 @@
 
 .upload-task-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   max-height: 520px;
   overflow: auto;
@@ -2706,9 +2707,24 @@
   white-space: nowrap;
 }
 
+.upload-task-item__main strong {
+  display: block;
+  max-width: min(100%, 34ch);
+}
+
 .upload-task-item__error {
   color: var(--danger);
   font-size: 13px;
+}
+
+@media (max-width: 1040px) {
+  .upload-task-list {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-task-item__main strong {
+    max-width: min(100%, 42ch);
+  }
 }
 
 .upload-preview-lightbox {

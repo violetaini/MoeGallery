@@ -15,7 +15,7 @@ const checkingDuplicates = ref(false)
 const taskItems = ref([])
 const taskTotal = ref(0)
 const taskPage = ref(1)
-const taskPageSize = 20
+const taskPageSize = 12
 const taskStatusFilter = ref('active')
 const selectedTaskIds = ref([])
 const taskLoading = ref(false)
@@ -89,6 +89,10 @@ function taskStatusType(status) {
   if (status === 'failed') return 'danger'
   if (status === 'processing' || status === 'retry_wait') return 'warning'
   return 'info'
+}
+
+function taskDisplayName(task) {
+  return task.original_filename || `任务 ${task.id}`
 }
 
 function formatBytes(size) {
@@ -737,7 +741,7 @@ onBeforeUnmount(() => {
                 @change="(selected) => toggleTaskSelection(task.id, selected)"
               />
               <div class="upload-task-item__main">
-                <strong>{{ task.original_filename || `任务 ${task.id}` }}</strong>
+                <strong :title="taskDisplayName(task)">{{ taskDisplayName(task) }}</strong>
                 <span v-if="task.error_message" class="upload-task-item__error">{{ task.error_message }}</span>
                 <span v-else class="muted">
                   {{ task.image_id ? `图片 ID ${task.image_id}` : formatBytes(task.file_size) }}

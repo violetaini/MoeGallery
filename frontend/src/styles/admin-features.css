@@ -2579,24 +2579,16 @@
 }
 
 .upload-task-toolbar {
-  justify-content: flex-start;
+  justify-content: space-between;
   flex-wrap: nowrap;
   gap: 12px;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
-}
-
-.upload-task-toolbar::-webkit-scrollbar {
-  height: 6px;
 }
 
 .upload-task-toolbar__filters {
-  flex: 1 0 auto;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
-  min-width: max-content;
+  min-width: 0;
   white-space: nowrap;
 }
 
@@ -2630,7 +2622,32 @@
 }
 
 .upload-task-status-filter {
-  width: 148px;
+  flex: 0 0 148px;
+  width: 148px !important;
+}
+
+@media (max-width: 560px) {
+  .upload-task-toolbar {
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .upload-task-toolbar::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .upload-task-toolbar__filters,
+  .upload-task-toolbar__actions {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .upload-task-toolbar__actions {
+    margin-left: 0;
+  }
 }
 
 .upload-task-panel__summary {

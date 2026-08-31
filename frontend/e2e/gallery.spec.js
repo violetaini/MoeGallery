@@ -408,9 +408,18 @@ test('upload preview requests use the bounded client queue', async ({ page }, te
       const rect = control.getBoundingClientRect()
       return rect.y + rect.height / 2
     })
-    return { top: Math.min(...centers), bottom: Math.max(...centers) }
+    const statusFilter = toolbar.querySelector('.upload-task-status-filter')
+    return {
+      top: Math.min(...centers),
+      bottom: Math.max(...centers),
+      clientWidth: toolbar.clientWidth,
+      scrollWidth: toolbar.scrollWidth,
+      statusFilterWidth: Math.round(statusFilter?.getBoundingClientRect().width || 0)
+    }
   })
   expect(taskToolbarMetrics.bottom - taskToolbarMetrics.top).toBeLessThanOrEqual(1)
+  expect(taskToolbarMetrics.scrollWidth).toBeLessThanOrEqual(taskToolbarMetrics.clientWidth + 1)
+  expect(taskToolbarMetrics.statusFilterWidth).toBe(148)
   const files = Array.from({ length: 8 }, (_value, index) => ({
     name: `preview-${index + 1}.png`,
     mimeType: 'image/png',

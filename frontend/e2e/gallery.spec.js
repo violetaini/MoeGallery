@@ -405,6 +405,11 @@ test('upload preview requests use the bounded client queue', async ({ page }, te
   await expect(page.locator('.upload-task-toolbar__actions')).toHaveCount(1)
   await expect(page.locator('.upload-task-toolbar__actions .el-button')).toHaveCount(3)
   await expect(page.locator('.upload-task-toolbar__actions .el-button').first()).toBeDisabled()
+  const metadataBox = await page.locator('.admin-form-workbench').boundingBox()
+  const taskPanelBox = await page.locator('.upload-task-panel').boundingBox()
+  expect(metadataBox).not.toBeNull()
+  expect(taskPanelBox).not.toBeNull()
+  expect(metadataBox.y).toBeLessThan(taskPanelBox.y)
   const taskToolbarMetrics = await page.locator('.upload-task-toolbar').evaluate((toolbar) => {
     const controls = Array.from(toolbar.querySelectorAll('.upload-task-toolbar__filters > *, .upload-task-toolbar__actions > *'))
     const centers = controls.map((control) => {

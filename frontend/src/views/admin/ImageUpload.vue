@@ -703,6 +703,61 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </el-form-item>
+      <div class="admin-form-workbench">
+        <el-form-item label="作品">
+          <el-select
+            v-model="form.work_ids"
+            multiple
+            filterable
+            remote
+            reserve-keyword
+            clearable
+            style="width: 100%"
+            :loading="optionLoading.works"
+            :remote-method="loadWorks"
+            @visible-change="(visible) => visible && loadWorks()"
+          >
+            <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-select
+            v-model="form.character_ids"
+            multiple
+            filterable
+            remote
+            reserve-keyword
+            clearable
+            style="width: 100%"
+            :loading="optionLoading.characters"
+            :remote-method="loadCharacters"
+            @visible-change="(visible) => visible && loadCharacters()"
+          >
+            <el-option v-for="character in characters" :key="character.id" :label="character.name" :value="character.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="作者">
+          <el-input v-model="form.artist_name" />
+        </el-form-item>
+        <el-form-item label="来源">
+          <el-input v-model="form.source_url" />
+        </el-form-item>
+        <el-form-item label="分级">
+          <el-radio-group v-model="form.rating">
+            <el-radio-button label="safe">safe</el-radio-button>
+            <el-radio-button label="sensitive">sensitive</el-radio-button>
+            <el-radio-button label="hidden">hidden</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item class="upload-public-control" label="公开">
+          <div class="upload-public-row">
+            <el-switch v-model="form.is_public" />
+            <el-button native-type="button" type="primary" :loading="uploading || checkingDuplicates" :disabled="!previewItems.length" @click="submitUpload">
+              {{ uploadingLabel }}
+            </el-button>
+          </div>
+        </el-form-item>
+      </div>
       <el-form-item class="image-upload-form__section" label="上传任务">
         <div v-loading="taskLoading" class="upload-task-panel">
           <div class="upload-task-toolbar">
@@ -775,61 +830,6 @@ onBeforeUnmount(() => {
           />
         </div>
       </el-form-item>
-      <div class="admin-form-workbench">
-        <el-form-item label="作品">
-          <el-select
-            v-model="form.work_ids"
-            multiple
-            filterable
-            remote
-            reserve-keyword
-            clearable
-            style="width: 100%"
-            :loading="optionLoading.works"
-            :remote-method="loadWorks"
-            @visible-change="(visible) => visible && loadWorks()"
-          >
-            <el-option v-for="work in works" :key="work.id" :label="work.name" :value="work.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="角色">
-          <el-select
-            v-model="form.character_ids"
-            multiple
-            filterable
-            remote
-            reserve-keyword
-            clearable
-            style="width: 100%"
-            :loading="optionLoading.characters"
-            :remote-method="loadCharacters"
-            @visible-change="(visible) => visible && loadCharacters()"
-          >
-            <el-option v-for="character in characters" :key="character.id" :label="character.name" :value="character.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="作者">
-          <el-input v-model="form.artist_name" />
-        </el-form-item>
-        <el-form-item label="来源">
-          <el-input v-model="form.source_url" />
-        </el-form-item>
-        <el-form-item label="分级">
-          <el-radio-group v-model="form.rating">
-            <el-radio-button label="safe">safe</el-radio-button>
-            <el-radio-button label="sensitive">sensitive</el-radio-button>
-            <el-radio-button label="hidden">hidden</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item class="upload-public-control" label="公开">
-          <div class="upload-public-row">
-            <el-switch v-model="form.is_public" />
-            <el-button native-type="button" type="primary" :loading="uploading || checkingDuplicates" :disabled="!previewItems.length" @click="submitUpload">
-              {{ uploadingLabel }}
-            </el-button>
-          </div>
-        </el-form-item>
-      </div>
     </el-form>
 
     <Teleport to="body">

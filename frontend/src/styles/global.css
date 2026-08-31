@@ -544,12 +544,18 @@ a {
 }
 
 .empty-state {
+  display: grid;
+  place-items: center;
   padding: 44px;
   border: 1px dashed var(--line);
   border-radius: 8px;
   color: var(--muted);
   text-align: center;
   background: var(--surface);
+}
+
+.admin-image-wall > .empty-state {
+  min-height: 180px;
 }
 
 .masonry {

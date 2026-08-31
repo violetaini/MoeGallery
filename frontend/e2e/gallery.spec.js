@@ -194,9 +194,9 @@ test('public archive routes render works, characters, ratings, and search result
   await expect(emptyState).toBeVisible()
   const emptyStateStyle = await emptyState.evaluate((element) => {
     const style = getComputedStyle(element)
-    return { borderStyle: style.borderStyle, paddingTop: style.paddingTop }
+    return { borderStyle: style.borderStyle, paddingTop: style.paddingTop, display: style.display, placeItems: style.placeItems }
   })
-  expect(emptyStateStyle).toEqual({ borderStyle: 'dashed', paddingTop: '44px' })
+  expect(emptyStateStyle).toEqual({ borderStyle: 'dashed', paddingTop: '44px', display: 'grid', placeItems: 'center' })
   await page.getByRole('button', { name: '安全', exact: true }).click()
   await expect(page).toHaveURL(/\/tags$/)
   await expect(page.locator('.masonry .image-card[aria-label^="e2e-"]')).toHaveCount(2)

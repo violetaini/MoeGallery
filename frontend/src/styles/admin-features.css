@@ -2597,6 +2597,7 @@
   flex: 1 0 auto;
   flex-wrap: nowrap;
   min-width: max-content;
+  white-space: nowrap;
 }
 
 .upload-task-toolbar__actions {
@@ -2607,6 +2608,24 @@
 }
 
 .upload-task-toolbar__actions .el-button {
+  white-space: nowrap;
+}
+
+.upload-task-toolbar__filters > * {
+  flex: 0 0 auto;
+}
+
+.upload-task-total {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(111, 101, 176, 0.14);
+  border-radius: 999px;
+  color: #62598a;
+  background: rgba(122, 140, 255, 0.08);
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
 }
 

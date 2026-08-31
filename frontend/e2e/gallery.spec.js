@@ -400,6 +400,8 @@ test('upload preview requests use the bounded client queue', async ({ page }, te
   })
 
   await page.goto('/admin/images/upload')
+  await expect(page.locator('.upload-task-total')).toHaveCount(0)
+  await expect(page.locator('.upload-task-toolbar__actions')).toHaveCount(0)
   const taskToolbarMetrics = await page.locator('.upload-task-toolbar').evaluate((toolbar) => {
     const controls = Array.from(toolbar.querySelectorAll('.upload-task-toolbar__filters > *, .upload-task-toolbar__actions > *'))
     const centers = controls.map((control) => {

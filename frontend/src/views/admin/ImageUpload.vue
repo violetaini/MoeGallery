@@ -704,6 +704,7 @@ onBeforeUnmount(() => {
           <div class="upload-task-toolbar">
             <div class="upload-task-toolbar__filters">
               <el-checkbox
+                v-if="taskItems.length"
                 :model-value="allPageTasksSelected"
                 :indeterminate="selectedTaskIds.length > 0 && !allPageTasksSelected"
                 aria-label="选择本页任务"
@@ -712,10 +713,10 @@ onBeforeUnmount(() => {
               <el-select v-model="taskStatusFilter" class="upload-task-status-filter" @change="changeTaskStatusFilter">
                 <el-option v-for="item in taskStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
+              <span v-if="taskTotal" class="upload-task-total">{{ taskTotal }} 项</span>
               <el-button circle :icon="Refresh" aria-label="刷新任务" @click="loadUploadTasks()" />
-              <span class="muted">共 {{ taskTotal }} 个</span>
             </div>
-            <div class="upload-task-toolbar__actions">
+            <div v-if="taskItems.length" class="upload-task-toolbar__actions">
               <span v-if="selectedTaskIds.length" class="muted">已选 {{ selectedTaskIds.length }} 个</span>
               <el-button :disabled="!selectedTaskIds.length" :loading="taskActionLoading" @click="runTaskAction('retry', selectedTaskIds)">重试</el-button>
               <el-button :disabled="!selectedTaskIds.length" :loading="taskActionLoading" @click="runTaskAction('cancel', selectedTaskIds)">取消</el-button>

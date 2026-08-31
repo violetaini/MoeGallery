@@ -4138,7 +4138,6 @@ body {
   }
 
   .upload-task-panel__summary,
-  .upload-task-toolbar,
   .upload-task-item__actions {
     align-items: stretch;
     flex-direction: column;
@@ -4155,9 +4154,6 @@ body {
     flex-wrap: wrap;
   }
 
-  .upload-task-toolbar__filters,
-  .upload-task-toolbar__actions,
-  .upload-task-status-filter,
   .upload-task-pagination {
     width: 100%;
   }

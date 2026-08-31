@@ -2579,13 +2579,35 @@
 }
 
 .upload-task-toolbar {
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 12px;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
-.upload-task-toolbar__filters,
+.upload-task-toolbar::-webkit-scrollbar {
+  height: 6px;
+}
+
+.upload-task-toolbar__filters {
+  flex: 1 0 auto;
+  flex-wrap: nowrap;
+  min-width: max-content;
+}
+
 .upload-task-toolbar__actions {
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  min-width: max-content;
+  margin-left: auto;
+}
+
+.upload-task-toolbar__actions .el-button {
+  white-space: nowrap;
 }
 
 .upload-task-status-filter {

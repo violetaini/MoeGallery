@@ -543,6 +543,15 @@ a {
   color: var(--muted);
 }
 
+.empty-state {
+  padding: 44px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+  background: var(--surface);
+}
+
 .masonry {
   display: grid;
   gap: 4px;

@@ -2201,15 +2201,6 @@
   letter-spacing: 0.04em;
 }
 
-.empty-state {
-  padding: 44px;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  color: var(--muted);
-  text-align: center;
-  background: var(--surface);
-}
-
 .login-page {
   display: grid;
   min-height: 100vh;

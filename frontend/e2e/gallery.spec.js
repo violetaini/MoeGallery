@@ -190,6 +190,13 @@ test('public archive routes render works, characters, ratings, and search result
   expect(await page.getByRole('button', { name: '敏感', exact: true }).getAttribute('aria-pressed')).toBe('true')
   const indicatorAfter = await page.locator('.rating-switch').getAttribute('style')
   expect(indicatorAfter).not.toBe(indicatorBefore)
+  const emptyState = page.locator('.masonry .empty-state')
+  await expect(emptyState).toBeVisible()
+  const emptyStateStyle = await emptyState.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { borderStyle: style.borderStyle, paddingTop: style.paddingTop }
+  })
+  expect(emptyStateStyle).toEqual({ borderStyle: 'dashed', paddingTop: '44px' })
   await page.getByRole('button', { name: '安全', exact: true }).click()
   await expect(page).toHaveURL(/\/tags$/)
   await expect(page.locator('.masonry .image-card[aria-label^="e2e-"]')).toHaveCount(2)

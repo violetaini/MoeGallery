@@ -16,7 +16,7 @@ const taskItems = ref([])
 const taskTotal = ref(0)
 const taskPage = ref(1)
 const taskPageSize = 20
-const taskStatusFilter = ref('')
+const taskStatusFilter = ref('active')
 const selectedTaskIds = ref([])
 const taskLoading = ref(false)
 const taskActionLoading = ref(false)
@@ -55,6 +55,7 @@ const allPageTasksSelected = computed(() => (
   taskItems.value.length > 0 && taskItems.value.every((item) => selectedTaskIds.value.includes(item.id))
 ))
 const taskStatusOptions = [
+  { value: 'active', label: '进行中' },
   { value: '', label: '全部状态' },
   { value: 'queued', label: '排队中' },
   { value: 'processing', label: '处理中' },
@@ -502,7 +503,7 @@ async function submitUpload() {
     const result = await galleryApi.createUploadTasks(data)
     const submittedCount = result.items?.length || 0
     taskPage.value = 1
-    taskStatusFilter.value = ''
+    taskStatusFilter.value = 'active'
     ElMessage.success(`已提交 ${submittedCount} 个上传任务`)
     clearSelectedFiles()
     await loadUploadTasks({ silent: true })

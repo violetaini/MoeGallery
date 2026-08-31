@@ -95,6 +95,7 @@ Updates are handled by the main service, so no separate updater service or passw
 - HttpOnly admin sessions, CSRF validation, login rate limiting, API keys, and a cryptographically strong session secret generated during setup.
 - Checks for new GitHub releases, verified updates, database backups, migrations, health checks, and automatic rollback from the admin panel.
 - The Update Center paginates update history and keeps long task logs in a scrollable detail panel.
+- The image upload page opens on active tasks by default; completed, failed, and canceled history remains available through the status filter.
 
 ## Image Processing
 

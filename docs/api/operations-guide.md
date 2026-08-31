@@ -321,6 +321,8 @@ curl -H "Authorization: Bearer $AGMS_API_KEY" \
   "$BASE_URL/api/upload-tasks?page=1&page_size=50"
 ```
 
+Use `status=active` to return only queued, processing, and retry-waiting tasks; the web upload page uses this filter by default. Omit the filter to inspect all task history, or pass a terminal status such as `success`, `failed`, or `canceled`.
+
 Inspect one task:
 
 ```bash

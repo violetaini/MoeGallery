@@ -319,6 +319,13 @@ class UploadQueueReliabilityTests(unittest.TestCase):
         self.assertEqual(payload["page_size"], 1)
         self.assertEqual(len(payload["items"]), 1)
 
+        active = self.client.get(
+            "/api/upload-tasks",
+            params={"status": "active", "page_size": 10},
+        )
+        self.assertEqual(active.status_code, 200)
+        self.assertEqual(active.json()["total"], 2)
+
         with patch("app.api.upload_tasks.start_upload_worker"):
             action = self.client.post(
                 "/api/upload-tasks/batch/actions",

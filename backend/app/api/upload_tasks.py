@@ -22,6 +22,7 @@ from app.schemas.upload_task import (
 )
 from app.services.storage_service import delete_storage_file, save_upload_task_file
 from app.services.upload_task_service import (
+    ACTIVE_TASK_STATUSES,
     TASK_STATUS_CANCELED,
     TASK_STATUS_FAILED,
     TASK_STATUS_PROCESSING,
@@ -279,6 +280,7 @@ def list_upload_tasks(
     page_size: int = Query(50, ge=1, le=200),
 ):
     valid_statuses = {
+        "active",
         TASK_STATUS_QUEUED,
         TASK_STATUS_PROCESSING,
         TASK_STATUS_RETRY_WAIT,
@@ -289,7 +291,9 @@ def list_upload_tasks(
     if task_status and task_status not in valid_statuses:
         raise HTTPException(status_code=422, detail="Unknown upload task status")
     filters = []
-    if task_status:
+    if task_status == "active":
+        filters.append(UploadTask.status.in_(ACTIVE_TASK_STATUSES))
+    elif task_status:
         filters.append(UploadTask.status == task_status)
     if ids:
         try:

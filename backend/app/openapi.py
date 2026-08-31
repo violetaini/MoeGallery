@@ -232,7 +232,7 @@ OPERATION_METADATA = {
     },
     ("GET", "/api/upload-tasks"): {
         "summary": "获取上传任务列表",
-        "description": "分页返回上传任务，可按排队、运行、等待重试、成功、失败或已取消状态筛选。",
+        "description": "分页返回上传任务，默认可按活动中的排队、运行或等待重试任务筛选，也支持成功、失败或已取消状态。",
     },
     ("POST", "/api/upload-tasks/batch/actions"): {
         "summary": "批量操作上传任务",

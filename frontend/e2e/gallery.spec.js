@@ -69,7 +69,9 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
     expect(toolbarRowBounds.max - toolbarRowBounds.min).toBeLessThanOrEqual(1)
   }
 
-  await page.locator('.masonry .image-card').first().click()
+  // The desktop upload test adds a newer, unbound image before mobile tests run.
+  // Select the seeded character image, which also has a next image to navigate to.
+  await page.locator('.masonry').getByRole('link', { name: 'e2e-character.webp', exact: true }).click()
   await expect(page.locator('.image-detail-overlay')).toBeVisible()
   await expect(page).toHaveURL(/\?image=\d+$/)
   await expect(page.locator('.image-detail-overlay__panel')).toBeVisible()
@@ -89,12 +91,13 @@ test('public navigation loads gallery without horizontal overflow', async ({ pag
       if (!label) return null
       const labelStyle = getComputedStyle(label)
       return {
-        headingX: Math.round(heading.getBoundingClientRect().x),
-        labelX: Math.round(label.getBoundingClientRect().x + parseFloat(labelStyle.paddingLeft || '0'))
+        headingX: heading.getBoundingClientRect().x,
+        labelX: label.getBoundingClientRect().x + parseFloat(labelStyle.paddingLeft || '0')
       }
     })
     expect(taxonomyAlignment).not.toBeNull()
-    expect(taxonomyAlignment.headingX).toBe(taxonomyAlignment.labelX)
+    // Collapsed table borders can place label content on a fractional pixel.
+    expect(Math.abs(taxonomyAlignment.headingX - taxonomyAlignment.labelX)).toBeLessThanOrEqual(1)
   }
   await expect.poll(() => previewRequestIds.size).toBeGreaterThan(1)
   const nextButton = page.getByRole('button', { name: '下一张' })

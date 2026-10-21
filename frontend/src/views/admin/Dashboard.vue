@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </section>
-    <section v-if="recentImages.length" class="admin-recent-strip">
+    <section v-if="recentImages.length" class="admin-dashboard__section admin-recent-strip">
       <div class="admin-dashboard__section-title">
         <h3>最近上传</h3>
         <RouterLink class="admin-link-button" to="/admin/images">进入图片管理</RouterLink>

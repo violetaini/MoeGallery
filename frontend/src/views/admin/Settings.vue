@@ -46,6 +46,7 @@ const apiKeyForm = ref({ name: '', scopes: ['library:read'], expires_at: null })
 const adminUsername = ref('')
 const adminNickname = ref('')
 const adminPassword = ref('')
+const ssoAccountUrl = ref('')
 const adminPasswordChangeRequired = ref(false)
 const adminAvatarImage = ref(null)
 const adminAvatarImageId = ref(null)
@@ -318,6 +319,7 @@ function storageStats(name) {
 }
 
 function syncAccount(data) {
+  ssoAccountUrl.value = data.auth_mode === 'sso' ? data.account_url : ''
   adminUsername.value = data.admin_username || ''
   adminNickname.value = data.admin_nickname || data.admin_username || ''
   adminPasswordChangeRequired.value = Boolean(data.admin_password_change_required)
@@ -1037,6 +1039,8 @@ onMounted(async () => {
                 保存所有后台偏好
               </el-button>
             </div>
+            <el-alert v-if="ssoAccountUrl" title="登录账号、密码与两步验证在统一账号中心维护。" type="info" :closable="false" />
+            <a v-if="ssoAccountUrl" :href="ssoAccountUrl" target="_blank" rel="noopener">管理统一账号 →</a>
             <div class="admin-account-grid">
               <div class="admin-account-avatar">
                 <el-upload
@@ -1061,9 +1065,9 @@ onMounted(async () => {
                 </div>
                 <div class="admin-account-field">
                   <span>用户名</span>
-                  <el-input v-model="adminUsername" maxlength="80" autocomplete="username" />
+                  <el-input :disabled="Boolean(ssoAccountUrl)" v-model="adminUsername" maxlength="80" autocomplete="username" />
                 </div>
-                <div class="admin-account-field">
+                <div v-if="!ssoAccountUrl" class="admin-account-field">
                   <span>新密码</span>
                   <el-input
                     v-model="adminPassword"
@@ -1594,7 +1598,7 @@ onMounted(async () => {
       </div>
       <div class="system-health-actions">
         <el-button :icon="Refresh" :loading="healthLoading" @click="loadSystemHealth(true)">刷新</el-button>
-        <el-button plain :loading="rotatingSecret" @click="rotateLoginSecret">轮换登录密钥</el-button>
+        <el-button v-if="!ssoAccountUrl" plain :loading="rotatingSecret" @click="rotateLoginSecret">轮换登录密钥</el-button>
       </div>
     </div>
     <div v-if="healthError" class="system-health-state system-health-state--error">

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import ADMIN_SESSION_COOKIE, require_authenticated_admin
 from app.config import settings
+from app import sso
 from app.database import get_db
 from app.schemas.auth import AuthUser, LoginRequest, LoginResponse
 from app.services.admin_account_service import authenticate_admin, get_admin_account
@@ -23,6 +24,31 @@ _login_attempts: dict[str, list[int]] = {}
 _login_attempts_lock = threading.Lock()
 _MAX_LOGIN_RATE_LIMIT_KEYS = 4096
 _client_ip = client_ip
+
+
+@router.get("/config")
+def auth_configuration():
+    return {"mode": "sso" if sso.enabled() else "local", "login_url": "/api/auth/sso/start", "account_url": "https://sso.chitanda.net/portal"}
+
+
+@router.get("/sso/start")
+def sso_start(request: Request):
+    if not sso.enabled():
+        raise HTTPException(404, "SSO not enabled")
+    return sso.browser_response(sso.call("start", request))
+
+
+@router.get("/sso/callback")
+def sso_callback(request: Request):
+    from starlette.responses import RedirectResponse
+    if not sso.enabled():
+        raise HTTPException(404, "SSO not enabled")
+    if request.query_params.get("loggedout") == "1":
+        return RedirectResponse("/login?loggedout=1", status_code=302, headers={"Cache-Control": "no-store"})
+    try:
+        return sso.browser_response(sso.call("callback", request))
+    except HTTPException:
+        return RedirectResponse("/login?sso_error=1", status_code=302, headers={"Cache-Control": "no-store"})
 def _normalize_login_username(username: str | None) -> str:
     return (username or "").strip().casefold()
 
@@ -96,6 +122,8 @@ def login(
     response: Response,
     db: Annotated[Session, Depends(get_db)],
 ):
+    if sso.enabled():
+        raise HTTPException(410, "Use Chitanda unified login")
     _enforce_login_rate_limit(request, payload.username)
     account = authenticate_admin(db, payload.username, payload.password)
     if not account:
@@ -123,11 +151,17 @@ def login(
 
 @router.post("/logout")
 def logout(
+    request: Request,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
     _admin: Annotated[dict, Depends(require_authenticated_admin)],
     session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
 ):
+    if sso.enabled():
+        result = sso.call("logout", request)
+        for cookie in result.get("cookies", []):
+            response.headers.append("set-cookie", cookie)
+        return {"ok": True, "redirect_to": result["redirect_to"]}
     revoke_session(db, token=session_cookie)
     db.commit()
     clear_admin_session_cookie(response)
@@ -142,8 +176,10 @@ def me(
     account = get_admin_account(db)
     return {
         "username": account.username if admin.get("auth_type") == "api_key" else admin["sub"],
+        "auth_mode": "sso" if sso.enabled() else "local",
+        "account_url": "https://sso.chitanda.net/portal" if sso.enabled() else "",
         "nickname": account.nickname,
         "avatar_image_id": account.avatar_image_id,
         "avatar_image": account.avatar_image,
-        "password_change_required": account.password_change_required,
+        "password_change_required": False if sso.enabled() else account.password_change_required,
     }

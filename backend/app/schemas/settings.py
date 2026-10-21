@@ -34,6 +34,8 @@ class ApiKeyUpdate(ApiKeyCreate):
 
 
 class AdminSettingsRead(BaseModel):
+    auth_mode: str = "local"
+    account_url: str = ""
     image_manage_view_mode: str = Field(default="classic", pattern="^(classic|waterfall)$")
     random_api_desktop_orientation: str = Field(default="landscape", pattern="^(landscape|portrait|square|any)$")
     random_api_mobile_orientation: str = Field(default="portrait", pattern="^(landscape|portrait|square|any)$")

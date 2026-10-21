@@ -37,6 +37,7 @@ from app.services.app_setting_service import (
     normalize_github_release_proxy_url,
 )
 from app.services.admin_account_service import get_admin_account, update_admin_account
+from app import sso
 from app.services.auth_session_service import clear_admin_session_cookie, rotate_auth_secret
 from app.services.cdn_warm_service import enqueue_home_images, start_cdn_warm_worker
 from app.services.api_key_service import (
@@ -226,6 +227,8 @@ def _read_settings(db: Session, *, include_api_keys: bool = True) -> dict[str, o
     random_api_defaults = get_random_api_defaults(db)
     worker_profile = get_upload_worker_profile(db)
     return {
+        "auth_mode": "sso" if sso.enabled() else "local",
+        "account_url": "https://sso.chitanda.net/portal" if sso.enabled() else "",
         "image_manage_view_mode": _normalize_image_manage_view_mode(
             _get_value(
                 db,
@@ -248,7 +251,7 @@ def _read_settings(db: Session, *, include_api_keys: bool = True) -> dict[str, o
         "admin_nickname": account.nickname,
         "admin_avatar_image_id": account.avatar_image_id,
         "admin_avatar_image": account.avatar_image,
-        "admin_password_change_required": account.password_change_required,
+        "admin_password_change_required": False if sso.enabled() else account.password_change_required,
         "operations_api_keys": list_configured_api_keys(db) if include_api_keys else [],
         "api_key_scopes": api_key_scope_catalog(),
         **_read_hero_settings(db, public_only=False),
@@ -280,6 +283,8 @@ def update_settings(
     admin: Annotated[dict, Depends(require_settings_manage)],
 ):
     data = payload.model_dump(exclude_unset=True)
+    if sso.enabled() and (data.get("admin_password") or (data.get("admin_username") is not None and data["admin_username"] != get_admin_account(db).username)):
+        raise HTTPException(410, "Manage username and password at the unified identity portal")
     if data.get("image_manage_view_mode") is not None:
         _set_value(db, IMAGE_MANAGE_VIEW_MODE_KEY, data["image_manage_view_mode"])
     random_api_setting_fields = {
@@ -381,6 +386,8 @@ def rotate_admin_auth_secret(
     db: Annotated[Session, Depends(get_db)],
     _admin: Annotated[dict, Depends(require_settings_manage)],
 ):
+    if sso.enabled():
+        raise HTTPException(410, "Manage SSO sessions at the unified identity portal")
     result = rotate_auth_secret(db)
     db.commit()
     clear_admin_session_cookie(response)

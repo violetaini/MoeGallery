@@ -10,6 +10,20 @@ import { galleryApi } from '../api/gallery'
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const ssoEnabled = ref(false)
+const ssoReady = ref(false)
+const ssoNotice = ref('')
+function beginSSO() { window.location.assign('/api/auth/sso/start') }
+fetch('/api/auth/config', { credentials: 'same-origin', cache: 'no-store' }).then(async response => {
+  if (!response.ok) throw new Error('登录服务暂时不可用')
+  const config = await response.json()
+  ssoEnabled.value = config.mode === 'sso'
+  ssoReady.value = true
+  if (!ssoEnabled.value) return
+  if (route.query.sso_error) ssoNotice.value = '统一登录未完成，请确认账号授权后重试。'
+  else if (route.query.loggedout) ssoNotice.value = '已退出统一账号。'
+  else beginSSO()
+}).catch(() => { ssoNotice.value = '登录服务暂时不可用，请稍后重试。' })
 const form = reactive({
   username: '',
   password: ''
@@ -48,7 +62,12 @@ async function submit() {
       <div class="login-panel__poster">
         <img src="/avatar.webp" alt="Anime Gallery" />
       </div>
-      <el-form label-position="top" @submit.prevent>
+      <div v-if="ssoEnabled || !ssoReady" class="sso-login">
+        <h2>Chitanda 统一账号</h2>
+        <p>{{ ssoNotice || '使用统一账号管理你的 Moe 画廊。' }}</p>
+        <el-button v-if="ssoEnabled" type="primary" size="large" style="width: 100%" @click="beginSSO">统一账号登录</el-button>
+      </div>
+      <el-form v-if="ssoReady && !ssoEnabled" label-position="top" @submit.prevent>
         <el-form-item label="账号">
           <el-input v-model="form.username" :prefix-icon="User" autocomplete="username" @keyup.enter="submit" />
         </el-form-item>

@@ -51,11 +51,14 @@ function openAccountSettings() {
 }
 
 async function logout() {
+  let redirectTo = ''
   try {
-    await galleryApi.logout()
+    const result = await galleryApi.logout()
+    redirectTo = result.redirect_to || ''
   } finally {
     clearAuthSession()
-    router.replace('/login')
+    if (redirectTo) window.location.assign(redirectTo)
+    else router.replace('/login?loggedout=1')
   }
 }
 

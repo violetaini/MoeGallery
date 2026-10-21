@@ -75,7 +75,7 @@ function readCookie(name) {
 api.interceptors.request.use((config) => {
   const method = String(config.method || 'get').toLowerCase()
   if (!['get', 'head', 'options'].includes(method)) {
-    const csrfToken = readCookie('agms_admin_csrf')
+    const csrfToken = readCookie('__Host-chitanda_moegallery_csrf') || readCookie('agms_admin_csrf')
     if (csrfToken) {
       config.headers = config.headers || {}
       config.headers['X-CSRF-Token'] = decodeURIComponent(csrfToken)

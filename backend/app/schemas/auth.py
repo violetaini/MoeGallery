@@ -20,6 +20,8 @@ class LoginResponse(BaseModel):
 
 
 class AuthUser(BaseModel):
+    auth_mode: str = "local"
+    account_url: str = ""
     username: str
     nickname: str
     avatar_image_id: int | None = None

@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.config import auth_secret_fingerprint, settings
+from app import sso
 from app.database import get_db
 from app.models import AdminSession
 from app.services.api_key_service import (
@@ -28,8 +29,8 @@ from app.utils.time import utcnow_naive
 security = HTTPBearer(auto_error=False)
 AUTH_TOKEN_TYPE = "agms-admin-access"
 MAX_BEARER_TOKEN_LENGTH = 4096
-ADMIN_SESSION_COOKIE = "agms_admin_session"
-ADMIN_CSRF_COOKIE = "agms_admin_csrf"
+ADMIN_SESSION_COOKIE = "__Host-chitanda_moegallery_session" if sso.enabled() else "agms_admin_session"
+ADMIN_CSRF_COOKIE = "__Host-chitanda_moegallery_csrf" if sso.enabled() else "agms_admin_csrf"
 API_KEY_TOKEN_TYPE = "agms-operations-api-key"
 
 
@@ -94,6 +95,8 @@ def create_access_token(username: str) -> str:
 
 
 def verify_access_token(token: str) -> dict:
+    if sso.enabled():
+        raise _invalid_token()
     try:
         if len(token) > MAX_BEARER_TOKEN_LENGTH:
             raise ValueError("Token too long")
@@ -195,6 +198,8 @@ def _require_admin(
                 client_ip(request),
             )
 
+    if sso.enabled():
+        return sso.validate(request)
     token = _extract_token(credentials, session_cookie)
     if not token:
         raise HTTPException(
@@ -270,6 +275,15 @@ def _optional_admin(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
     session_cookie: Annotated[str | None, Cookie(alias=ADMIN_SESSION_COOKIE)] = None,
 ) -> dict | None:
+    if sso.enabled() and not credentials:
+        if not session_cookie:
+            return None
+        try:
+            return sso.validate(request)
+        except HTTPException as exc:
+            if exc.status_code == 401:
+                return None
+            raise
     if credentials and credentials.scheme.lower() == "bearer":
         if verify_api_key(credentials.credentials):
             return _api_key_admin(

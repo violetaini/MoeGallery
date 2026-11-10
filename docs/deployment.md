@@ -70,15 +70,18 @@ The installer does not open the selected port in the server firewall or cloud se
 
 ## Reverse Proxies And Client IPs
 
-By default, the backend accepts forwarded client-IP headers only from loopback (`127.0.0.0/8` and `::1/128`), which covers a same-host Nginx or hosting-panel proxy. The proxy must overwrite incoming forwarding headers instead of passing user-supplied values through:
+By default, the backend accepts forwarded client-IP headers only from loopback (`127.0.0.0/8` and `::1/128`), which covers a same-host Nginx or hosting-panel proxy, and evaluates only `X-Forwarded-For` (right-to-left skipping trusted proxies) and `X-Real-IP`. Vendor headers such as `CF-Connecting-IP`, `Ali-Real-Client-IP`, `Ali-Cdn-Real-Ip`, and `True-Client-IP` are ignored by default so clients cannot spoof them across proxies or CDNs. The proxy should still overwrite incoming forwarding headers instead of passing user-supplied values through:
 
 ```nginx
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header CF-Connecting-IP "";
 proxy_set_header Ali-Real-Client-IP "";
 proxy_set_header Ali-Cdn-Real-Ip "";
 proxy_set_header True-Client-IP "";
 ```
+
+If an authenticated proxy or CDN directly populates a custom visitor header (and strictly overwrites any client-supplied value), you may explicitly opt in via `AGMS_TRUSTED_CLIENT_IP_HEADERS=ali-real-client-ip,ali-cdn-real-ip,true-client-ip`. Otherwise leave `AGMS_TRUSTED_CLIENT_IP_HEADERS` empty.
 
 If the proxy runs on another host or container network, add only its exact network to `.env`, then restart the service:
 
@@ -114,6 +117,7 @@ location ^~ /media/ {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header CF-Connecting-IP "";
     proxy_set_header Ali-Real-Client-IP "";
     proxy_set_header Ali-Cdn-Real-Ip "";
     proxy_set_header True-Client-IP "";
@@ -134,6 +138,7 @@ location / {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header CF-Connecting-IP "";
     proxy_set_header Ali-Real-Client-IP "";
     proxy_set_header Ali-Cdn-Real-Ip "";
     proxy_set_header True-Client-IP "";

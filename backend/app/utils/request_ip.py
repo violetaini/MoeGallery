@@ -6,13 +6,6 @@ from fastapi import Request
 from app.config import settings
 
 
-TRUSTED_CLIENT_IP_HEADERS = (
-    "ali-real-client-ip",
-    "ali-cdn-real-ip",
-    "true-client-ip",
-)
-
-
 def _parse_ip(value: str | None) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     raw = (value or "").strip().strip('"')
     if not raw:
@@ -27,6 +20,16 @@ def _parse_ip(value: str | None) -> ipaddress.IPv4Address | ipaddress.IPv6Addres
         return ipaddress.ip_address(raw)
     except ValueError:
         return None
+
+
+@lru_cache(maxsize=32)
+def _trusted_client_ip_headers(value: str) -> tuple[str, ...]:
+    headers: list[str] = []
+    for raw_name in value.replace(";", ",").split(","):
+        name = raw_name.strip().lower()
+        if name and name not in headers:
+            headers.append(name)
+    return tuple(headers)
 
 
 @lru_cache(maxsize=32)
@@ -49,7 +52,7 @@ def client_ip(request: Request) -> str:
     peer = request.client.host if request.client and request.client.host else "unknown"
     peer_ip = _parse_ip(peer)
     if _is_trusted_proxy(peer_ip):
-        for header_name in TRUSTED_CLIENT_IP_HEADERS:
+        for header_name in _trusted_client_ip_headers(settings.trusted_client_ip_headers):
             header_ip = _parse_ip(request.headers.get(header_name))
             if header_ip:
                 return str(header_ip)

@@ -1,6 +1,7 @@
 import hashlib
 import ipaddress
 import os
+import re
 import secrets
 from functools import lru_cache
 from pathlib import Path
@@ -133,6 +134,7 @@ class Settings(BaseSettings):
     auth_audience: str = "agms-backend"
     cookie_secure: bool = False
     trusted_proxy_cidrs: str = "127.0.0.0/8,::1/128"
+    trusted_client_ip_headers: str = ""
     login_rate_limit_window_seconds: int = 300
     login_rate_limit_max_attempts: int = 8
     install_token_ttl_seconds: int = 2 * 60 * 60
@@ -194,6 +196,12 @@ class Settings(BaseSettings):
                 ipaddress.ip_network(cidr, strict=False)
             except ValueError as exc:
                 raise ValueError(f"AGMS_TRUSTED_PROXY_CIDRS contains an invalid network: {cidr}") from exc
+        for raw_header in self.trusted_client_ip_headers.replace(";", ",").split(","):
+            header_name = raw_header.strip().lower()
+            if not header_name:
+                continue
+            if not re.fullmatch(r"[a-z0-9-]+", header_name):
+                raise ValueError(f"AGMS_TRUSTED_CLIENT_IP_HEADERS contains an invalid header name: {raw_header.strip()}")
         return self
 
 

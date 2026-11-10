@@ -70,15 +70,18 @@ sudo bash install.sh --host 0.0.0.0 --port 8111 --non-interactive
 
 ## 反向代理与真实客户端 IP
 
-后端默认只信任来自本机回环地址（`127.0.0.0/8`、`::1/128`）的客户端 IP 转发头，适用于同机部署的宝塔或 Nginx。反向代理必须覆盖外部请求携带的转发头，不能原样透传：
+后端默认只信任来自本机回环地址（`127.0.0.0/8`、`::1/128`）的客户端 IP 转发头，适用于同机部署的宝塔或 Nginx，且默认只按自右向左排除可信代理后的 `X-Forwarded-For` 与 `X-Real-IP` 解析。`CF-Connecting-IP`、`Ali-Real-Client-IP`、`Ali-Cdn-Real-Ip`、`True-Client-IP` 等 CDN 专有请求头默认不采信，防止经由其他未剥离对应请求头的 CDN 或代理转发时被客户端伪造覆盖。反向代理应同时覆盖外部请求携带的转发头，不能原样透传：
 
 ```nginx
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header CF-Connecting-IP "";
 proxy_set_header Ali-Real-Client-IP "";
 proxy_set_header Ali-Cdn-Real-Ip "";
 proxy_set_header True-Client-IP "";
 ```
+
+只有在确认前置代理或 CDN 节点已经严格剥离/重写客户端同名头时，才可通过 `AGMS_TRUSTED_CLIENT_IP_HEADERS=ali-real-client-ip,ali-cdn-real-ip,true-client-ip` 显式启用自定义优先头；否则保持为空即可。
 
 如果反向代理位于另一台服务器或容器网络中，把它的精确网段加入 `.env`，然后重启服务：
 
@@ -114,6 +117,7 @@ location ^~ /media/ {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header CF-Connecting-IP "";
     proxy_set_header Ali-Real-Client-IP "";
     proxy_set_header Ali-Cdn-Real-Ip "";
     proxy_set_header True-Client-IP "";
@@ -134,6 +138,7 @@ location / {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header CF-Connecting-IP "";
     proxy_set_header Ali-Real-Client-IP "";
     proxy_set_header Ali-Cdn-Real-Ip "";
     proxy_set_header True-Client-IP "";

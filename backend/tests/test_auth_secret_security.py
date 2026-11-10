@@ -16,7 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app import auth
 from app.api import auth as auth_api
-from app.config import generate_api_key, generate_auth_secret, is_weak_auth_secret, settings
+from app.config import Settings, generate_api_key, generate_auth_secret, is_weak_auth_secret, settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import AdminSession, AppSetting
@@ -81,15 +81,18 @@ class LoginRateLimitTests(unittest.TestCase):
         self.original_max_attempts = settings.login_rate_limit_max_attempts
         self.original_window_seconds = settings.login_rate_limit_window_seconds
         self.original_trusted_proxy_cidrs = settings.trusted_proxy_cidrs
+        self.original_trusted_client_ip_headers = settings.trusted_client_ip_headers
         settings.login_rate_limit_max_attempts = 2
         settings.login_rate_limit_window_seconds = 300
         settings.trusted_proxy_cidrs = "127.0.0.0/8,::1/128"
+        settings.trusted_client_ip_headers = ""
         auth_api._login_attempts.clear()
 
     def tearDown(self):
         settings.login_rate_limit_max_attempts = self.original_max_attempts
         settings.login_rate_limit_window_seconds = self.original_window_seconds
         settings.trusted_proxy_cidrs = self.original_trusted_proxy_cidrs
+        settings.trusted_client_ip_headers = self.original_trusted_client_ip_headers
         auth_api._login_attempts.clear()
 
     def test_trusted_proxy_uses_rightmost_forwarded_ip(self):
@@ -100,7 +103,23 @@ class LoginRateLimitTests(unittest.TestCase):
 
         self.assertEqual(auth_api._client_ip(request), "8.8.8.8")
 
-    def test_trusted_proxy_prefers_esa_real_client_ip(self):
+    def test_trusted_proxy_ignores_vendor_headers_by_default(self):
+        request = _FakeRequest(
+            headers={
+                "ali-real-client-ip": "1.1.1.1",
+                "ali-cdn-real-ip": "2.2.2.2",
+                "true-client-ip": "3.3.3.3",
+                "cf-connecting-ip": "4.4.4.4",
+                "x-forwarded-for": "9.9.9.9, 8.8.8.8",
+                "x-real-ip": "7.7.7.7",
+            },
+            client_host="127.0.0.1",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "8.8.8.8")
+
+    def test_trusted_proxy_honors_configured_client_ip_headers(self):
+        settings.trusted_client_ip_headers = "ali-real-client-ip,ali-cdn-real-ip,true-client-ip"
         request = _FakeRequest(
             headers={
                 "ali-real-client-ip": "1.1.1.1",
@@ -111,6 +130,19 @@ class LoginRateLimitTests(unittest.TestCase):
         )
 
         self.assertEqual(auth_api._client_ip(request), "1.1.1.1")
+
+    def test_untrusted_peer_ignores_configured_client_ip_headers(self):
+        settings.trusted_client_ip_headers = "ali-real-client-ip"
+        request = _FakeRequest(
+            headers={"ali-real-client-ip": "1.1.1.1"},
+            client_host="9.9.9.9",
+        )
+
+        self.assertEqual(auth_api._client_ip(request), "9.9.9.9")
+
+    def test_rejects_invalid_trusted_client_ip_header_names(self):
+        with self.assertRaises(ValueError):
+            Settings(trusted_client_ip_headers="ali-real-client-ip,bad header!")
 
     def test_untrusted_peer_cannot_spoof_forwarded_ip(self):
         request = _FakeRequest(

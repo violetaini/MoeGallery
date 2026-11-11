@@ -198,7 +198,7 @@
 
 .api-operation-card__head {
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(0, 1fr) auto 16px;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(0, 1fr) 88px 16px;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -236,6 +236,7 @@
 
 .api-operation-access {
   display: inline-flex;
+  justify-self: end;
   align-items: center;
   gap: 4px;
   color: var(--muted);
@@ -414,7 +415,7 @@
 
 @media (max-width: 1100px) {
   .api-operation-card__head {
-    grid-template-columns: minmax(0, 1fr) auto 16px;
+    grid-template-columns: minmax(0, 1fr) 88px 16px;
     gap: 8px 12px;
   }
 

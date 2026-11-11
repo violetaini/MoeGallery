@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, Delete, Edit, Loading, Plus, Refresh } from '@element-plus/icons-vue'
+import { Check, Delete, Edit, Loading, Lock, Plus, Refresh } from '@element-plus/icons-vue'
 import { adminAvatarUrlFromImage, clearAuthSession, mediaUrl, setAuthSession } from '../../api/client'
 import { galleryApi } from '../../api/gallery'
 import { orientationLabel, orientationOptions } from '../../constants/orientations'
@@ -1039,8 +1039,6 @@ onMounted(async () => {
                 保存所有后台偏好
               </el-button>
             </div>
-            <el-alert v-if="ssoAccountUrl" title="登录账号、密码与两步验证在统一账号中心维护。" type="info" :closable="false" />
-            <a v-if="ssoAccountUrl" :href="ssoAccountUrl" target="_blank" rel="noopener">管理统一账号 →</a>
             <div class="admin-account-grid">
               <div class="admin-account-avatar">
                 <el-upload
@@ -1058,7 +1056,7 @@ onMounted(async () => {
                   </button>
                 </el-upload>
               </div>
-              <div class="admin-account-form">
+              <div class="admin-account-form" :class="{ 'admin-account-form--sso': ssoAccountUrl }">
                 <div class="admin-account-field">
                   <span>昵称</span>
                   <el-input ref="adminNicknameInputRef" v-model="adminNickname" maxlength="80" placeholder="顶部显示名称，留空则显示用户名" autocomplete="nickname" />
@@ -1080,6 +1078,16 @@ onMounted(async () => {
                   />
                 </div>
               </div>
+            </div>
+            <div v-if="ssoAccountUrl" class="admin-account-center">
+              <div class="admin-account-center__info">
+                <span class="admin-account-center__icon" aria-hidden="true"><el-icon><Lock /></el-icon></span>
+                <div class="admin-account-center__copy">
+                  <strong>统一账号</strong>
+                  <span>登录账号、密码与两步验证在统一账号中心维护。</span>
+                </div>
+              </div>
+              <a class="admin-account-center__link" :href="ssoAccountUrl" target="_blank" rel="noopener noreferrer" aria-label="管理统一账号（在新标签页打开）">管理统一账号</a>
             </div>
           </div>
 

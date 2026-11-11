@@ -756,6 +756,89 @@
   gap: 14px;
 }
 
+.admin-account-center {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(110deg, rgba(122, 140, 255, 0.06), rgba(255, 119, 168, 0.035));
+}
+
+.admin-account-center__info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-account-center__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--accent-soft-2);
+  font-size: 18px;
+}
+
+.admin-account-center__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-account-center__copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-account-center__copy > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.admin-account-center__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface-solid);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-decoration: none;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.admin-account-center__link:hover {
+  border-color: var(--accent-2);
+  background: var(--accent-soft-2);
+}
+
+.admin-account-center__link:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .admin-account-center__link {
+    width: 100%;
+  }
+}
+
 .admin-account-grid {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -818,6 +901,19 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
   gap: 12px;
+}
+
+@media (min-width: 761px) {
+  .admin-account-form--sso {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-account-panel .admin-account-grid,
+  .admin-account-panel .admin-account-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .admin-account-field {

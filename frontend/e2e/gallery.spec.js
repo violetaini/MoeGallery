@@ -507,6 +507,50 @@ test('upload task history uses two columns and task pagination', async ({ page }
   expect(requestedPages).toContain(2)
 })
 
+test('API docs stay in the admin layout and support search, groups and expansion', async ({ page }, testInfo) => {
+  const runtimeErrors = captureRuntimeErrors(page)
+  await page.goto('/admin/api-docs')
+  await expect(page).toHaveURL(/\/login\?redirect=\/admin\/api-docs$/)
+  await page.locator('input[autocomplete="username"]').fill('e2e-admin')
+  await page.locator('input[autocomplete="current-password"]').fill('E2E-admin-password-2026')
+  await page.getByRole('button', { name: '登录' }).click()
+  await expect(page).toHaveURL(/\/admin\/api-docs$/)
+  await expect(page.locator('.admin-header .admin-title')).toContainText('API 文档')
+  await expect(page.locator('.admin-main .api-docs-page')).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'API 文档', exact: true })).toHaveClass(/is-active/)
+  await expect(page.locator('.api-operation-card').first()).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('api-docs.png') })
+
+  const search = page.getByRole('textbox', { name: '搜索接口', exact: true })
+  await search.fill('/api/health')
+  const operation = page.locator('.api-operation-card')
+  await expect(operation).toHaveCount(1)
+  await expect(operation.locator('pre')).toBeHidden()
+  await operation.locator('summary').focus()
+  await page.keyboard.press('Enter')
+  await expect(operation.locator('pre')).toBeVisible()
+  await expect(operation.locator('pre')).toContainText('/api/health')
+
+  await search.fill('no-matching-api-route')
+  await expect(page.getByText('没有匹配的接口', { exact: true })).toBeVisible()
+  await search.clear()
+  await page.getByRole('navigation', { name: '接口分组' }).getByRole('button', { name: /鉴权/ }).click()
+  await expect(page.locator('.api-operation-card').first()).toContainText('/api/auth/')
+  await expect(page.locator('.api-docs-section-head strong')).toHaveText('鉴权')
+
+  const viewport = await page.evaluate(() => ({
+    pageWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth
+  }))
+  expect(viewport.pageWidth).toBeLessThanOrEqual(viewport.viewportWidth)
+  if (testInfo.project.name === 'mobile-chromium') {
+    await page.getByRole('button', { name: '打开管理菜单' }).click()
+  }
+  await page.getByRole('menuitem', { name: '系统设置', exact: true }).click()
+  await expect(page.locator('.admin-main .admin-account-panel')).toBeVisible()
+  expect(runtimeErrors).toEqual([])
+})
+
 test('administrator can open settings and submit an image task', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'The authenticated workflow runs once on desktop Chromium.')
   const runtimeErrors = captureRuntimeErrors(page)

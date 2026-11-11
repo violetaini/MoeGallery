@@ -127,12 +127,6 @@ const router = createRouter({
       component: loadInstall
     },
     {
-      path: '/admin/api-docs',
-      name: 'admin-api-docs',
-      component: loadApiDocs,
-      meta: { requiresAuth: true }
-    },
-    {
       path: '/admin',
       component: loadAdminLayout,
       meta: { requiresAuth: true },
@@ -147,7 +141,8 @@ const router = createRouter({
         { path: 'characters', name: 'admin-characters', component: loadCharacterManage, meta: { title: '角色管理' } },
         { path: 'characters/:id', name: 'admin-character-detail', component: loadAdminCharacterDetail, meta: { title: '角色主页' } },
         { path: 'updates', name: 'admin-updates', component: loadUpdateCenter, meta: { title: '更新中心' } },
-        { path: 'settings', name: 'admin-settings', component: loadSettings, meta: { title: '系统设置' } }
+        { path: 'settings', name: 'admin-settings', component: loadSettings, meta: { title: '系统设置' } },
+        { path: 'api-docs', name: 'admin-api-docs', component: loadApiDocs, meta: { title: 'API 文档' } }
       ]
     }
   ],

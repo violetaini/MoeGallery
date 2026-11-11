@@ -2556,10 +2556,6 @@ body {
   max-width: 100%;
 }
 
-.admin-card.api-docs-page {
-  overflow: visible;
-}
-
 .admin-inline-hero {
   min-height: 112px;
   overflow: hidden;
@@ -3344,14 +3340,6 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .api-docs-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .api-docs-layout {
-    grid-template-columns: 190px minmax(0, 1fr);
-  }
-
   .detail-layout {
     grid-template-columns: 1fr;
   }
@@ -4074,48 +4062,6 @@ body {
   .admin-toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .api-docs-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .api-docs-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .api-docs-sidebar {
-    position: static;
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
-    max-height: none;
-    overflow-x: auto;
-  }
-
-  .api-docs-tag {
-    width: auto;
-    min-width: 126px;
-  }
-
-  .api-docs-section-head,
-  .api-operation-card__head,
-  .api-docs-hero {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .api-docs-hero__actions,
-  .api-docs-hero__actions .el-button {
-    width: 100%;
-  }
-
-  .api-endpoint-line {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .api-param-table {
-    min-width: 620px;
   }
 
   .metadata-import-layout {

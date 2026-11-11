@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Document, Key, Link, Lock, Refresh, Search } from '@element-plus/icons-vue'
+import { ArrowDown, Document, Key, Link, Lock, Refresh, Search } from '@element-plus/icons-vue'
 import { galleryApi } from '../../api/gallery'
 
 const tagLabels = {
@@ -17,6 +17,8 @@ const tagLabels = {
   stats: '统计',
   settings: '设置',
   system: '系统',
+  updates: '更新',
+  shares: '分享',
   storage: '文件访问',
   health: '存活检查'
 }
@@ -191,32 +193,17 @@ onMounted(loadDocs)
 </script>
 
 <template>
-  <div class="api-docs-standalone">
-    <header class="api-docs-standalone__header">
-      <RouterLink class="admin-brand" to="/admin">
-        <img class="brand-avatar" src="/avatar.webp" alt="Anime Gallery" />
-        <span class="brand-copy">
-          <strong>Anime Gallery</strong>
-          <small>API reference</small>
-        </span>
-      </RouterLink>
-      <div class="api-docs-standalone__actions">
-        <el-button @click="$router.push('/admin')">返回后台</el-button>
-        <el-button type="primary" :icon="Link" @click="openRawDocs">打开交互文档</el-button>
-      </div>
-    </header>
-
-    <div class="admin-card api-docs-page" v-loading="loading">
-      <section class="admin-inline-hero api-docs-hero">
+  <div class="admin-card api-docs-page" v-loading="loading">
+    <section class="api-docs-hero">
       <div>
-        <span class="hero-eyebrow">OpenAPI</span>
         <h2>API 文档</h2>
-        <p class="muted">后台集成、运维脚本和接口排障使用的中文接口说明。</p>
+        <p class="muted">查找接口、查看参数，或复制调用示例。</p>
       </div>
       <div class="api-docs-hero__actions">
         <el-button :icon="Refresh" :loading="loading" @click="loadDocs">刷新</el-button>
+        <el-button type="primary" :icon="Link" @click="openRawDocs">打开交互文档</el-button>
       </div>
-      </section>
+    </section>
 
     <el-alert
       v-if="errorMessage"
@@ -227,7 +214,7 @@ onMounted(loadDocs)
       show-icon
     />
 
-      <template v-if="schema">
+    <template v-if="schema">
       <div class="api-docs-summary">
         <div class="api-docs-summary__item">
           <el-icon><Document /></el-icon>
@@ -252,6 +239,7 @@ onMounted(loadDocs)
       </div>
 
       <section class="api-auth-panel">
+        <el-icon aria-hidden="true"><Lock /></el-icon>
         <div>
           <strong>鉴权方式</strong>
           <p class="muted">
@@ -267,15 +255,16 @@ onMounted(loadDocs)
           clearable
           :prefix-icon="Search"
           placeholder="搜索接口路径、摘要或说明"
+          aria-label="搜索接口"
         />
       </div>
 
-      <div class="api-docs-layout">
-        <aside class="api-docs-sidebar">
+      <nav class="api-docs-tags" aria-label="接口分组">
           <button
             type="button"
             class="api-docs-tag"
             :class="{ 'is-active': selectedTag === 'all' }"
+            :aria-pressed="selectedTag === 'all'"
             @click="selectedTag = 'all'"
           >
             <span>全部接口</span>
@@ -287,14 +276,15 @@ onMounted(loadDocs)
             type="button"
             class="api-docs-tag"
             :class="{ 'is-active': selectedTag === tag.name }"
+            :aria-pressed="selectedTag === tag.name"
             @click="selectedTag = tag.name"
           >
             <span>{{ tagName(tag.name) }}</span>
             <strong>{{ tagStats.get(tag.name) || 0 }}</strong>
           </button>
-        </aside>
+      </nav>
 
-        <main class="api-docs-main">
+      <section class="api-docs-main" aria-label="接口列表">
           <header class="api-docs-section-head">
             <div>
               <strong>{{ selectedTag === 'all' ? '全部接口' : tagName(selectedTag) }}</strong>
@@ -305,23 +295,25 @@ onMounted(loadDocs)
 
           <el-empty v-if="!filteredOperations.length" description="没有匹配的接口" />
 
-          <article
+          <details
             v-for="operation in filteredOperations"
             :key="operation.id"
             class="api-operation-card"
           >
-            <header class="api-operation-card__head">
+            <summary class="api-operation-card__head">
               <div class="api-endpoint-line">
                 <span class="api-method" :class="`api-method--${operation.method}`">{{ operation.method.toUpperCase() }}</span>
                 <code>{{ operation.path }}</code>
               </div>
-              <el-tag :type="operation.protected ? 'warning' : 'success'" effect="plain">
+              <span class="api-operation-title">{{ operation.summary }}</span>
+              <span class="api-operation-access" :class="{ 'is-protected': operation.protected }">
+                <el-icon v-if="operation.protected" aria-hidden="true"><Lock /></el-icon>
                 {{ operation.protected ? '需要鉴权' : '免登录' }}
-              </el-tag>
-            </header>
+              </span>
+              <el-icon class="api-operation-chevron" aria-hidden="true"><ArrowDown /></el-icon>
+            </summary>
 
             <div class="api-operation-card__body">
-              <h3>{{ operation.summary }}</h3>
               <p v-if="operation.description" class="muted">{{ operation.description }}</p>
 
               <div class="api-meta-row">
@@ -373,10 +365,8 @@ onMounted(loadDocs)
                 <pre><code>{{ curlExample(operation) }}</code></pre>
               </div>
             </div>
-          </article>
-        </main>
-      </div>
-      </template>
-    </div>
+          </details>
+      </section>
+    </template>
   </div>
 </template>

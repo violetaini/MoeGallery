@@ -528,7 +528,15 @@ test('administrator can open settings and submit an image task', async ({ page }
   await page.locator('input[type="file"]').first().setInputFiles(uploadFixture)
   await expect(page.getByText('favicon.png', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '开始批量上传' })).toBeEnabled()
+  const taskCreated = page.waitForResponse((response) => (
+    response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/upload-tasks'
+  ))
   await page.getByRole('button', { name: '开始批量上传' }).click()
+  expect((await taskCreated).ok()).toBe(true)
+  await expect(page.getByRole('button', { name: '开始批量上传' })).toBeDisabled()
+  // Fast workers can finish before the default "active" list is rendered.
+  await page.locator('.upload-task-status-filter').click()
+  await page.getByRole('option', { name: '全部状态', exact: true }).click()
   await expect(page.locator('.upload-task-item').filter({ hasText: 'favicon.png' })).toBeVisible()
   expect(runtimeErrors).toEqual([])
 })
